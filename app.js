@@ -26,6 +26,9 @@ sourceNode.connect(masterGain);
 masterGain.connect(analyser);
 analyser.connect(ctx.destination);
 
+const mediaSource = ctx.createMediaElementSource(audio);
+mediaSource.connect(sourceNode);
+
 const audioReactive = new AudioReactiveController(analyser, {
   numBands: 24,
   minHz: 35,
@@ -59,6 +62,9 @@ const blender = new AdaptivePresetBlender(visualizer, {
   mutualInfluenceStrength: 0.42,
   audioResponse: 0.65
 });
+
+window.__acidAnalyser = analyser;
+window.__acidViz = visualizer;
 
 function loadPresetByName(name) {
   if (!name || !presets[name]) return;
@@ -108,10 +114,14 @@ function attachAudioFile(file) {
   audio.loop = true;
   stateInfoEl.textContent = 'State: ready';
 
-  audio.play().then(() => {
-    stateInfoEl.textContent = 'State: playing';
+  ctx.resume().then(() => {
+    audio.play().then(() => {
+      stateInfoEl.textContent = 'State: playing';
+    }).catch(() => {
+      stateInfoEl.textContent = 'State: browser blocked autoplay';
+    });
   }).catch(() => {
-    stateInfoEl.textContent = 'State: browser blocked autoplay';
+    stateInfoEl.textContent = 'State: browser blocked audio context';
   });
 }
 
@@ -121,6 +131,8 @@ fileInput.addEventListener('change', (event) => {
 });
 
 playBtn.addEventListener('click', () => {
+  ctx.resume().catch(() => {});
+
   if (!audio.src) {
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
