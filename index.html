@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>new-milkdrop-</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage"></canvas>
+
+      <div id="hud">
+        <div class="row">
+          <span class="brand">NEW <b>MILKDROP</b></span>
+          <button id="nextPreset" type="button">Next Preset</button>
+          <button id="playBtn" type="button">Load Audio</button>
+          <label class="fileButton">
+            <input id="fileInput" type="file" accept="audio/*" />
+            Select Track
+          </label>
+        </div>
+        <div class="row small">
+          <span id="presetName">Preset: loading…</span>
+          <span id="stateInfo">State: waiting</span>
+        </div>
+      </div>
+    </div>
+
+    <audio id="audio" crossorigin="anonymous"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+    <script src="./audio-reactive-controller.js"></script>
+    <script src="./adaptive-preset-blender.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
