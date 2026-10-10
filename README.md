@@ -33,6 +33,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js` und `butterchurnPresetsExtra.min.js` (unverändert), Lizenz.
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
+- `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale Teil 3a, siehe unten „Schaltzentrale“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
 - `acid-shader.js`, `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: eigene Shader, die 5 eigenen Acid-Presets, vermessene Presets.
@@ -64,6 +65,20 @@ new-milkdrop- nie etwas von Acid verändert:
   Die Bild-Effekte nutzen das noch nicht (kommt mit der Schaltzentrale).
 - Notfall: scheitert die Analyse (Datei nicht lesbar, über 15 Minuten, zu wenig Speicher), kommt eine Meldung und Play heißt
   „Ohne Analyse spielen“: ein Tipp spielt den Track, das Bild reagiert dann nur live.
+
+## Schaltzentrale (ab Build 106, Teil 3a)
+
+Jede Klangrolle bekommt genau EINE Bildebene, wie Kanäle am Mischpult. Läuft über den Schalter „Mischpult“ (aus = alte Effekte). In der Werkstatt
+gibt es die Gruppe „Schaltzentrale“ mit vier Reglern (0 = aus, 100 % normal, bis 150 %; gespeichert unter `nmd:sz-gain`).
+- **Raum (Stereo):** `ak_pan` schiebt das Bild bis 1,3 % nach links/rechts und verzieht es bis 1° (`skewX`), `ak_pan_speed` und `ak_width` bestimmen, wie stark. Die Position wird auf ihr
+  gleitendes Maximum bezogen (live erreicht sie nur ca. ±0,5) und hart in der Änderungsgeschwindigkeit begrenzt (`SZCFG.panSlew`): sehr schnelles Ping-Pong wird zum sanften Schimmern,
+  nichts flackert. Ohne Stereo-Bewegung bleibt das alte Schwanken im Takt.
+- **Pads (Farbe):** Farbton gleitet (Tempo = `pads_env`), `pads_pitch` steuert Helligkeit und Sättigung (tief = düster und satt, hoch = hell und leuchtend), `pads_entry` = weicher Farbwechsel.
+  Der Takt-Farbschritt wird mit Pads halb so groß, ohne Pads größer (Obergrenze 40°).
+- **Hats (Details):** `hats_density` skaliert die Menge der Funken (50–150 %).
+- **Dirigent:** vor dem Drop gilt `ak_build_strength` (gemessener Aufbau) statt der festen 8 Takte (`PRE_BARS`), im Drop skaliert `ak_drop_strength` Blitz, Funken und Zoom-Stoß (50–140 %).
+  Regler „Dirigent“ auf 0 = alte feste Regel.
+Noch offen: Kick-Ebene (Drehen), Acid-Ebene (Verzerrung, braucht die Butterchurn-Kopie), Hats-Körnung, Mitten ohne Funken. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
 
 ## Klangrollen: die neuen Variablen
 

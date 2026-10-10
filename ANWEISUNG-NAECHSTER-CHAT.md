@@ -1,4 +1,4 @@
-# Anweisung für den nächsten Chat: Schaltzentrale bauen (Stand Build 105)
+# Anweisung für den nächsten Chat: Schaltzentrale fertig bauen (Stand Build 106, Teil 3a ist gebaut)
 
 Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neuen Chat einfach den Inhalt (ab „GRUNDREGEL“) einfügen oder sagen „Lies ANWEISUNG-NAECHSTER-CHAT.md im Repo new-milkdrop- und mach weiter“.
 
@@ -33,6 +33,9 @@ Erledigt und geprüft (Sandbox): Start-Sperre, Partitur, Speicher, Aufbau-Detekt
 Bekannte offene Auffälligkeit (Build 105): `ak_pan` erreicht LIVE bei einem Seitenwechsel pro Schlag nur etwa ±0,5, in der Offline-Messung (Partitur und Test) ±0,9, obwohl dieselbe Funktion (`akStereoStats`, Fenster `AKCFG.stN`) und dieselben Schwellen laufen. Das Wechsel-Tempo `ak_pan_speed` stimmt live trotzdem (0,2 bei 1 Wechsel pro Schlag, 0,28 bei 2; offline 0,25/0,50). Ursache nicht geklärt (Verdacht: Zeitpunkt des Lesens der Analyser gegenüber dem Anschlag). Die Schaltzentrale sollte `ak_pan` darum auf sein gleitendes Maximum der letzten Sekunden normieren (wie die Rollen-Hüllkurven), statt auf ±1 zu vertrauen; oder die Ursache mit dem Test `stereoLive` klären.
 
 Offen und von Emmo am iPhone zu prüfen (Protokoll „Kopieren“ in „Mehr“ → Protokoll): Passen Pads-Gehaltenheit (`padHeld` 0,006–0,025) und Resonanz (`resoDb` 6–24 dB) zu echten Tracks? Die Minutenzeile „Klangrollen-Messung“ enthält dafür Gehaltenheit, Resonanz, Hats-Dichte, Pads-Tonhöhe, Stereo-Position/Tempo/Breite. Schwellen anhand dieser Protokolle nachziehen, nicht raten.
+
+## STAND SCHALTZENTRALE (Build 106): Teil 3a ist gebaut, in `js/13b-schaltzentrale.js`
+Gebaut und geprüft (Sandbox, Szenario `schaltzentrale`): Raum-Ebene (Stereo), Pads-Ebene (Farbe, Helligkeit, Takt-Farbschritt), Hats-Funkenmenge, Dirigent (`ak_build_strength` statt `PRE_BARS`, `ak_drop_strength` skaliert den Drop), vier Werkstatt-Regler, Protokoll-Minutenzeile. Anschlüsse: `szFrame` (aus `mxFrame`), `szHueAdd`/`szBright` (`applyFilter` in `js/04`), `szSatMul` (`fxFrame`), `szBarStep` (`onBar` in `js/01`), `szHats` (`mxSparks`), `szDropWucht` (`mxDrop`), `szBuild` (`scanFrame` in `js/12-erkennung.js`). **Noch zu bauen (Teil 3b):** (a) Kick-Ebene: Drehen (`MX.r`) vom Acid zum Kick im Takt, Break fährt die Kick-Ebene herunter und das Bild atmet nur mit den Pads, Aufbau zieht das Bild zusammen; (b) Acid-Ebene mit Verzerrung (`acid_cutoff`, `acid_squelch`, `acid_reso`) als Stufe in der Butterchurn-Kopie (`AK-PATCH 10`, bei Stärke 0 übersprungen, Regressionstest muss 10 von 10 bleiben); (c) Hats-Körnung und Glitzern in derselben Stufe, Mitten (Claps, 303-Noten) lösen keine Funken mehr aus; (d) Regler Kick und Acid, `entry`/`release`-Akzente je Ebene. Der Abschnitt unten beschreibt den ganzen Plan; (a)-(d) sind der Rest.
 
 ## AUFGABE: SCHALTZENTRALE (Presets NICHT umbauen)
 Plan (von Emmo bestätigt): Jede Klangrolle bekommt genau EINE Bildebene wie ein Kanal am Mischpult. Neue Datei `js/13b-schaltzentrale.js` (prüft Stufe 13, ändert sie nicht, in `app-files.js` eintragen) und eine Stufe in der Butterchurn-Kopie (neue Änderung `AK-PATCH 10`, in `NOTICE.md`).

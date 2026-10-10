@@ -36,7 +36,7 @@ function fxFrame(t) {
   bang *= Math.exp(-dt / 900);
   const pr = toggles.build ? dropPre : 0;
   { const kw = toggles.bar && !reduceMotion ? kmNow() : null; swLive = ema(swLive, kw ? kw.sweep : 0, dt, 700); }
-  sat = (1 - 0.7 * pr * pr) * (1 + 0.45 * bang) * (1 + 0.3 * swLive);   // Build 53: Filter öffnet = Farben blühen auf, Filter schließt = zurückhaltender   // vor dem Drop Farbe raus, im Drop kurz übersatt
+  sat = (1 - 0.7 * pr * pr) * (1 + 0.45 * bang) * (1 + 0.3 * swLive) * (window.szSatMul ? window.szSatMul() : 1);   // Build 53: Filter öffnet = Farben blühen auf, Filter schließt = zurückhaltender   // vor dem Drop Farbe raus, im Drop kurz übersatt
   let tr;
   if (window.__AMX && toggles.mix && !reduceMotion) {   // Build 46: Mischpult „Körper & Funken“ rechnet die ganze Bewegung (Teil 12b)
     if (morphOn) { morphOn = false; mxTransition(blender ? blender.state.blendDuration / 1000 : 2); }

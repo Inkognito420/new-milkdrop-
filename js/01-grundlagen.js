@@ -101,8 +101,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 105;
-const BUILD = 'Build ' + BUILD_NO + ' · Stereo: Position, Wechsel-Tempo und Breite (Ping-Pong links/rechts)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 106;
+const BUILD = 'Build ' + BUILD_NO + ' · Schaltzentrale 3a: Raum (Stereo), Pads-Farbe, Dirigent (gemessener Aufbau, Drop-Wucht)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -281,6 +281,7 @@ function onBar(type) {
   AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
   if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
   let st = BAR_STEP[type] || 0; if (!st) return;
+  if (window.szBarStep) st = window.szBarStep(st);   // Build 106 Schaltzentrale: mit Pads kleiner, ohne Pads größer (mit Obergrenze)
   const kw = kmNow(); if (kw && kw.sweep > 0) st = Math.round(st * (1 + 0.5 * kw.sweep));   // Build 53: öffnet sich der Filter, dreht die Farbe schneller
   // Build 43: mit Klangmesser kommt zum Takt-Schritt ein Farbsprung, wenn der Grundton des Takts wechselt (jeder der 12 Töne ist 30° auf dem Farbkreis, kürzester Weg).
   // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher. Schwelle 0,15: in lauten Takten liegt die Ton-Sicherheit bei 0,15-0,18 (Build 44 mit 0,20 sprang nie).

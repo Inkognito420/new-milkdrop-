@@ -79,6 +79,9 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
   return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, rel, xv, sec, bpm, hits: S.hits, ms: ms / n, msMax, n };
 }, [PREFIX + '__tmp/' + name + '.wav', gain, P ? { bar0: P.bar0, beatS: P.barS / 4 } : null]);
 
+const localStorage_nmd = saved => true;   // der Schlüssel heißt nmd:sz-gain (store.set setzt den Vorsatz); hier reicht, dass store.get ihn wiederfindet
+const run2 = (page, ms) => page.evaluate(ms => new Promise(res => { const o = { act: 0, tr: 0 }; const t0 = performance.now(); const step = () => { o.act = Math.max(o.act, window.__SZ.act); if (/skewX/.test(canvas.style.transform)) o.tr++; if (performance.now() - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
+
 const SZ = {
   async start() {
     const { page, errs, close } = await open();
@@ -603,6 +606,50 @@ const SZ = {
     check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
     await close();
   },
+  async schaltzentrale() {
+    // Schaltzentrale 3a: Raum (Ping-Pong schiebt und verzieht das Bild, Mono nicht), Regler, flackerfrei, Dirigent (gemessener Aufbau, Drop-Wucht)
+    const { page, errs, close } = await open();
+    await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
+    await page.evaluate(() => { audio.currentTime = 24; }); await page.waitForTimeout(3500);
+    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now();
+      const step = () => { const s = window.__SZ, now = performance.now(); o.x.push(s.x); o.k.push(s.skew); o.act.push(s.act); if (/skewX/.test(canvas.style.transform)) o.tr++;
+        H.push([now, s.x, s.skew, s.bright]); while (H.length > 1 && now - H[1][0] >= 120) H.shift();   // Änderung über ein Fenster von mindestens 120 ms (bildratenunabhängig, ohne Zählfehler durch versetzte Bilder)
+        if (now - H[0][0] >= 120) { const ds = (now - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); }
+        if (now - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
+    const A = await run(4000), mx = a => Math.max(...a.map(Math.abs));
+    console.log('       (Info) Raum bei Ping-Pong: Aktivität bis ' + mx(A.act).toFixed(2) + ', Verschiebung bis ' + mx(A.x).toFixed(2) + ' %, Verzerrung bis ' + mx(A.k).toFixed(2) + '°, Bilder mit skewX ' + A.tr + ' von ' + A.x.length + ' · größte Änderung pro Sekunde (über 120 ms): ' + A.dx.toFixed(2) + ' % / ' + A.dk.toFixed(2) + '°');
+    check('Schaltzentrale Raum: Ping-Pong schiebt das Bild (Verschiebung über 0,3 %) und verzieht es (skewX im Transform), Grenzen eingehalten (höchstens 1,3 % und 1,0°)', mx(A.x) > 0.3 && A.tr > 10 && mx(A.x) <= 1.31 && mx(A.k) <= 1.01, JSON.stringify({ x: mx(A.x), k: mx(A.k), tr: A.tr }));
+    check('Schaltzentrale flackerfrei: größte Änderung pro Sekunde höchstens 9 % Verschiebung und 7° Verzerrung (gemessen über 120 ms, bei jeder Bildrate)', A.dx <= 9 && A.dk <= 7, JSON.stringify({ dx: A.dx, dk: A.dk }));
+    await page.evaluate(() => { const r = document.getElementById('sz-raum'); r.value = '0'; r.dispatchEvent(new Event('input')); }); await page.waitForTimeout(3000);
+    const Z = await run(1500), saved = await page.evaluate(() => store.get('sz-gain', null));
+    check('Schaltzentrale Regler: „Raum“ auf 0 stellt die Ebene ab (keine Verschiebung, kein skewX), der Wert wird unter nmd: gespeichert', mx(Z.x) < 0.001 && Z.tr === 0 && saved && saved.raum === 0 && !!localStorage_nmd(saved), JSON.stringify({ x: mx(Z.x), tr: Z.tr, saved }));
+    check('Schaltzentrale: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+    // Mono-Track: Raum bleibt aus; Dirigent: gemessener Aufbau vor dem Drop
+    const m = await open();
+    await m.page.setInputFiles('#fileIn', [T[0]]);
+    await m.page.waitForFunction(() => !audio.paused && curAnalysis && curAnalysis.aufbau, null, { timeout: 180000, polling: 200 });
+    await m.page.evaluate(() => { audio.currentTime = 20; }); await m.page.waitForTimeout(3000);
+    const mono = await run2(m.page, 3000);
+    check('Schaltzentrale Raum: Mono-Track bleibt ohne Raum-Bewegung (Aktivität unter 0,15, kein skewX)', mono.act < 0.15 && mono.tr < 5, JSON.stringify(mono));
+    const D = await m.page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), dr = curAnalysis.aufbau.drops[0], out = {};
+      if (!dr) return { keinDrop: true };
+      const B = curAnalysis.aufbau, mid = B.t0 + (dr.buildFrom >= 0 ? dr.buildFrom + 0.7 * (dr.bar - dr.buildFrom) : dr.bar - 2) * B.barS;
+      out.drop = { bar: dr.bar, buildFrom: dr.buildFrom, buildBars: dr.buildBars };
+      const g = window.__SZ.gain.dirigent, seek = () => { audio.currentTime = Math.max(0, mid); };
+      window.__SZ.gain.dirigent = 0; seek(); await w(700); out.altDirigentAus = +dropPre.toFixed(2); window.__SZ.gain.dirigent = g;   // Regler auf 0: alte feste Regel
+      seek(); await w(1000);
+      out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)) };
+      audio.currentTime = B.t0 + (dr.bar + 1) * B.barS; await w(1500); out.imDrop = +AKV.ak_drop_strength.toFixed(2); out.strength = dr.strength;
+      return out;
+    });
+    console.log('       (Info) Dirigent: ' + JSON.stringify(D));
+    check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
+    check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
+    await m.close();
+  },
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
     const { page, errs, close } = await open();
@@ -651,7 +698,7 @@ const SZ = {
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
   if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
-  if (want.some(w => /^(klangrollen2?|stereoLive)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
+  if (want.some(w => /^(klangrollen2?|stereoLive|schaltzentrale)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

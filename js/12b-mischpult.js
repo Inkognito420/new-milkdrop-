@@ -82,6 +82,7 @@ function mxFrame(t, dtMs) {
   const relax = t < MX.relUntil;                           // nach dem Drop: Feder schwingt frei aus
   const rZeta = relax ? 0.12 : Math.min(0.5, 0.15 + 0.6 * MX.c.zeta);
   const kn = kmNow();
+  if (window.szFrame) window.szFrame(dt);                   // Build 106 Schaltzentrale: Raum, Pads, Dirigent rechnen
 
   if (sec !== MX.sec) {
     const prev = MX.sec; MX.sec = sec;
@@ -150,7 +151,8 @@ function mxFrame(t, dtMs) {
   // --- Sidechain und Deckel ---
   const kickDuck = 1 - MX.c.pump * clamp(AMI.kE);                          // Kick drückt Drehen und Schwanken weg (wie im Track der Kick die Bassline)
   const evDuck = 1 / (1 + 0.8 * MX.evLoad);                                // große Funken drücken den Körper weg
-  let zO = MX.z.p, rO = mxSoft(MX.r.p, MX_ROT_MAX) * kickDuck * evDuck, xO = mxSoft(MX.x.p, MX_SWAY_MAX) * kickDuck * evDuck, yO = mxSoft(MX.y.p, MX_SWAY_MAX) * kickDuck * evDuck;
+  const szA = window.__SZ ? window.__SZ.act * Math.min(1, window.__SZ.gain.raum) : 0;     // Raum-Ebene: ersetzt das Schwanken, solange Stereo-Bewegung da ist
+  let zO = MX.z.p, rO = mxSoft(MX.r.p, MX_ROT_MAX) * kickDuck * evDuck, xO = mxSoft(MX.x.p, MX_SWAY_MAX) * kickDuck * evDuck * (1 - 0.8 * szA), yO = mxSoft(MX.y.p, MX_SWAY_MAX) * kickDuck * evDuck;
   const punch = toggles.pulse ? pulse * (0.2 + 0.25 * clamp((MX.c.zeta - 0.12) / 0.43)) : 0;   // harter Anschlag oben drauf, im Drop mehr
   zO = (zO > 0 ? zO : 0.5 * zO) * evDuck + punch;
   if (zO > 0) zO = mxSoft(zO, MX_ZMAX);                                    // Build 51: weicher Deckel, im Drop kam der Zoom bis auf 12,5 %, jetzt höchstens ca. 8 %
@@ -159,15 +161,17 @@ function mxFrame(t, dtMs) {
   const tot = MX.load + MX.evLoad, cap = MX.c.cap, want = tot > cap ? cap / tot : 1;
   MX.comp += (want - MX.comp) * (1 - Math.exp(-dt / (want < MX.comp ? 0.03 : 0.3)));
   if (!relax) { rO *= MX.comp; xO *= MX.comp; yO *= MX.comp; zO *= 0.5 + 0.5 * MX.comp; }
+  const szX = window.__SZ ? window.__SZ.x : 0, szK = window.__SZ ? window.__SZ.skew : 0;   // Raum: Verschiebung und Verzerrung, mit Deckel unabhängig vom Unruhe-Budget (eigener Kanal)
+  xO += szX;
 
   // --- Ausgabe: Zoom so groß, dass beim Drehen und Schieben nie ein schwarzer Rand zu sehen ist ---
   const Wv = innerWidth || 1, Hv = innerHeight || 1, th = Math.abs(rO) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
-  const cover = Math.max((Wv * cs + Hv * sn) / Wv, (Wv * sn + Hv * cs) / Hv) + 2 * Math.max(Math.abs(xO), Math.abs(yO)) / 100;
+  const cover = Math.max((Wv * cs + Hv * sn) / Wv, (Wv * sn + Hv * cs) / Hv) + 2 * Math.max(Math.abs(xO), Math.abs(yO)) / 100 + (Hv / Wv) * Math.tan(Math.abs(szK) * Math.PI / 180);
   const S = cover * (1 + 0.012 + Math.max(-0.012, zO));
   MX.out.z = zO; MX.out.r = rO; MX.out.x = xO; MX.out.y = yO; MX.out.s = S;
   mxStats(t, zO, rO, xO, yO);
   if (Math.abs(rO) < 0.01 && Math.abs(xO) < 0.005 && Math.abs(yO) < 0.005 && Math.abs(S - 1.012) < 0.0005 && !playing) return '';
-  return 'translate(' + xO.toFixed(3) + '%,' + yO.toFixed(3) + '%) rotate(' + rO.toFixed(3) + 'deg) scale(' + S.toFixed(4) + ')';
+  return 'translate(' + xO.toFixed(3) + '%,' + yO.toFixed(3) + '%) rotate(' + rO.toFixed(3) + 'deg)' + (Math.abs(szK) > 0.02 ? ' skewX(' + szK.toFixed(3) + 'deg)' : '') + ' scale(' + S.toFixed(4) + ')';
 }
 
 // Bildwechsel: statt der alten Verformung bekommt der Körper einen Stoß (Drehen, Zoom, Schwanken)
@@ -183,7 +187,7 @@ function mxTransition(blendS) {
 function mxSparks(n) {
   MX.st.sparksWant += n;
   const pre = dropPre > 0.05 ? 0.35 : 1, ev = 1 / (1 + 0.8 * Math.max(0, MX.load - 0.3));
-  let m = Math.round(n * (0.35 + 1.3 * MX.konto) * pre * ev);
+  let m = Math.round(n * (0.35 + 1.3 * MX.konto) * pre * ev * (window.szHats ? window.szHats() : 1));   // Build 106: Hats-Dichte
   m = Math.max(0, Math.min(m, Math.floor(MX.konto / MX_SPARK_COST)));
   MX.konto -= m * MX_SPARK_COST; MX.evLoad += m * 0.012; MX.st.sparks += m;
   return m;
@@ -195,10 +199,11 @@ function mxRing() {
 }
 // Drop: alles, was angespart ist, auf einmal raus
 function mxDrop() {
-  const k = MX.konto, n = Math.round(18 + 70 * k);
-  flash = reduceMotion ? 0.2 : 0.3 + 0.45 * k;
+  const W = window.szDropWucht ? window.szDropWucht() : 1;     // Build 106 Dirigent: Wucht aus der gemessenen Drop-Stärke
+  const k = MX.konto, n = Math.round((18 + 70 * k) * W);
+  flash = reduceMotion ? 0.2 : Math.min(1, (0.3 + 0.45 * k) * W);
   burst(n);
-  if (toggles.pulse) { const P = scanActive() ? curAnalysis.beatS : 60 / bpm; mxKick(MX.z, Math.min(0.1, 0.05 + 0.05 * k), 2 * Math.PI / P, 0.45); }
+  if (toggles.pulse) { const P = scanActive() ? curAnalysis.beatS : 60 / bpm; mxKick(MX.z, Math.min(0.1, (0.05 + 0.05 * k) * W), 2 * Math.PI / P, 0.45); }
   rea('Mischpult · Drop: Konto ' + Math.round(100 * k) + ' % → ' + n + ' Funken, Blitz ' + Math.round(100 * flash) + ' %');
   MX.konto = 0.15; MX.st.drops++;
 }
