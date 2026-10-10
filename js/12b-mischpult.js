@@ -93,7 +93,7 @@ function mxFrame(t, dtMs) {
   let restZ = 0;
   const b = toggles.build ? build : 0;
   if (toggles.build) {
-    restZ = 0.06 * b * b;                                                // vor dem Drop zoomt das Bild langsam rein
+    restZ = 0.06 * b * b + (window.szBreakBreath ? window.szBreakBreath() : 0);                                                // vor dem Drop zoomt das Bild langsam rein
     if (B.scan && B.toDrop < B.P * 1.05 && sec !== 'drop') restZ = -0.012 * clamp(1 - B.toDrop / B.P) - 0.004;   // letzter Schlag: ausholen
   }
   if (toggles.pulse && playing) {
@@ -109,7 +109,9 @@ function mxFrame(t, dtMs) {
       if (sec === 'buildup') amp = 0.02 + 0.03 * b;
       if (kn) amp *= 0.7 + 0.6 * kn.spann;                                // Spannung des Takts (Klangmesser): 0,7 bis 1,3
       if (B.oneAt(i)) amp += 0.008;
+      amp *= window.szKickAmp ? window.szKickAmp() : 1;                   // Build 108 Kick-Ebene: im Break leiser, Regler Kick
       mxKick(MX.z, 0.85 * amp * k, wB, zZeta); MX.st.kicks++;
+      if (window.szKickRot && toggles.morph) window.szKickRot(MX.r, k, wR, B.oneAt(i));   // ... und Drehen im Takt
     }
     if (!B.predict && AMI.kHit > 0) { mxKick(MX.z, 0.025 * AMI.kHit, wB * 2, 0.4); MX.st.kicks++; }   // ohne Takt: direkt auf den erkannten Kick (Feder doppelt so schnell)
   }
@@ -121,8 +123,9 @@ function mxFrame(t, dtMs) {
   const acidW = clamp((acidAct - 0.006) / 0.035) * (kn ? 0.6 + 0.8 * kn.beweg : 1);
   let restR = 0;
   if (toggles.morph && playing) {
-    restR = 1.5 * fdir * acidW * MX.c.rot;
-    if (AMI.mHit > 0 && acidW > 0.2) MX.r.v += 0.35 * wR * AMI.mHit * (fdir >= 0 ? 1 : -1) * acidW;   // jede 303-Note schubst ein bisschen mit
+    const aM = window.szAcidRot ? window.szAcidRot() : 1;                 // Build 108: Drehen geht von der 303 zum Kick
+    restR = 1.5 * fdir * acidW * MX.c.rot * aM;
+    if (AMI.mHit > 0 && acidW > 0.2) MX.r.v += aM * 0.35 * wR * AMI.mHit * (fdir >= 0 ? 1 : -1) * acidW;   // jede 303-Note schubst ein bisschen mit
   }
   if (toggles.build && dropPre > 0.02 && sec !== 'drop') { MX.wind = -MX.windDir * 1.8 * Math.pow(dropPre, 1.5); restR += MX.wind; if (Math.abs(MX.wind) > Math.abs(MX.windMax)) MX.windMax = MX.wind; }
   else MX.wind = 0;

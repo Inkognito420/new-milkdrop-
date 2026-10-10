@@ -10,6 +10,8 @@ if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzen
 //                    solange Stereo-Bewegung da ist; ohne Stereo-Bewegung bleibt das alte Schwanken (Rückfall).
 //   SEITEN (Build 108) hats_side, ak_side (nur in AK.side, nicht in AKV) → Funken entstehen auf der Bildseite, auf der der Hats-Treffer klingt;
 //                    Breite (ak_width) + Seiten-Puls lassen das Bild leicht atmen (Zoom). Gehört zum Regler „Raum“ (0 = Funken wie vorher zufällig).
+//   KICK   (Build 108) Zoom-Puls und Drehen im Takt (Richtung wechselt je Takt, vorher 303-Filterfahrt); im Break fährt die Ebene herunter,
+//                    das Bild atmet nur mit den Pads. Quelle: Scan-Raster (A.kA) im Mischpult, nicht die Kick-Treffer der Klangrollen.
 //   PADS   (Farbe)   pads_env, pads_pitch, pads_entry → Farbton gleitet (Tempo = Lautstärke der Pads), Helligkeit und Sättigung folgen der Tonhöhe
 //                    (tief = düster und satt, hoch = hell und leuchtend), pads_entry = weicher Farbwechsel. Takt-Farbe: kleiner Schritt, mit Pads halb,
 //                    ohne Pads größer (mit Obergrenze), damit die Farbe nicht stehen bleibt.
@@ -18,7 +20,7 @@ if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzen
 // Noch nicht in 3a (siehe ANWEISUNG-NAECHSTER-CHAT.md): Kick-Ebene (Drehen), Acid-Ebene (Verzerrung, braucht die Butterchurn-Kopie).
 // Alles stark geglättet; jede Ebene einzeln in der Werkstatt (Gruppe „Schaltzentrale“) von 0 bis 150 % einstellbar.
 const SZCFG = {
-  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1 },      // Voreinstellung der Regler (1 = 100 %)
+  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1, kick: 1 },      // Voreinstellung der Regler (1 = 100 %)
   panMaxFloorSec: 6,        // Position wird auf ihr gleitendes Maximum der letzten Sekunden bezogen (live erreicht sie nur ca. ±0,5, offline ±0,9)
   panFloor: 0.35,           // ... mindestens dieses Maximum (sonst würde Rauschen bei Mono voll ausschlagen)
   panSmoothMs: 120,         // Glättung der Position für das Bild (flackerfrei)
@@ -28,6 +30,11 @@ const SZCFG = {
   widthDead: 0.12,          // Breite unter diesem Wert zählt als Mono (Test-Track mit leicht gepanntem Rauschen: Breite 0,07-0,1)
   breathMax: 0.012,         // Breite lässt das Bild atmen: Zoom höchstens +1,2 % (Build 108), mal Breite und Seiten-Puls, geglättet
   breathMs: 700,            // Glättung des Atmens (Anstieg und Abfall: höchstens ca. 1,5 Wechsel pro Sekunde)
+  kickBreak: 0.25,          // Kick-Ebene im Break: so viel bleibt vom Kick-Puls (Bild atmet dann nur mit den Pads)
+  kickMs: 900,              // so langsam fährt die Kick-Ebene im Break herunter und danach wieder hoch
+  kickRot: 0.25,            // Drehen im Takt: Anstoß je Kick (mal Welle des Takts); die Richtung wechselt mit jeder Takt-Eins
+  acidRotShare: 0.7,        // so viel vom Drehen der 303-Filterfahrt geht an die Kick-Ebene über (bei Regler Kick 100 %)
+  breakBreath: 0.012,       // im Break atmet das Bild mit den Pads: Zoom höchstens +1,2 % mal Pads-Pegel
   actMs: 900,               // so langsam geht die Ebene „Raum“ an und aus
   xMaxPct: 1.3,             // größte Verschiebung (Prozent der Bildbreite)
   skewMaxDeg: 1.0,          // größte Verzerrung (Grad)
@@ -41,7 +48,7 @@ const SZCFG = {
   hatsMin: 0.5, hatsMax: 1.5,                              // Funken-Menge: 50 % bei keiner Hats-Dichte bis 150 % bei dichten Hats
   dropWuchtMin: 0.5, dropWuchtMax: 1.4                     // Drop-Wucht (Blitz, Funken, Zoom-Stoß) aus ak_drop_strength 0..1
 };
-const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, speedS: 0, widthS: 0,
+const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, kickS: 1, kickDir: 1, speedS: 0, widthS: 0,
   pe: 0, pp: 0.5, hueT: 0, hue: 0, entryPrev: 0, bright: 1, satMul: 1, x: 0, skew: 0, lastT: 0,
   st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 } };
 { const g = store.get('sz-gain', null); if (g) for (const k in SZ.gain) if (typeof g[k] === 'number' && g[k] >= 0 && g[k] <= 1.5) SZ.gain[k] = g[k]; }
@@ -65,6 +72,7 @@ function szFrame(dt) {
   SZ.act = ems(SZ.act, szActive() ? want : 0, SZCFG.actMs);
   const g = SZ.gain.raum * SZ.act;
   SZ.x = SZ.panS * SZCFG.xMaxPct * g; SZ.skew = SZ.panS * SZCFG.skewMaxDeg * g;
+  SZ.kickS = ems(SZ.kickS, szActive() && sectionKey() === 'break' ? SZCFG.kickBreak : 1, SZCFG.kickMs);
   SZ.breath = ems(SZ.breath || 0, szActive() ? SZCFG.breathMax * SZ.gain.raum * wd * (0.5 + 0.5 * AKSIDE.ak_side) : 0, SZCFG.breathMs);
   // PADS
   SZ.pe = ems(SZ.pe, V.pads_env, SZCFG.padSmoothMs); SZ.pp = ems(SZ.pp, V.pads_pitch, SZCFG.padSmoothMs);
@@ -92,6 +100,14 @@ window.szHats = () => {                                                         
   const base = SZCFG.hatsMin + (SZCFG.hatsMax - SZCFG.hatsMin) * AKV.hats_density;
   return 1 + (base - 1) * Math.min(1.5, SZ.gain.hats);
 };
+window.szKickAmp = () => szActive() ? Math.min(1.5, SZ.gain.kick) * SZ.kickS : 1;  // js/12b: Stärke des Kick-Zooms (Break leiser)
+window.szKickRot = (r, k, wR, one) => {                                              // js/12b: Drehen im Takt, ein Anstoß je Kick
+  if (!szActive() || SZ.gain.kick <= 0) return;
+  if (one) SZ.kickDir = -SZ.kickDir;
+  r.v += SZ.kickDir * SZCFG.kickRot * wR * k * Math.min(1.5, SZ.gain.kick) * SZ.kickS;
+};
+window.szAcidRot = () => szActive() ? 1 - SZCFG.acidRotShare * Math.min(1, SZ.gain.kick) : 1;   // js/12b: 303-Filterfahrt dreht weniger
+window.szBreakBreath = () => szActive() && sectionKey() === 'break' ? SZCFG.breakBreath * Math.min(1, SZ.gain.pads) * SZ.pe : 0;   // js/12b: Break atmet mit den Pads
 window.szSide = () => {                                                              // js/13 onHat: Seite des letzten Hats-Treffers, Stärke 0..1 (0 = Mitte oder Regler aus)
   const a = szActive() ? Math.min(1, SZ.gain.raum) : 0, v = AKSIDE.hats_side * a;
   SZ.st.sp++; if (v < 0) SZ.st.spL++; else if (v > 0) SZ.st.spR++;
@@ -111,7 +127,7 @@ window.__SZ = SZ;
   if (werk) {
     const box = document.createElement('div'); box.className = 'grp';
     const lb = document.createElement('span'); lb.className = 'gl'; lb.textContent = 'Schaltzentrale'; box.appendChild(lb);
-    const NAMES = { raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)' };
+    const NAMES = { kick: 'Kick (Puls, Drehen)', raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)' };
     for (const k of Object.keys(NAMES)) {
       const row = document.createElement('label'); row.style.cssText = 'flex:0 0 100%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)';
       const t = document.createElement('span'); t.style.cssText = 'flex:0 0 150px'; t.textContent = NAMES[k];
@@ -128,6 +144,6 @@ setInterval(() => {
   const S = SZ.st; if (S.n < 600 || !szActive()) return;
   const f = x => x.toFixed(2).replace('.', ',');
   erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
-    + ' · Regler Raum/Pads/Hats/Dirigent ' + ['raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
+    + ' · Regler Kick/Raum/Pads/Hats/Dirigent ' + ['kick', 'raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
   SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 };
 }, 60000);

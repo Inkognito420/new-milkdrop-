@@ -651,6 +651,17 @@ const SZ = {
     });
     console.log('       (Info) Dirigent: ' + JSON.stringify(D));
     check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
+    { const k = await m.page.evaluate(() => { // Kick-Ebene: Drehen im Takt wechselt die Richtung mit jeder Takt-Eins, Regler 0 = aus, Break leiser, Acid dreht weniger
+        const g0 = SZ.gain.kick, on0 = SZ.on, out = {}; SZ.on = true; toggles.mix = true;
+        const mk = () => ({ v: 0 }); const a = mk(), b = mk(), c = mk(), wR = 3;
+        SZ.gain.kick = 1; szKickRot(a, 1, wR, true); const d1 = a.v; szKickRot(a, 1, wR, false); szKickRot(b, 1, wR, true); const d2 = b.v - 0;   // zweiter Takt: andere Richtung
+        out.richtung = d1 * (a.v - d1 > 0 ? 1 : -1) > 0 && Math.sign(d1) === Math.sign(a.v - d1) && Math.sign(d1) !== Math.sign(d2);
+        out.groesse = Math.abs(d1) <= SZCFG.kickRot * wR * 1.001;
+        SZ.gain.kick = 0; szKickRot(c, 1, wR, false); out.aus = c.v === 0 && szAcidRot() === 1;
+        SZ.gain.kick = 1; out.acid = Math.abs(szAcidRot() - (1 - SZCFG.acidRotShare)) < 1e-9;
+        SZ.kickS = SZCFG.kickBreak; out.break = Math.abs(szKickAmp() - SZCFG.kickBreak) < 1e-9; SZ.kickS = 1; out.normal = szKickAmp() === 1;
+        SZ.gain.kick = g0; SZ.on = on0; return out; });
+      check('Schaltzentrale Kick-Ebene: Drehen im Takt (Richtung wechselt je Takt, begrenzt), Regler 0 = aus, Acid dreht weniger, Break leiser', k.richtung && k.groesse && k.aus && k.acid && k.break && k.normal, JSON.stringify(k)); }
     check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
     await m.close();
     // Breit, aber mittig (wie der iPhone-Track mit Breite 0,75 und Wechsel-Tempo 0): Breite hoch, aber die Raum-Ebene bleibt aus
