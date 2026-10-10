@@ -102,7 +102,7 @@ function snapshot() {
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
 const BUILD = 'Build 101 · Klangrollen: Pads nur gehaltene Töne, Kick nur echte Schläge, Abschnitt aus dem Scan';
-const BUILD_NO = 102;
+const BUILD_NO = 103;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

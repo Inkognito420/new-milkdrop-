@@ -152,6 +152,8 @@ async function analyzeFile(file, alive = () => true) {
     try { const k0 = performance.now(); A.km = await kmBars(A, KX, scanYield); A.kmMs = Math.round(performance.now() - k0); }
     catch (e) { A.km = null; A.kmErr = String(e && e.message || e); }
   } else if (kxErr) A.kmErr = kxErr;
+  // Build 103: Aufbau-Detektor auf den Klangmesser-Werten pro Takt (js/analyse.js): Drops, Aufbau, drop_strength, ohne feste Längen
+  if (A.km) { try { A.aufbau = aufbauFor(A); } catch (e) { A.aufbau = null; A.aufbauErr = String(e && e.message || e); } }
   if (!alive()) return SCAN_STOP;
   A.file = file;
   return A;

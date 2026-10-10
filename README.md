@@ -39,6 +39,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
+- `pruefdaten/`: echte Messwerte von zwei Tracks (Klangmesser, Takt für Takt), Maßstab für den Aufbau-Detektor (siehe `pruefdaten/LIESMICH.md`).
 
 ## Partitur: Tracks werden vorher ganz analysiert (ab Build 102)
 
@@ -55,6 +56,11 @@ new-milkdrop- nie etwas von Acid verändert:
 - Gespeichert in IndexedDB `nmd-partitur` (Schlüssel: Dateiname, Größe, Änderungsdatum, Analyse-Version `PARTITUR_V`). Dieselbe Datei
   später wieder geladen: „Partitur aus Speicher“, Start ohne Wartezeit. Aufräumen: höchstens 200 Tracks bzw. 50 MB, die am längsten
   unbenutzten zuerst; Einträge alter Analyse-Versionen sofort.
+- **Aufbau-Detektor** (ab Build 103, `aufbauDetektor` in `js/analyse.js`, Ergebnis `curAnalysis.aufbau`): findet in den Klangmesser-Werten
+  pro Takt die Drops, den Aufbau davor und die Drop-Stärke (`drop_strength` 0–1). Keine festen Längen: Pausen von 2 bis beliebig vielen Takten,
+  Aufbau auch über durchlaufendem Kick (als Anstieg von Hektik, Schärfe oder beidem). Maßstab sind die echten Tracks in `pruefdaten/`
+  (`node test/aufbau.test.js`). Im Protokoll steht pro Track „Aufbau-Detektor: Drop Takt … Pause … Aufbau … Stärke …“.
+  Die Bild-Effekte nutzen das noch nicht (kommt mit der Schaltzentrale).
 - Notfall: scheitert die Analyse (Datei nicht lesbar, über 15 Minuten, zu wenig Speicher), kommt eine Meldung und Play heißt
   „Ohne Analyse spielen“: ein Tipp spielt den Track, das Bild reagiert dann nur live.
 
@@ -105,7 +111,7 @@ sind die Werte darum etwa 30 Sekunden lang kleiner, danach wieder normal.
 
 Läuft bei jedem Push als GitHub-Aktion (`.github/workflows/pruefen.yml`). Von Hand:
 
-- Schnell (nur Node): `node test/files.test.js`, `node test/analyse.test.js`, `node test/klangrollen-namen.test.js`
+- Schnell (nur Node): `node test/files.test.js`, `node test/analyse.test.js`, `node test/aufbau.test.js` (Prüfdaten), `node test/klangrollen-namen.test.js`
   (die 33 Namen kommen in keinem der 245 Standard-Presets vor).
 - Im Browser (Chromium über Playwright, ohne Internet):
   `PLAYWRIGHT_MODULE=… CHROMIUM_PATH=… node test/browser.js [Szenario,...]`: alle Acid-Prüfungen (Start, Bedienung, Shader, Scan, Offline,

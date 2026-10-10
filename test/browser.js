@@ -145,6 +145,9 @@ const SZ = {
       const A = curAnalysis, P = A.rollen, mean = (ty, name) => { let s = 0, n = 0; for (const sc of A.sections.filter(x => x.type === ty)) for (let b = Math.ceil((sc.t0 - P.bar0) / P.barS); (b + 1) * P.barS + P.bar0 <= sc.t1 + 0.01; b++) { const v = ptRolle(A, b, name); if (v !== null) { s += v; n++; } } return n ? +(s / n).toFixed(3) : null; };
       return { n: P.n, takte: Math.round(A.duration / (4 * A.beatS)), kickDrop: mean('drop', 'kick'), kickBreak: mean('break', 'kick'), hatsDrop: mean('drop', 'hats'), sek: A.secs, typen: A.sections.map(s => s.type).join(' ') };
     });
+    const au = await page.evaluate(() => { const A = curAnalysis, P = A.aufbau, sd = A.sections.filter(s => s.type === 'drop').map(s => +s.t0.toFixed(2)); return { drops: P ? P.drops.map(d => ({ t: d.t, takt: d.bar, pause: d.pause, aufbau: d.buildBars, staerke: d.strength })) : null, scanDrops: sd, barS: A.km.barS, log: LOG.some(l => /Aufbau-Detektor: Drop/.test(l.x)) }; });
+    check('Aufbau-Detektor in der Partitur: findet den Drop nach dem 8-Takt-Break (±1 Takt zum Scan), mit Aufbau davor, Stärke 0..1, steht im Protokoll',
+      au.drops && au.log && au.drops.some(d => au.scanDrops.some(t => Math.abs(d.t - t) <= au.barS * 1.05) && d.aufbau >= 2 && d.staerke > 0 && d.staerke <= 1), JSON.stringify(au));
     check('Partitur: ein Wert pro Takt; Kick im Drop deutlich (> 0,4), im Break kaum (< 0,15)', Math.abs(p.n - p.takte) <= 2 && p.kickDrop > 0.4 && p.kickBreak !== null && p.kickBreak < 0.15, JSON.stringify(p));
     console.log('       (Info) Analyse (Scan + Partitur) im Sandbox-Rechner: ' + p.sek + ' s für ' + p.takte + ' Takte');
     check('Start-Sperre: keine Seitenfehler, keine Fehler im Protokoll', errs.length === 0 && (await page.evaluate(() => LOG.filter(l => l.k === 'x').length)) === 0, errs.join(' | '));
@@ -186,18 +189,21 @@ const SZ = {
       const og = window.getDuration; window.getDuration = f => { ev.push(['dauer', Math.round(performance.now() - t0)]); return og(f).then(x => { ev.push(['dauer Ende', Math.round(performance.now() - t0)]); return x; }); };
       const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (n - t0 < 6000) requestAnimationFrame(step); else res({ gaps, ev }); }; requestAnimationFrame(step); })); console.log('DIAG0', JSON.stringify(dg)); }
     await page.waitForFunction(() => !audio.paused && scanJob && scanJob.file === queue[1], null, { timeout: 180000, polling: 100 });
-    const f = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;
-      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000 && scanJob) requestAnimationFrame(step); else res({ n: d.length, fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
-      requestAnimationFrame(step); }));
+    const frames = (stopWhenIdle) => page.evaluate(stop => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;   // Bilddauern in ms, 4 s lang
+      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000 && (!stop || scanJob)) requestAnimationFrame(step); else res(d); };
+      requestAnimationFrame(step); }), stopWhenIdle);
+    const dA = await frames(true);
     if (process.env.HG_DIAG) { const dg = await page.evaluate(() => new Promise(res => { const ph = []; const t0 = performance.now(); for (const n of ['analyzeEnvelopes', 'klangSplit', 'klangBars', 'kmBars', 'partiturRollen', 'getDuration']) { const o = window[n]; window[n] = function () { ph.push([n, Math.round(performance.now() - t0)]); const r = o.apply(this, arguments); if (r && r.then) r.then(() => ph.push([n + ' Ende', Math.round(performance.now() - t0)])); else ph.push([n + ' Ende', Math.round(performance.now() - t0)]); return r; }; }
       const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (scanJob) requestAnimationFrame(step); else res({ gaps, ph }); }; requestAnimationFrame(step); })); console.log('DIAG', JSON.stringify(dg)); }
     await page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 400000, polling: 500 });
-    const ruhe = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;   // Vergleich: dieselbe Messung ohne Analyse
-      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000) requestAnimationFrame(step); else res({ fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
-      requestAnimationFrame(step); }));
+    const dR = await frames(false);                                         // Vergleich: dieselbe Messung ohne Analyse
+    // „Langsames Bild“: über 50 ms UND über dem 2,5-fachen eines normalen Bildes ohne Analyse (auf langsamen Rechnern liegen normale Bilder schon bei 35-50 ms)
+    const med = a => a.slice().sort((x, y) => x - y)[a.length >> 1], thr = Math.max(50, 2.5 * med(dR));
+    const stat = d => ({ n: d.length, fps: +(1000 * d.length / d.reduce((x, y) => x + y, 0)).toFixed(1), langsam: d.filter(x => x > thr).length, max: Math.round(Math.max(...d)) });
+    const f = stat(dA), ruhe = stat(dR);
     const r = await page.evaluate(async () => { const A = await scanCache.get(queue[1]); return { min: +(A.duration / 60).toFixed(1), sek: A.secs, rollenMs: A.rollenMs, takte: A.rollen && A.rollen.n }; });
-    console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' Bilder über 50 ms, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' über 50 ms, längstes ' + ruhe.max + ' ms)');
-    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: über 40 fps, höchstens 12 Bilder über 50 ms mehr als ohne Analyse, keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps > 40 && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
+    console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' langsame Bilder, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' langsame, längstes ' + ruhe.max + ' ms; langsam = über ' + Math.round(thr) + ' ms)');
+    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 langsame Bilder mehr (über 50 ms und über 2,5 normalen Bildern), keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
     await close();
   },
   async notfall() {
@@ -211,6 +217,17 @@ const SZ = {
     const b = await page.evaluate(() => ({ spielt: !audio.paused, live: !curAnalysis, knopf: $('play').textContent }));
     check('Notfall: Analyse scheitert → Meldung, Track wartet, Knopf „Ohne Analyse spielen“ startet ihn live', a.pausiert && a.frei && /Analyse nicht möglich/.test(a.meldung || '') && b.spielt && b.live && b.knopf === 'Pause', JSON.stringify(a) + ' → ' + JSON.stringify(b));
     await close();
+    // Trackende: der nächste Track lässt sich nicht analysieren → keine Stille, er spielt sofort ohne Analyse (mit Hinweis)
+    const c = await open();
+    await c.page.evaluate(() => { const orig = analyzeFile; window.analyzeFile = async (f, alive) => { if (/t2/.test(f.name)) throw new Error('Test: kaputt'); return orig(f, alive); }; });
+    await c.page.setInputFiles('#fileIn', T.slice(0, 2));
+    await c.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.2, null, { timeout: 180000 });
+    await c.page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 180000, polling: 200 });
+    await c.page.evaluate(() => { audio.currentTime = audio.duration - 0.4; });
+    await c.page.waitForFunction(() => qi === 1, null, { timeout: 20000 }); await c.page.waitForTimeout(1000);
+    const e = await c.page.evaluate(() => ({ qi, spielt: !audio.paused, live: !curAnalysis, hinweis: $('msg').textContent, log: LOG.some(l => /keine Stille/.test(l.x)) }));
+    check('Notfall am Trackende: nächster Track ohne Analyse spielt sofort weiter (keine Stille), mit Hinweis', e.qi === 1 && e.spielt && e.live && /ohne Analyse/.test(e.hinweis) && e.log, JSON.stringify(e));
+    await c.close();
   },
   async zurueckspringen() {
     const { page, close } = await open();
@@ -280,14 +297,19 @@ const SZ = {
   },
   async fehlermeldungen() {
     const { page, close } = await open();
-    await page.setInputFiles('#fileIn', [T[0]]); await page.waitForTimeout(1500);
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => curAnalysis && !audio.paused, null, { timeout: 180000, polling: 200 });   // ab Build 102 startet der Track erst nach der Analyse
     const r = await page.evaluate(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
       reactive.update = () => { throw new Error('Test-Fehler A'); }; await wait(800);
       for (let i = 0; i < 20; i++) viz.renderer.audioLevels.updateAudioLevels.call({}, 60, i); await wait(200);
       out.meldungen = LOG.filter(l => l.k === 'x').map(l => l.x);
+      curAnalysis = null;   // Live-Prüfung: ohne Scan (ab Build 102 ist der Scan hier schon fertig, vorher lief die Prüfung zufällig davor)
       audio.pause(); bpm = 200; const P = 60000 / bpm; beat.state = 'break'; beat.breakStart = performance.now() - 20 * P; beat.lastKick = 0; beat.kickStreak = 9;
-      onKick(performance.now(), 1); out.drop = beat.state; resetBeat(); beat.state = 'drop'; await wait(16 * P + 400); out.nachAltemTimer = beat.state; return out;
+      onKick(performance.now(), 1); out.drop = beat.state; resetBeat(); beat.state = 'drop';
+      // Während des Wartens nur der alte Drop-Zeitgeber: die Live-Erkennung (echte Kicks, Stille nach der Pause) ruht, sonst misst die Prüfung Zufall
+      const lf = window.liveFrame, ok = window.onKick; window.liveFrame = () => {}; window.onKick = () => {};
+      await wait(16 * P + 400); out.nachAltemTimer = beat.state; window.liveFrame = lf; window.onKick = ok; return out;
     });
     check('Fehler pro Bild werden gemeldet, aber nur einmal (2 Meldungen trotz 20+ Aufrufen)', r.meldungen.length === 2, JSON.stringify(r.meldungen));
     check('Live-Drop: Timer des vorigen Tracks schaltet den neuen Track nicht um', r.drop === 'drop' && r.nachAltemTimer === 'drop', JSON.stringify(r));
