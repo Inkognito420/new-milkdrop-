@@ -18,6 +18,13 @@ function setTrackInfo(extra) {
   el.replaceChildren(document.createTextNode(queue.length > 1 ? (qi + 1) + '/' + queue.length + ' · ' : ''), em, document.createTextNode(trackExtra ? ' · ' + trackExtra : ''));
   $('nextTrack').disabled = qi >= queue.length - 1;
 }
+// Start-Sperre (Build 102): ein Track spielt erst, wenn seine Analyse (Scan und Partitur) fertig ist, sonst ist die Vorahnung sinnlos.
+// trackGate = { f, auto, state: 'wait' | 'ok' | 'fail', why }. auto: nach der Analyse von selbst starten (wie bisher „startet sofort“,
+// Trackende, ⏭). Bis dahin ist Play gesperrt, die Leiste zeigt „Analyse xx %“, das Bild läuft ohne Musik weiter.
+// Scheitert die Analyse (Datei kaputt, über 15 Minuten, zu wenig Speicher), gibt es eine Meldung und Play wird zu „Ohne Analyse spielen“.
+let trackGate = null;
+const gateWaiting = () => !!(trackGate && trackGate.f === curFile && trackGate.state === 'wait');
+const gateFailed = () => !!(trackGate && trackGate.f === curFile && trackGate.state === 'fail');
 async function playAt(i) {
   if (i < 0 || i >= queue.length) return;
   if (micOn) stopMic();
@@ -26,43 +33,75 @@ async function playAt(i) {
   curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
   bufExit(); wdSilent = 0; resyncCount = 0; driftHits = 0;
   resetBeat(); agcReset();
+  wantPlay = false;                                  // der Wächter darf den neuen Track nicht vor der fertigen Analyse anwerfen
   jrPlay(f);                                         // Mitschreiben: Track vermerken, neuer Lauf für das laufende Visual
   if (audio.src) URL.revokeObjectURL(audio.src);
   audio.src = URL.createObjectURL(f);
   audio.load();
   if (!fileNode) { fileNode = ctx.createMediaElementSource(audio); fileNode.connect(ctx.destination); }
   connect(fileNode);
-  $('play').disabled = false; $('intro').hidden = true;
-  setTrackInfo('');
+  $('intro').hidden = true;
+  trackGate = { f, auto: true, state: 'wait', t0: performance.now() };
+  setPlayLabel();
+  setTrackInfo('Analyse …');
   say('');
-  try { await ctx.resume(); await audio.play(); } catch (err) { say('Track geladen. Tippe auf Play.'); }
+  try { await ctx.resume(); } catch (err) {}         // im Tipp schon die Audio-Engine wecken (iPhone)
   try { viz && viz.launchSongTitleAnim(f.name.replace(/\.[^.]+$/, '')); } catch (err) {}
   applyScanFor(f);
+  ensureAllScans();                                  // alle anderen Tracks gleich hinterher (aktueller zuerst, dann der nächste, dann der Rest)
+}
+// Analyse fertig: Play frei und, wenn gewünscht, sofort starten
+async function gateOpen(f, ok) {
+  const g = trackGate;
+  if (!g || g.f !== f || g.state !== 'wait') return;
+  g.state = ok ? 'ok' : 'fail';
+  setPlayLabel();
+  if (!ok) return;
+  const w = Math.round(performance.now() - g.t0);
+  rea('Start-Sperre frei nach ' + (w / 1000).toFixed(1).replace('.', ',') + ' s' + (g.auto ? ', Track startet' : ''));
+  if (!g.auto || micOn || panicked) return;
+  try { await ctx.resume(); await audio.play(); }
+  catch (e) { if (curFile === f) say('Analyse fertig. Tippe auf Play.'); }
 }
 function applyScanFor(f) {
   ensureScan(f).then(A => {
-    if (curFile !== f || micOn) return;
-    if (A && A.skipped === SCAN_STOP.skipped) return;   // Scan wurde verworfen (Track war kurz nicht gefragt): der neue Auftrag meldet sich selbst
+    if (curFile !== f) return;
+    if (A && A.skipped === SCAN_STOP.skipped) return;   // Analyse wurde verworfen (Track war kurz nicht gefragt): der neue Auftrag meldet sich selbst
+    if (micOn) { if (trackGate && trackGate.f === f) trackGate.auto = false; return; }   // Mikro läuft: beim Ausschalten wird der Scan neu angewendet
     if (!A || A.skipped) {
-      setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
-      erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
+      const why = A && A.skipped === 'lang' ? 'Track länger als 15 Minuten' : 'Datei nicht lesbar oder zu wenig Speicher';
+      setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, keine Analyse' : 'keine Analyse');
+      erg('Keine Analyse: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + (A && A.why ? ' (' + A.why + ')' : ''));
       jrScan(f, A);
+      if (gateWaiting()) {
+        trackGate.why = why;
+        say('Analyse nicht möglich (' + why + '). Tippe auf „Ohne Analyse spielen“: dann reagiert das Bild nur live, ohne Vorahnung.');
+      }
+      gateOpen(f, false);
     } else {
       curAnalysis = A; jrScan(f, A);
       if (A.grid) setBpm(A.bpm, true);
-      erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
+      erg((A.fromStore ? 'Scan (aus Speicher): ' : 'Scan fertig: ') + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
       if (A.klang) erg('Klangbild (Schläge und Töne getrennt, ' + A.klangMs + ' ms): ' + klangSummary(A));
       else if (A.klangErr) err('Klangbild fehlgeschlagen: ' + A.klangErr);
       if (A.km) erg('Klangmesser (' + A.kmMs + ' ms): ' + kmSummary(A));
       else if (A.kmErr) err('Klangmesser fehlgeschlagen: ' + A.kmErr);
+      if (A.rollen && typeof ptSummary === 'function') erg('Partitur Klangrollen (' + A.rollenMs + ' ms): ' + ptSummary(A));
+      else if (A.rollenErr) err('Partitur Klangrollen fehlgeschlagen: ' + A.rollenErr);
       setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
       $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo') + (A.km ? ' · Puls ' + A.km.puls16 + 'tel' + (A.km.keyShare >= 0.25 ? ' · Grundton ' + KM_NOTES[A.km.key] : '') : '');
       drawTimeline(A);
+      gateOpen(f, true);
     }
-    if (queue[qi + 1]) ensureScan(queue[qi + 1]);
   });
 }
-function setPlayLabel() { $('play').textContent = audio.paused ? 'Play' : 'Pause'; }
+function setPlayLabel() {
+  const b = $('play');
+  if (!curFile) { b.textContent = 'Play'; return; }
+  if (gateWaiting()) { b.textContent = 'Analyse …'; b.disabled = true; return; }
+  b.disabled = false;
+  b.textContent = !audio.paused ? 'Pause' : gateFailed() && !curAnalysis ? 'Ohne Analyse spielen' : 'Play';
+}
 audio.addEventListener('play', setPlayLabel);
 audio.addEventListener('pause', setPlayLabel);
 audio.addEventListener('ended', () => { setPlayLabel(); if (qi < queue.length - 1) playAt(qi + 1); });
@@ -71,6 +110,8 @@ audio.addEventListener('loadedmetadata', () => { if (curAnalysis) drawTimeline(c
 $('play').addEventListener('click', async () => {
   // Build 49: Die Absicht gilt beim Tippen. Auf dem iPhone hängt ctx.resume() bis zum ersten Tipp; das wartende playAt startet den Track dann schon vor
   // diesem Handler, der ihn sonst sofort wieder pausiert hätte (Protokoll: "Player: spielt", "Player: pause", dann Neustart durch den Wächter).
+  if (gateWaiting()) { say('Der Track startet, sobald seine Analyse fertig ist.'); return; }   // Start-Sperre (Knopf ist dann ohnehin gesperrt)
+  if (gateFailed() && audio.paused) { trg('Tipp: Ohne Analyse spielen'); say(''); }
   const wollteStarten = audio.paused;
   try { await ctx.resume(); } catch (e) {}
   if (micOn) { stopMic(); if (audio.src) { connect(fileNode); } }
@@ -156,7 +197,7 @@ function addTracks(files) {
     setTrackInfo();
     say(tracks.length === 1 ? '„' + tracks[0].name + '“ kommt in die Liste.' : tracks.length + ' Tracks hinten angehängt.');
     setTimeout(() => say(''), 4000);
-    if (queue[qi + 1]) ensureScan(queue[qi + 1]);
+    ensureAllScans();
   }
 }
 

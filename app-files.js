@@ -29,6 +29,7 @@ self.AM_FILES = [
   "js/12b-mischpult.js",
   "js/13-effekte-gesten.js",
   "js/14-track-scan.js",
+  "js/14b-partitur.js",
   "js/15-tracks-mikro.js",
   "js/16-start.js"
 ];

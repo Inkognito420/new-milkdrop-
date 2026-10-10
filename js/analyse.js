@@ -303,7 +303,7 @@ async function klangSplit(M, T, fc, tick) {
       if (isH[b]) sh += e * p2 / den;
     }
     kick[t] = Math.sqrt(sk); ton[t] = Math.sqrt(st); hat[t] = Math.sqrt(sh);
-    if (tick && (t & 2047) === 2047) await tick();
+    if (tick && (t & 127) === 127) await tick();          // tick gibt nur ab, wenn das Häppchen voll ist (scanYield in js/14)
   }
   return { kick, ton, hat };
 }
@@ -487,7 +487,7 @@ async function kmBars(A, M, tick) {
       db: 10 * Math.log10(ea + 1e-12), dbB: 10 * Math.log10(ebs + 1e-12), oM, oH, c: cMed, fl: flMed, cb: cStd / (cMean + 1e-6), ton: top, tk: ct > 0 ? ch[top] / ct : 0,
       p8: pm[0] + 0.7 * ph[0], p16: pm[1] + 0.7 * ph[1], p32: pm[2] + 0.7 * ph[2], puls: (0.5 * pm[0] + pm[1] + 1.5 * pm[2]) + 0.7 * (ph[1] + 1.5 * ph[2])
     });
-    if (tick && (b & 15) === 15) await tick();
+    if (tick && (b & 3) === 3) await tick();
   }
   // Bass-Pegel auf den Track beziehen (das Spektrum ist nicht normiert)
   const dbBref = pct(bars.map(x => x.dbB), 0.9), E = [];
