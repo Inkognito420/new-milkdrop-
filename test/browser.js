@@ -460,17 +460,19 @@ const SZ = {
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => scanActive(), null, { timeout: 120000, polling: 200 });
     const r = await page.evaluate(() => {
-      const alt = curAnalysis.km;
+      const alt = curAnalysis.km, padsG = window.__SZ.gain.pads; window.__SZ.gain.pads = 0;   // Schaltzentrale: Pads-Farbschritt aus, hier zählt nur die Ton-Sprung-Logik (Schritt genau 20°)
       const lauf = tonFolge => {
         const n = tonFolge.length; curAnalysis.km = { n, t0: 1e9, barS: 1, ton: tonFolge, tk: tonFolge.map(() => 0.5) }; tonLast = -1; toggles.bar = true; dropPre = 0;
         const v = barHueTarget; for (let k = 1; k < n; k++) { beat.n = k * 4; onBar('groove'); } return barHueTarget - v - 20 * (n - 1);
       };
       const pendeln = lauf([9, 4, 9, 4, 9, 4, 9, 4]), wechsel = lauf([9, 9, 9, 4, 4, 4, 4]), kurz = lauf([9, 9, 4, 4, 9, 9, 9, 9, 9]);
-      curAnalysis.km = alt;
+      curAnalysis.km = alt; window.__SZ.gain.pads = padsG;
+      const S = window.__SZ, pe0 = S.pe; S.pe = 0; const ohnePads = szBarStep(20), gross = szBarStep(45); S.pe = 1; const mitPads = szBarStep(20); S.pe = pe0;
       mxFrame(0, 0.016); MX.z.p = 0.3; MX.z.v = 0; mxFrame(16, 0.016); const z = MX.out.z;
-      return { pendeln, wechsel, kurz, z };
+      return { pendeln, wechsel, kurz, z, ohnePads, gross, mitPads };
     });
     check('Takt-Farbe: Pendeln zwischen zwei Tönen gibt keinen Farbsprung, ein Ton, der nur 2 Takte bleibt, ebenfalls nicht; ein echter Wechsel (A→E, 4 Takte) genau einen', r.pendeln === 0 && r.kurz === 0 && r.wechsel === -150, JSON.stringify(r));
+    check('Takt-Farbschritt (Schaltzentrale): ohne Pads größer als normal (20° → 28°), mit vollen Pads kleiner (10°), nie über 40°', r.ohnePads > 20 && r.ohnePads <= 40 && r.mitPads < 20 && r.gross <= 40, JSON.stringify({ o: r.ohnePads, m: r.mitPads, g: r.gross }));
     check('Drop-Zoom: auch bei übergroßem Anschlag bleibt der Zoom unter 8 % (vorher bis 12,5 %)', r.z > 0.05 && r.z <= 0.08, JSON.stringify(r));
     await page.waitForFunction(() => curAnalysis && curAnalysis.km, null, { timeout: 120000, polling: 200 });
     const sw = await page.evaluate(() => { const K = curAnalysis.km, v = Array.from(K.sweep || []); return { n: K.n, len: v.length, max: Math.max(0, ...v.map(Math.abs)), ok: v.every(x => x >= -1 && x <= 1) }; });
