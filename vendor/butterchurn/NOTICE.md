@@ -23,7 +23,7 @@ Insbesondere nicht: die Berechnung von bass/mid/treb (und damit der Einhängepun
 
 | Nr. | Stelle | Änderung |
 |---|---|---|
-| 1 | Anfang der Fabrik-Funktion | `AK_VAR_NAMES` (33 Namen, die EINE Stelle für Namen und Reihenfolge), daraus `AK_SHADER_HEADER` (`uniform vec4 _ak0.._ak8` und `#define <name> _akN.x/y/z/w`), Hilfsfunktionen `akZeroVars`, `akMixInto`, `akShaderLocs`, `akShaderBufs`, `akShaderSet`; `window.AK_VAR_NAMES` |
+| 1 | Anfang der Fabrik-Funktion | `AK_VAR_NAMES` (38 Namen, Build 104: 33 + acid_reso, hats_density, pads_pitch, ak_build_strength, ak_drop_strength hinten angehängt; die EINE Stelle für Namen und Reihenfolge), daraus `AK_SHADER_HEADER` (`uniform vec4 _ak0.._ak8` und `#define <name> _akN.x/y/z/w`), Hilfsfunktionen `akZeroVars`, `akMixInto`, `akShaderLocs`, `akShaderBufs`, `akShaderSet`; `window.AK_VAR_NAMES` |
 | 2 | `PresetEquationRunner.initializeEquations` | `mdVSBase` bekommt die Werte: init-Gleichungen sehen sie, und sie gelten als eingebaute (nicht vom Preset erfundene) Variablen |
 | 3 | `Renderer`-Konstruktor | `this.extraVars` (alle 0) und in die ersten `globalVars` |
 | 4 | `Renderer.loadPreset` | `globalVars` für das neue Preset bekommen die aktuellen Werte |
@@ -39,5 +39,5 @@ Insbesondere nicht: die Berechnung von bass/mid/treb (und damit der Einhängepun
   `elapsedTime = 1/60`, `Math.random` mit festem Startwert vor dem Visualizer und vor `loadPreset`, frische Seite pro Lauf:
   Pixel-Prüfsummen nach Bild 45 und 90 alle gleich. Kein Shader schlägt mit der neuen Kopfzeile fehl.
 - Die Werte kommen an: init-, frame-, pixel-Gleichungen, Formen, Wellen (auch Punkt-Gleichungen), Warp- und Comp-Shader, beim Überblenden in beiden Presets.
-- Keiner der 33 Namen kommt in einem der 245 Standard-Presets vor (Gleichungen, Startwerte, Shader; Groß/Klein egal).
+- Keiner der 38 Namen kommt in einem der 245 Standard-Presets vor (Gleichungen, Startwerte, Shader; Groß/Klein egal).
 - Geprüft in Chromium mit Software-Grafik (SwiftShader), nicht auf echten Handys.

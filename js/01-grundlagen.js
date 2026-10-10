@@ -101,8 +101,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 101 · Klangrollen: Pads nur gehaltene Töne, Kick nur echte Schläge, Abschnitt aus dem Scan';
-const BUILD_NO = 103;
+const BUILD_NO = 104;
+const BUILD = 'Build ' + BUILD_NO + ' · Messungen: Pads nur bei gehaltenen Tönen, Kick am Raster, Resonanz, Hats-Dichte, Pads-Tonhöhe, Aufbau- und Drop-Stärke';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

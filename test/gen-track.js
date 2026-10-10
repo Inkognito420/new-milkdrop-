@@ -34,6 +34,9 @@ function makeTrack(out, reps = 1) {
   return { bytes: buf.length, seconds: N / SR, bars: nBars };
 }
 // new-milkdrop-: Track nach Plan für die Klangrollen-Prüfung. plan = ein Eintrag pro Takt: { k: Kick, h: Hi-Hats, a: Acid-303, p: Pad-Akkord } (je true/false).
+// Ab Build 104 außerdem: b = rollende Bassline (drei Sechzehntel zwischen den Kicks, 50-60 Hz, wie in Peak-Time-Techno),
+// m = dichter Klangteppich ohne gehaltene Töne (viele kurze Synth-Tupfer mit wechselnder Tonhöhe, 150-1500 Hz, nie ganz still),
+// q = hoher Pad (gleicher Akkord zwei Oktaven höher, 880-1568 Hz), s = Hi-Hats auf jeder Sechzehntel statt nur auf dem Offbeat.
 // Gleiche Klangerzeuger wie oben (Kick 42 Hz mit Pitch-Abfall, gefiltertes Rauschen, Säge mit resonantem Filter), dazu ein gleichmäßiger Pad-Akkord.
 // gain: Lautstärke (1 = auf 0,8 normiert, 0,5 = halb so laut). Rückgabe wie makeTrack, dazu bar0 (Start von Takt 0 in s) und barS (Taktlänge in s).
 function makePlanTrack(out, plan, opts = {}) {
@@ -43,17 +46,24 @@ function makePlanTrack(out, plan, opts = {}) {
   const kick = (t0, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let ph = 0; for (let i = 0; i < 0.3 * SR && s0 + i < N; i++) { const t = i / SR; ph += 2 * Math.PI * (42 + 120 * Math.exp(-t * 30)) / SR; const v = Math.sin(ph) * Math.exp(-t * 7) * amp; L[s0 + i] += v; R[s0 + i] += v; } };
   const noise = (t0, dur, amp, hp, pan) => { const s0 = Math.floor((LEAD + t0) * SR); let lp = 0; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const x = rnd(); lp += hp * (x - lp); const y = x - lp, e = Math.exp(-i / SR / (dur / 4)), v = y * e * amp; L[s0 + i] += v * (1 - pan); R[s0 + i] += v * (1 + pan); } };
   const acid = (t0, dur, f, cutoff, res, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let lo = 0, bp = 0; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, saw = 2 * ((t * f) % 1) - 1, g = 2 * Math.sin(Math.PI * Math.min(0.45, cutoff(t0 + t) / SR)), q = 1 / res; lo += g * bp; const hi = saw - lo - q * bp; bp += g * hi; const v = lo * Math.min(1, t * 200) * Math.exp(-t * 3.5) * amp; L[s0 + i] += v; R[s0 + i] += v * 0.9; } };
-  const pad = (t0, dur, amp) => { const s0 = Math.floor((LEAD + t0) * SR), fr = [220, 261.6, 329.6, 392]; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, tt = t0 + t, e = Math.min(1, t / 0.05, (dur - t) / 0.05); let v = 0; for (const f of fr) v += Math.sin(2 * Math.PI * f * tt) + 0.3 * Math.sin(4 * Math.PI * f * tt); v *= e * amp / fr.length; L[s0 + i] += v; R[s0 + i] += v; } };
+  const pad = (t0, dur, amp, mul = 1) => { const s0 = Math.floor((LEAD + t0) * SR), fr = [220, 261.6, 329.6, 392].map(f => f * mul); for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, tt = t0 + t, e = Math.min(1, t / 0.05, (dur - t) / 0.05); let v = 0; for (const f of fr) v += Math.sin(2 * Math.PI * f * tt) + 0.3 * Math.sin(4 * Math.PI * f * tt); v *= e * amp / fr.length; L[s0 + i] += v; R[s0 + i] += v; } };
+  // Rumble-Bass: kurzer Anschlag mit Tonhöhen-Abfall wie ein kleiner Kick (so klingen rollende Peak-Time-Basslines im Kick-Band)
+  const bass = (t0, f, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let ph = 0; for (let i = 0; i < 0.12 * SR && s0 + i < N; i++) { const t = i / SR; ph += 2 * Math.PI * (f + 60 * Math.exp(-t * 40)) / SR; const v = Math.sin(ph) * Math.min(1, t / 0.002) * Math.exp(-t * 16) * amp; L[s0 + i] += v; R[s0 + i] += v; } };
+  const blip = (t0, f, dur, amp) => { const s0 = Math.floor((LEAD + t0) * SR); for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, e = Math.min(1, t / 0.005) * Math.exp(-t * 14), v = (Math.sin(2 * Math.PI * f * t) + 0.4 * Math.sin(4 * Math.PI * f * t)) * e * amp; L[s0 + i] += v; R[s0 + i] += v * 0.95; } };
   const pat = [55, 55, 110, 55, 82.4, 55, 110, 98, 55, 55, 110, 55, 123.5, 82.4, 110, 65.4];
   for (let b = 0; b < plan.length; b++) {
     const x = plan[b], tb = b * bar;
+    if (x.b) for (let q = 0; q < 4; q++) for (let s = 1; s < 4; s++) bass(tb + q * beat + s * beat / 4, s === 2 ? 55 : 49, 0.7);
+    if (x.m) for (let s = 0; s < 32; s++) blip(tb + s * bar / 32 + 0.01 * rnd(), 150 * Math.pow(10, 0.5 + 0.5 * rnd()), 0.25, 0.05);
     for (let q = 0; q < 4; q++) {
       const t = tb + q * beat;
       if (x.k) kick(t, 0.85);
-      if (x.h) noise(t + beat / 2, 0.07, 0.28, 0.35, 0.15);
+      if (x.h && !x.s) noise(t + beat / 2, 0.07, 0.28, 0.35, 0.15);
+      if (x.s) for (let u = 0; u < 4; u++) noise(t + u * beat / 4, 0.05, u === 2 ? 0.28 : 0.2, 0.35, 0.15);
       if (x.a) for (let s = 0; s < 4; s++) { const idx = (q * 4 + s) % 16; if (idx % 5 !== 3) acid(t + s * beat / 4, beat / 4 * 0.9, pat[idx], tm => 350 + 1800 * (0.5 + 0.5 * Math.sin(tm * 0.7)), 4, 0.33); }
     }
     if (x.p) pad(tb, bar, 0.12);
+    if (x.q) pad(tb, bar, 0.12, 4);
   }
   let mx = 0; for (let i = 0; i < N; i++) mx = Math.max(mx, Math.abs(L[i]), Math.abs(R[i]));
   const g = 0.8 / mx * gain, buf = Buffer.alloc(44 + N * 4);
@@ -68,6 +78,10 @@ const bars = (n, x) => Array.from({ length: n }, () => Object.assign({}, x));
 const PLANS = {
   kickDurch: () => bars(32, { k: 1, h: 1, a: 1 }),                                                   // 1) 32 Takte durchgehender Kick
   kickLuecke: () => bars(8, { k: 1, h: 1, a: 1 }).concat(bars(1, { h: 1, a: 1 }), bars(8, { k: 1, h: 1, a: 1 })),   // 2) Kick fehlt Takt 8
+  rollBass: () => bars(16, { k: 1, h: 1, b: 1 }),                                                     // 6) rollende Bassline zwischen den Kicks: nur die 4 Kicks pro Takt zählen
+  padTeppich: () => bars(10, { k: 1, h: 1, a: 1, m: 1 }).concat(bars(8, { k: 1, h: 1, a: 1, m: 1, p: 1 })),   // 7) dichter Teppich ohne Pad (Takt 0-9), dann mit Pad (10-17)
+  padHoch: () => bars(8, { k: 1, h: 1, p: 1 }).concat(bars(8, { k: 1, h: 1, q: 1 }), bars(10, { k: 1, h: 1 })),   // 8) tiefer Pad, hoher Pad, dann keiner
+  hatsDicht: () => bars(8, { k: 1, h: 1 }).concat(bars(8, { k: 1, h: 1, s: 1 })),                   // 9) Hats nur Offbeat (4 pro Takt), dann jede Sechzehntel (16)
   acidNeu: () => bars(8, { k: 1, h: 1, a: 1 }).concat(bars(2, { k: 1, h: 1 }), bars(4, { k: 1, h: 1, a: 1 }), bars(6, { k: 1, h: 1, a: 1, p: 1 }))   // 3) Acid fehlt Takt 8-9, kommt in Takt 10; Pad ab Takt 14
 };
 module.exports = { makeTrack, makePlanTrack, PLANS };

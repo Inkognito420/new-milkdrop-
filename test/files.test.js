@@ -18,5 +18,6 @@ for (const f of parts) {
 const orphan = fs.readdirSync(path.join(root, 'js')).filter(f => f.endsWith('.js') && !files.includes('js/' + f));
 assert.deepStrictEqual(orphan, [], 'nicht in app-files.js: ' + orphan);
 const html = read('index.html'), bn = +/var B=(\d+)/.exec(html)[1], bt = +/const BUILD_NO = (\d+)/.exec(read('js/01-grundlagen.js'))[1];
+assert.ok(/const BUILD = 'Build ' \+ BUILD_NO \+ /.test(read('js/01-grundlagen.js')), 'js/01-grundlagen.js: BUILD muss die Nummer aus BUILD_NO nehmen (Protokoll-Kopf zeigte sonst eine alte Build-Nummer)');
 assert.strictEqual(bn, bt, 'Build-Nummer: index.html ' + bn + ' ≠ 01-grundlagen.js ' + bt);
 console.log('files.test.js: ok (' + files.length + ' Dateien, Build ' + bn + ')');

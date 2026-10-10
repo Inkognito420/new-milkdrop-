@@ -47,6 +47,36 @@ async function open(opts = {}) {
 }
 const scansWrapper = () => { window.__scans = []; const orig = analyzeFile; window.analyzeFile = async function (f) { const t = performance.now(); const r = await orig.apply(this, arguments); __scans.push({ f: f.name, ms: Math.round(performance.now() - t), r: r.skipped || 'ok' }); return r; }; };
 
+// Klangrollen offline: Datei durch einen OfflineAudioContext, alle 1/60 s das Spektrum (Analyser 4096, ohne Glättung) an akCreate().step.
+// P (optional): Plan-Track mit bar0/barS: dann bekommt die Analyse das Raster wie mit Scan (grid = {bpm, pos}).
+const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
+  const ab0 = await (await fetch(url)).arrayBuffer();
+  const ab = await new OfflineAudioContext(2, 44100, 44100).decodeAudioData(ab0);
+  const oc = new OfflineAudioContext(2, ab.length, ab.sampleRate), sr = ab.sampleRate;
+  const src = oc.createBufferSource(); src.buffer = ab; const g = oc.createGain(); g.gain.value = gain;
+  const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
+  src.connect(g); g.connect(an); an.connect(oc.destination);
+  const S = akCreate(sr, AKCFG.fftSize); S.events = []; S.hits = [];
+  const XK = ['acid_reso', 'hats_density', 'pads_pitch'], xv = {};
+  const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, rel = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
+  let ms = 0, msMax = 0, n = 0, lastT = 0;
+  const N = Math.floor((ab.duration - 0.05) * 60);
+  for (let i = 1; i <= N; i++) {
+    const ts = Math.floor(i / 60 * sr / 128) * 128 / sr;
+    oc.suspend(ts).then(() => {
+      an.getFloatFrequencyData(spec);
+      const t = ts * 1000, a = performance.now(); S.step(spec, t, lastT ? t - lastT : 16.7, G ? { bpm: 60 / G.beatS, pos: (ts - G.bar0) / G.beatS, sec: -1, secStart: 0 } : null); const d = performance.now() - a; lastT = t;
+      ms += d; if (d > msMax) msMax = d; n++;
+      for (const r in env) { env[r].push(+S.out[r + '_env'].toFixed(4)); rel[r].push(S.totRef > 0 ? S.R[r].x / S.totRef : 0); } sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
+      for (const k of XK) if (k in S.out) (xv[k] = xv[k] || []).push(+S.out[k].toFixed(4));
+      (xv.held = xv.held || []).push(+(S.R.pads.held || 0).toFixed(4));
+      oc.resume();
+    });
+  }
+  src.start(0); await oc.startRendering();
+  return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, rel, xv, sec, bpm, hits: S.hits, ms: ms / n, msMax, n };
+}, [PREFIX + '__tmp/' + name + '.wav', gain, P ? { bar0: P.bar0, beatS: P.barS / 4 } : null]);
+
 const SZ = {
   async start() {
     const { page, errs, close } = await open();
@@ -448,30 +478,7 @@ const SZ = {
     // Klang-Analyse ohne Echtzeit: die Datei läuft durch einen OfflineAudioContext, alle 1/60 s wird angehalten, das Spektrum
     // genau wie live (Analyser 4096, ohne Glättung) an akCreate().step gegeben. So prüfen 4 Tracks in Sekunden statt Minuten.
     const { page, errs, close } = await open();
-    const run = (name, gain) => page.evaluate(async ([url, gain]) => {
-      const ab0 = await (await fetch(url)).arrayBuffer();
-      const ab = await new OfflineAudioContext(2, 44100, 44100).decodeAudioData(ab0);
-      const oc = new OfflineAudioContext(2, ab.length, ab.sampleRate), sr = ab.sampleRate;
-      const src = oc.createBufferSource(); src.buffer = ab; const g = oc.createGain(); g.gain.value = gain;
-      const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
-      src.connect(g); g.connect(an); an.connect(oc.destination);
-      const S = akCreate(sr, AKCFG.fftSize); S.events = []; S.hits = [];
-      const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, rel = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
-      let ms = 0, msMax = 0, n = 0, lastT = 0;
-      const N = Math.floor((ab.duration - 0.05) * 60);
-      for (let i = 1; i <= N; i++) {
-        const ts = Math.floor(i / 60 * sr / 128) * 128 / sr;
-        oc.suspend(ts).then(() => {
-          an.getFloatFrequencyData(spec);
-          const t = ts * 1000, a = performance.now(); S.step(spec, t, lastT ? t - lastT : 16.7, null); const d = performance.now() - a; lastT = t;
-          ms += d; if (d > msMax) msMax = d; n++;
-          for (const r in env) { env[r].push(+S.out[r + '_env'].toFixed(4)); rel[r].push(S.totRef > 0 ? S.R[r].x / S.totRef : 0); } sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
-          oc.resume();
-        });
-      }
-      src.start(0); await oc.startRendering();
-      return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, rel, sec, bpm, hits: S.hits, ms: ms / n, msMax, n };
-    }, [PREFIX + '__tmp/' + name + '.wav', gain]);
+    const run = (name, gain) => krRun(page, name, gain);
     const barT = (P, b) => P.bar0 + b * P.barS, beatS = PT.kickDurch.barS / 4;
     // Diagnose (KR_DIAG=1): pro Takt Mittelwert von env und Anteil am Gesamtpegel je Rolle
     const diag = (name, R, P) => { if (!process.env.KR_DIAG) return; console.log('       DIAG ' + name + ' (Takt: env k/a/h/p · Anteil k/a/h/p)');
@@ -516,8 +523,50 @@ const SZ = {
     check('Klangrollen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },
+  async klangrollen2() {
+    // Ab Build 104: Fehlmessungen aus dem iPhone-Protokoll (Build 102, „Until The End“): Kick 184-248 Schläge/min bei 150 BPM, Pads immer 0,8.
+    const { page, errs, close } = await open();
+    const perBar = (R, P, key, b0, b1, src = 'env') => { const a = src === 'env' ? R.env[key] : R.xv[key]; if (!a) return null; const i0 = Math.round((P.bar0 + b0 * P.barS) * 60), i1 = Math.round((P.bar0 + b1 * P.barS) * 60); let x = 0; for (let i = i0; i < i1; i++) x += a[i] || 0; return +(x / (i1 - i0)).toFixed(3); };
+    // 1) Rollende Bassline: mit Raster (Scan) zählen nur die Kicks auf den Schlägen
+    const rb = await krRun(page, 'rollBass', 1, PT.rollBass), rbLive = await krRun(page, 'rollBass', 1);
+    const perMin = R => { const h = R.hits.filter(x => x[0] > PT.rollBass.bar0 + 2 * PT.rollBass.barS); const dur = (PT.rollBass.bars - 2) * PT.rollBass.barS; return Math.round(h.length / dur * 60); };
+    if (process.env.KR_DIAG) { const P = PT.rollBass, bs = P.barS / 4, ph = h => { const x = ((h[0] - 0.025 - P.bar0) / bs) % 1; return +(x > 0.5 ? x - 1 : x).toFixed(3); };
+      console.log('       DIAG Kick-Treffer ohne Raster, Lage im Schlag (0 = auf dem Schlag, ±0,25 = Sechzehntel) [Lage, Anstieg, Stärke]: ' + JSON.stringify(rbLive.hits.slice(8, 40).map(h => [ph(h), h[1], h[2]])));
+      console.log('       DIAG mit Raster: ' + JSON.stringify(rb.hits.slice(8, 30).map(h => [ph(h), h[1], h[2]]))); }
+    console.log('       (Info) rollende Bassline: Kick-Schläge/min mit Raster ' + perMin(rb) + ', ohne Raster ' + perMin(rbLive) + ' (echt: 140)');
+    check('Klangrollen 6: rollende Bassline zwischen den Kicks: mit Raster (Scan) 140 Kick-Schläge/min (±10 %), die Bass-Sechzehntel zählen nicht', Math.abs(perMin(rb) - 140) <= 14, 'mit Raster ' + perMin(rb) + ', ohne ' + perMin(rbLive));
+    // 2) Dichter Klangteppich ohne gehaltene Töne: Pads niedrig; mit Pad hoch
+    const pt = await krRun(page, 'padTeppich', 1, PT.padTeppich), P = PT.padTeppich;
+    const ohne = perBar(pt, P, 'pads', 3, 10), mit = perBar(pt, P, 'pads', 12, 18);
+    console.log('       (Info) Pads im dichten Teppich: ohne Pad ' + ohne + ', mit Pad ' + mit + (pt.xv.pads_pitch ? ' · pads_pitch ohne ' + perBar(pt, P, 'pads_pitch', 3, 10, 'x') + ', mit ' + perBar(pt, P, 'pads_pitch', 12, 18, 'x') : ''));
+    if (process.env.KR_DIAG) for (const [nm, b0, b1] of [['padTeppich ohne', 3, 10], ['padTeppich mit', 12, 18]]) console.log('       DIAG Gehaltenheit ' + nm + ': ' + perBar(pt, P, 'held', b0, b1, 'x'));
+    if (process.env.KR_DIAG) { const an = await krRun(page, 'acidNeu', 1, PT.acidNeu), kd = await krRun(page, 'kickDurch', 1, PT.kickDurch), t1 = await krRun(page, 't1', 1);
+      console.log('       DIAG Gehaltenheit acidNeu ohne Pad (1-13) ' + perBar(an, PT.acidNeu, 'held', 1, 14, 'x') + ', mit Pad (15-19) ' + perBar(an, PT.acidNeu, 'held', 15, 20, 'x') + ' · kickDurch ' + perBar(kd, PT.kickDurch, 'held', 2, 30, 'x') + ' · pads_env acidNeu ohne ' + perBar(an, PT.acidNeu, 'pads', 1, 14) + ' mit ' + perBar(an, PT.acidNeu, 'pads', 15, 20) + ' · kickDurch ' + perBar(kd, PT.kickDurch, 'pads', 2, 30));
+      const T1 = { bar0: 0.35, barS: 4 * 60 / 140 }; console.log('       DIAG Standard-Track (Intro 0-7, Groove 8-23, Break 24-31, Drop 32-47): Gehaltenheit ' + [[0, 8], [8, 24], [24, 32], [32, 48]].map(([a, b]) => perBar(t1, T1, 'held', a, b, 'x')).join(' / ') + ' · pads_env ' + [[0, 8], [8, 24], [24, 32], [32, 48]].map(([a, b]) => perBar(t1, T1, 'pads', a, b)).join(' / ')); }
+    check('Klangrollen 7: dichter Klangteppich ohne gehaltene Töne: pads_env im Mittel unter 0,3, mit Pad über 0,6', ohne < 0.3 && mit > 0.6, 'ohne ' + ohne + ' · mit ' + mit);
+    // 3) pads_pitch: tiefer Pad düster (unter 0,45), hoher Pad hell (mindestens 0,3 höher); danach ohne Pads langsam zurück zur Mitte, ohne Sprung
+    const ph = await krRun(page, 'padHoch', 1, PT.padHoch), Q = PT.padHoch, xp = ph.xv.pads_pitch;
+    const tief = perBar(ph, Q, 'pads_pitch', 4, 8, 'x'), hoch = perBar(ph, Q, 'pads_pitch', 12, 16, 'x');
+    const i16 = Math.round((Q.bar0 + 16 * Q.barS) * 60), i17 = Math.round((Q.bar0 + 17 * Q.barS) * 60), iEnd = xp.length - 1;
+    let sprung = 0; for (let i = i16; i < iEnd; i++) sprung = Math.max(sprung, Math.abs(xp[i + 1] - xp[i]));
+    console.log('       (Info) pads_pitch tiefer Pad ' + tief + ', hoher Pad ' + hoch + ' · nach dem Pad: 1 Takt später ' + xp[i17].toFixed(3) + ', am Ende ' + xp[iEnd].toFixed(3) + ' (Mitte 0,5) · pads_env ohne Pad ' + perBar(ph, Q, 'pads', 20, 26));
+    check('pads_pitch: tiefer Pad düster (unter 0,45), hoher Pad hell (mindestens 0,3 höher)', tief < 0.45 && hoch - tief >= 0.3, 'tief ' + tief + ' · hoch ' + hoch);
+    check('pads_pitch: ohne Pads hält er den letzten Wert und gleitet langsam zur Mitte (1 Takt danach noch nah am hohen Wert, am Ende näher an 0,5, kein Sprung über 0,01 pro Bild)',
+      Math.abs(xp[i17] - hoch) < 0.15 && Math.abs(xp[iEnd] - 0.5) < Math.abs(xp[i17] - 0.5) && sprung < 0.01, JSON.stringify({ einTakt: xp[i17], ende: xp[iEnd], sprung }));
+    // 4) hats_density: nur Offbeat ca. 0,25, jede Sechzehntel nahe 1
+    const hd = await krRun(page, 'hatsDicht', 1, PT.hatsDicht), dOff = perBar(hd, PT.hatsDicht, 'hats_density', 3, 8, 'x'), d16 = perBar(hd, PT.hatsDicht, 'hats_density', 11, 16, 'x');
+    console.log('       (Info) hats_density: Offbeat-Hats ' + dOff + ', Sechzehntel-Hats ' + d16);
+    check('hats_density: Hats nur auf dem Offbeat 0,2-0,45, auf jeder Sechzehntel über 0,7', dOff >= 0.2 && dOff <= 0.45 && d16 > 0.7, 'Offbeat ' + dOff + ' · 16tel ' + d16);
+    // 5) acid_reso: 303 mit hoher Resonanz (Standard-Track, Groove/Drop, Q 4) schärfer als die weichen Töne im Break (Q 1,5); ohne Acid 0
+    const t1 = await krRun(page, 't1', 1), T1 = { bar0: 0.35, barS: 4 * 60 / 140 };
+    const rIntro = perBar(t1, T1, 'acid_reso', 1, 7, 'x'), rBreak = perBar(t1, T1, 'acid_reso', 25, 31, 'x'), rDrop = perBar(t1, T1, 'acid_reso', 33, 47, 'x');
+    console.log('       (Info) acid_reso: Intro (keine 303) ' + rIntro + ', Break (weiche Töne) ' + rBreak + ', Drop (303, hohe Resonanz) ' + rDrop);
+    check('acid_reso: 303 mit hoher Resonanz deutlich schärfer (mindestens 0,15 mehr) als die weichen Töne im Break, ohne Acid nahe 0', rDrop - rBreak >= 0.15 && rIntro < 0.1, 'Intro ' + rIntro + ' · Break ' + rBreak + ' · Drop ' + rDrop);
+    check('Klangrollen 6/7: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+  },
   async klangrollenLive() {
-    // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 33 Werte an viz.setExtraVars
+    // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 38 Werte an viz.setExtraVars
     const { page, errs, close } = await open();
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
@@ -525,19 +574,21 @@ const SZ = {
     await page.waitForTimeout(9000);
     const r = await page.evaluate(() => ({ calls: window.__akSet || 0, keys: window.__akLast ? Object.keys(window.__akLast).length : 0, bpm: AKV.ak_bpm, kick: AK.R.kick.nEntry, env: AKV.kick_env, maxRef: AK.R.kick.ref > 0,
       ms: akN ? akMs / akN : null, fehler: LOG.filter(l => l.k === 'x').map(l => l.x), dbg: !!$('akDbgBtn') }));
-    check('Klangrollen live: setExtraVars bekommt jedes Bild alle 33 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 33 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    check('Klangrollen live: setExtraVars bekommt jedes Bild alle 38 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 38 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     const d = await page.evaluate(async () => { $('fineBtn').click(); $('werkBtn').click(); $('akDbgBtn').click(); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', schalter: document.querySelectorAll('#werk button[id^="t-"]').length }; });
     // Mit Scan kommt der Abschnitt aus dem Scan: in einen Break und an einen Drop-Anfang springen
     await page.waitForFunction(() => curAnalysis && curAnalysis.beatS && scanActive(), null, { timeout: 120000, polling: 200 });
     const sc = await page.evaluate(async () => {
       const w = ms => new Promise(r => setTimeout(r, ms)), S = curAnalysis.sections, out = {};
       for (const [ty, want] of [['break', 1], ['drop', 3], ['groove', 0]]) {
-        const s = S.find(x => x.type === ty && x.t1 - x.t0 > 4); if (!s) { out[ty] = 'fehlt'; continue; }
-        audio.currentTime = s.t0 + 0.6; await w(900); out[ty] = { erwartet: want, ak_section: AKV.ak_section, phrase: +AKV.ak_phrase.toFixed(3) };
+        const br = S.find(x => x.type === 'break' && x.t1 - x.t0 > 4);   // Drop und Groove: die nach dem Break (der erste „Drop“ ist der Kick-Einsatz nach dem Intro)
+        const s = ty === 'break' ? br : S.find(x => x.type === ty && x.t1 - x.t0 > 4 && (!br || x.t0 >= br.t0)); if (!s) { out[ty] = 'fehlt'; continue; }
+        audio.currentTime = s.t0 + 0.6; await w(900); out[ty] = { erwartet: want, ak_section: AKV.ak_section, phrase: +AKV.ak_phrase.toFixed(3), drop: +AKV.ak_drop_strength.toFixed(3), build: +AKV.ak_build_strength.toFixed(3) };
       }
       return out;
     });
     check('Klangrollen mit Scan: ak_section folgt dem Scan (break 1, drop 3, groove 0), Phrase zählt ab Abschnittsbeginn', ['break', 'drop', 'groove'].every(k => sc[k] && sc[k].ak_section === sc[k].erwartet && sc[k].phrase < 0.1), JSON.stringify(sc));
+    check('ak_drop_strength: im Drop die Stärke aus dem Aufbau-Detektor (über 0), im Break davor 0', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop === 0, JSON.stringify(sc));
     check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
     await close();
   },
@@ -550,7 +601,7 @@ const SZ = {
     await page.waitForTimeout(6000);
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
       bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
-    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 33 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 38 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     await close();
   },
   async manifest() {
@@ -566,7 +617,7 @@ const SZ = {
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
   if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
-  if (want.includes('klangrollen')) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
+  if (want.some(w => /^klangrollen2?$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
