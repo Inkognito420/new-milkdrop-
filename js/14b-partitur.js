@@ -14,11 +14,11 @@ if (window.__AM_STEP !== 14) throw new Error('new-milkdrop-: Teil 14b (partitur)
 //
 // Analyse-Version: steigt, sobald sich an Scan oder Partitur etwas ändert, das andere Ergebnisse gibt. Ältere Einträge gelten dann
 // nicht mehr (werden neu gerechnet und beim Aufräumen entfernt).
-const PARTITUR_V = 2;                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103)
+const PARTITUR_V = 3;                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103); 3 = Pads mit Gehaltenheit, Kick am Raster, reso/hd/pp (Build 104)
 const PT_DB = 'nmd-partitur';                        // eigene Datenbank (Vorsatz nmd-, Acid benutzt sie nie)
 const PT_MAX_N = 200, PT_MAX_MB = 50;                // Aufräumen: höchstens so viele Tracks und so viele MB, die am längsten unbenutzten fliegen zuerst
 const PT_FPS = 60;                                   // Bilder pro Sekunde wie live (AKCFG.padHoldFrames und kickRiseFrames zählen Bilder)
-const PT_ROLLEN = ['kick', 'acid', 'hats', 'pads', 'cut', 'sq', 'nov'];   // Felder pro Takt (je 0..255): Hüllkurven, acid_cutoff, acid_squelch, ak_novelty
+const PT_ROLLEN = ['kick', 'acid', 'hats', 'pads', 'cut', 'sq', 'nov', 'reso', 'hd', 'pp'];   // Felder pro Takt (je 0..255): Hüllkurven, acid_cutoff, acid_squelch, ak_novelty, acid_reso, hats_density, pads_pitch
 const ptKey = f => f.name + '|' + f.size + '|' + (f.lastModified || 0) + '|v' + PARTITUR_V;
 
 // ===== Klangrollen offline über den ganzen Track =====
@@ -60,7 +60,7 @@ async function partiturRollen(buf, A, alive, report) {
     if (curBar >= 0) {
       const o = S.out, q = curBar * K;
       sum[q] += o.kick_env; sum[q + 1] += o.acid_env; sum[q + 2] += o.hats_env; sum[q + 3] += o.pads_env;
-      sum[q + 4] += o.acid_cutoff; sum[q + 5] += o.acid_squelch; sum[q + 6] += o.ak_novelty; cnt[curBar]++;
+      sum[q + 4] += o.acid_cutoff; sum[q + 5] += o.acid_squelch; sum[q + 6] += o.ak_novelty; sum[q + 7] += o.acid_reso; sum[q + 8] += o.hats_density; sum[q + 9] += o.pads_pitch; cnt[curBar]++;
     }
     if ((i & 7) === 0) {
       if (!alive()) return SCAN_STOP;
@@ -81,7 +81,7 @@ function ptSummary(A) {
   const P = A && A.rollen; if (!P) return '';
   const K = P.f.length, m = k => { let s = 0; for (let b = 0; b < P.n; b++) s += P.v[b * K + k]; return (s / P.n / 255).toFixed(2).replace('.', ','); };
   const e = { kick: 0, acid: 0, hats: 0, pads: 0 }; for (let b = 0; b < P.n; b++) { if (P.ent[b] & 1) e.kick++; if (P.ent[b] & 2) e.acid++; if (P.ent[b] & 4) e.hats++; if (P.ent[b] & 8) e.pads++; }
-  return P.n + ' Takte · env Ø Kick ' + m(0) + ' · Acid ' + m(1) + ' · Hats ' + m(2) + ' · Pads ' + m(3) + ' · NEU Kick ' + e.kick + ', Acid ' + e.acid + ', Hats ' + e.hats + ', Pads ' + e.pads
+  return P.n + ' Takte · env Ø Kick ' + m(0) + ' · Acid ' + m(1) + ' · Hats ' + m(2) + ' · Pads ' + m(3) + ' · Resonanz ' + m(7) + ' · Hats-Dichte ' + m(8) + ' · Pads-Tonhöhe ' + m(9) + ' · NEU Kick ' + e.kick + ', Acid ' + e.acid + ', Hats ' + e.hats + ', Pads ' + e.pads
     + (P.sr < 32000 ? ' · (' + P.sr + ' Hz: Hats nicht messbar)' : '');
 }
 

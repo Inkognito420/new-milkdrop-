@@ -45,9 +45,25 @@ const AKCFG = {
     pads: { relMs: 1000, onThr: 0.40, offThr: 0.18, onMs: 400, holdMs: 800, onsetK: 2.0, onsetTau: 1500, minGap: 300, hitMin: 0.30, hitDecay: 250, relFloor: 0.02 }
   },
   padsSmoothMs: 1000,       // pads: über etwa 1 s geglättet (nur die langsamen Anteile)
+  padHeld: [0.006, 0.025],  // Build 104: Gehaltenheit (Anteil der Band-Energie, der über padHoldFrames durchgehend stehen bleibt). Darunter keine Pads, darüber
+                            // volle Pads (logarithmisch dazwischen). Test: dichter Teppich/303/Kick ohne Pad 0,002-0,007, mit Pad 0,03, gehaltene Töne im Break 0,046.
+                            // Vorher maß pads_env nur gegen das eigene 30-s-Maximum: ein gleichmäßiger Teppich ergab immer ca. 0,8 (iPhone: 0,78-0,86 ohne Pads)
+  padGateMs: 1500,          // so weich geht das Pads-Tor auf und zu
+  padPitchHz: [150, 1500],  // pads_pitch: Tonhöhe der gehaltenen Töne, 0 = 150 Hz (düster, satt) … 1 = 1500 Hz (hell, leuchtend), in Oktaven
+  padPitchMs: 700,          // so schnell folgt pads_pitch, solange Pads da sind
+  padPitchHomeMs: 8000,     // ohne Pads: letzten Wert halten und mit dieser Zeitkonstante zur Mitte (0,5) zurückgleiten
+  padPitchGate: 0.7,        // pads_pitch folgt nur, solange das Pads-Tor (Gehaltenheit) über diesem Wert steht
+  resoDb: [6, 24],          // acid_reso: wie spitz das Spektrum im Acid-Band ist (stärkste Frequenz gegen den Mittelwert, dB). 6 dB = flach, 24 dB = scharfe Resonanz
+  resoMs: 150,              // Glättung von acid_reso
+  hatsDensityBars: 1,       // hats_density: erkannte Hats-Anschläge im letzten Takt ...
+  hatsDensityFull: 12,      // ... so viele pro Takt = 1. Die Erkennung verpasst bei Sechzehnteln etwa jeden dritten Schlag (Test: 10 von 16), nur Offbeats (4) = 0,33
+  hatsDensityMs: 400,       // Glättung von hats_density
   padHoldFrames: 30,        // pads: so viele Bilder (30 = 0,5 s bei 60 fps, gut 1 Schlag) muss ein Ton durchgehend klingen, um als gehalten zu zählen
   kickRiseFrames: 6,        // Kick: Anstieg über so viele Bilder (die 4096er-FFT verschmiert den Schlag über ca. 5 Bilder)
   kickRiseMin: 0.22,        // Kick zählt nur als Schlag, wenn der Pegel in dieser Zeit um mindestens 22 % des Bezugs steigt (Test: echte Kicks 0,24-0,57, 303 im Kick-Band bis 0,20)
+  kickGrid: [-0.1, 0.22],   // mit Scan-Raster: ein Kick-Treffer zählt nur in diesem Fenster um einen Schlag (in Schlägen; die Erkennung kommt 0,06-0,1 Schläge
+                            // nach dem Schlag). Build 104: rollende Rumble-Basslines im Kick-Band zählten mit (iPhone 184-248 statt 150 Schläge/min, Test rollBass 213 statt 140)
+  kickGridK: 0.6,           // ... und im Fenster reicht ein kleinerer Sprung (Anteil von onsetK): ein Bass-Ton kurz vor dem Kick hebt den Pegel schon an
   kickMaskMs: 120,          // so lange nach einem Kick-Treffer zählen Acid- und Pads-Band nicht (der Kick-Klick reicht bis in die Mitten)
   fluxLo: 0.03, fluxHi: 0.12,   // Bewegung im Band (relativer spektraler Fluss): darunter gleichmäßig (Pad), darüber bewegt (303)
   fluxTau: 100,             // Glättung des Flusses
@@ -125,19 +141,23 @@ function akCreate(sampleRate, fftSize) {
   const nb = 8, nbLo = new Int32Array(nb), nbHi = new Int32Array(nb), novS = new Float32Array(nb), novL = new Float32Array(nb);
   for (let k = 0; k < nb; k++) { nbLo[k] = bin(40 * Math.pow(400, k / nb)); nbHi[k] = Math.max(nbLo[k], bin(40 * Math.pow(400, (k + 1) / nb)) - 1); }
   const iois = new Float32Array(C.bpmIois), sorted = new Float32Array(C.bpmIois);
+  const hatT = new Float64Array(48).fill(-1e9); let hatI = 0;                           // Zeiten der letzten Hats-Anschläge (hats_density)
+  const padOct = new Float32Array(R.pads.hi - R.pads.lo + 1), po0 = Math.log2(C.padPitchHz[0]), po1 = Math.log2(C.padPitchHz[1]);
+  for (let j = 0; j < padOct.length; j++) padOct[j] = akClamp((Math.log2((R.pads.lo + j) * binHz) - po0) / (po1 - po0));
+  R.pads.pitchRaw = -1;
   const cutMax = akBuckets(C.maxBuckets, bucketMs), cutMin = akBuckets(C.maxBuckets, bucketMs), sqMax = akBuckets(C.maxBuckets, bucketMs);
   const S = {
     R, out: {}, t: 0, lastKickHitT: 0, totMx: akBuckets(C.maxBuckets, bucketMs), totRef: 0,
     bpm: 0, nIoi: 0, iIoi: 0, pendBpm: 0, pendSince: 0, lastIoiHit: 0,
     beatT: 0, beatTotal: 0, barBeat: 0, barno: 0, phase: 0, gridScan: false, scanSec: false,
     sec: 0, secStartBeat: 0, kickEver: false, dropEnd: 0, buildupMs: 0, silentMs: 0, total: 0,
-    nov: 0, novInit: false, cut: 0.5, cutRaw: 0, cutPrev: -1, cutS: 0.5, sq: 0, sqRate: 0,
+    nov: 0, novInit: false, reso: 0, hatsD: 0, padPitch: 0.5, cut: 0.5, cutRaw: 0, cutPrev: -1, cutS: 0.5, sq: 0, sqRate: 0,
     hits: null,                                      // nur für Test: Kick-Treffer [t, Anstieg, Stärke]
     events: null,                                    // nur für Test und Anzeige: [{t, kind, role}] (wird nur gefüllt, wenn gesetzt)
     onEntry: null, onSection: null
   };
   for (const n of AK_ROLES) for (const s of ['env', 'hit', 'entry', 'age', 'build', 'release']) S.out[n + '_' + s] = 0;
-  Object.assign(S.out, { acid_cutoff: 0, acid_squelch: 0, ak_bpm: C.bpmDefault, ak_beatphase: 0, ak_bar: 0, ak_barno: 0, ak_phrase: 0, ak_novelty: 0, ak_section: 0 });
+  Object.assign(S.out, { acid_cutoff: 0, acid_squelch: 0, acid_reso: 0, hats_density: 0, pads_pitch: 0.5, ak_build_strength: 0, ak_drop_strength: 0, ak_bpm: C.bpmDefault, ak_beatphase: 0, ak_bar: 0, ak_barno: 0, ak_phrase: 0, ak_novelty: 0, ak_section: 0 });
 
   const P = () => 60000 / (S.bpm || C.bpmDefault);
   const fold = ms => { const lo = 60000 / C.bpmMax, hi = 60000 / C.bpmMin; while (ms < lo) ms *= 2; while (ms > hi) ms /= 2; return ms; };
@@ -176,6 +196,8 @@ function akCreate(sampleRate, fftSize) {
     S.totMx.push(total, t); S.totRef = S.totMx.max();
     S.silentMs = silent ? S.silentMs + dt : 0;
     const masked = t - S.lastKickHitT < C.kickMaskMs;
+    const gridBeat = grid && grid.bpm > 0 ? grid.pos - C.kickLagMs * grid.bpm / 60000 : null;   // Schlag-Position des Treffers (ohne Analyse-Verzögerung)
+    const gridOff = gridBeat === null ? 0 : gridBeat - Math.round(gridBeat), kickOnGrid = gridBeat === null || (gridOff >= C.kickGrid[0] && gridOff <= C.kickGrid[1]);
     const Pm = P(), barMs = 4 * Pm;
 
     for (const n of AK_ROLES) {
@@ -187,6 +209,10 @@ function akCreate(sampleRate, fftSize) {
         // Bewegung im Band: 303-Linien ändern Tonhöhe und Filter von Note zu Note. Nach einem Kick-Treffer zählt das Band kurz nicht.
         if (!masked) r.fl = akEma(r.fl, fs > 0 ? fl / fs : 0, dt, C.fluxTau);
         if (!masked) r.raw = amp * akClamp((r.fl - C.fluxLo) / (C.fluxHi - C.fluxLo));
+        // acid_reso (Build 104): stärkste Frequenz gegen den Mittelwert im Band (dB). Eine 303 mit hoher Resonanz hat eine scharfe Spitze am Filter.
+        if (!masked) { let mx = 0, sm = 0; for (let k = r.lo; k <= r.hi; k++) { sm += pw[k]; if (pw[k] > mx) mx = pw[k]; }
+          const crest = sm > 0 ? 10 * Math.log10(mx * (r.hi - r.lo + 1) / sm) : 0;
+          S.reso = akEma(S.reso, r.act ? akClamp((crest - C.resoDb[0]) / (C.resoDb[1] - C.resoDb[0])) : 0, dt, C.resoMs); }
         r.x = r.raw;
       } else if (n === 'pads') {
         // Pads: je Frequenz zählt nur, was in den letzten padHoldMs durchgehend da war (das Minimum). Gehaltene Akkorde und Flächen bleiben,
@@ -195,13 +221,19 @@ function akCreate(sampleRate, fftSize) {
         if (!masked) {
           const w = r.ring.length / r.nb | 0;
           r.ri = (r.ri + 1) % w;
-          let st = 0;
+          let st = 0, cur = 0, sp = 0;
           for (let k = r.lo, j = 0; k <= r.hi; k++, j++) {
-            r.ring[j * w + r.ri] = pw[k];
+            r.ring[j * w + r.ri] = pw[k]; cur += pw[k];
             let m = Infinity; for (let q = 0; q < r.rn; q++) { const v = r.ring[j * w + ((r.ri - q + w) % w)]; if (v < m) m = v; }
-            st += m;
+            st += m; sp += m * padOct[j];
           }
+          if (st > 0) r.pitchRaw = sp / st;                                // Schwerpunkt der gehaltenen Töne (0..1 in Oktaven über padPitchHz)
           if (r.rn < w) r.rn++;
+          r.curS = akEma(r.curS || 0, cur, dt, C.padsSmoothMs);
+          r.held = r.rn >= w && r.curS > 0 ? akEma(r.held || 0, st / r.curS, dt, C.padsSmoothMs) : 0;   // Gehaltenheit: Anteil der Band-Energie, der durchgehend stehen bleibt
+          const gl = Math.log(C.padHeld[0]), gh = Math.log(C.padHeld[1]), hn = r.curS > 0 ? st / r.curS : 0;
+          r.gateNow = hn > 0 ? akClamp((Math.log(hn) - gl) / (gh - gl)) : 0;   // ungeglättet: fällt sofort, wenn der gehaltene Ton aufhört
+          r.gate = akEma(r.gate || 0, r.held > 0 ? akClamp((Math.log(r.held) - gl) / (gh - gl)) : 0, dt, C.padGateMs);
           r.raw = akEma(r.raw, r.rn >= w ? Math.sqrt(st) : 0, dt, C.padsSmoothMs);
         }
         r.x = r.raw;
@@ -212,16 +244,17 @@ function akCreate(sampleRate, fftSize) {
       r.mx.push(r.e, t);
       r.lm = Math.max(r.e, r.lm * Math.pow(0.5, dt / (C.longHalfSec * 1000)));
       r.ref = Math.max(r.mx.max(), r.lm * C.longFrac, floorLin, c.relFloor * S.totRef);   // relFloor: Mindestanteil am Gesamtpegel (sonst wird ein Hauch zur vollen Rolle)
-      r.env = akClamp(r.e / r.ref);
+      r.env = akClamp(r.e / r.ref) * (n === 'pads' ? (r.gate || 0) : 1);   // pads: nur so weit, wie wirklich gehaltene Töne da sind (Build 104)
       // Anschlag: Fluss über dem gleitenden Mittel + k Standardabweichungen
       const flux = Math.max(0, r.x - r.prevX); r.prevX = r.x;
       // Anstieg über die letzten Bilder (relativ zum Bezug): ein Kick springt steil hoch, ein Bass oder eine 303-Note im selben Band nicht
       if (r.xh) { let mn = r.x; for (let q = 0; q < r.xh.length; q++) if (r.xh[q] < mn) mn = r.xh[q]; r.rise = (r.x - mn) / r.ref; r.xh[r.xi] = r.x; r.xi = (r.xi + 1) % r.xh.length; }
       r.fMean = akEma(r.fMean, flux, dt, c.onsetTau); r.fVar = akEma(r.fVar, (flux - r.fMean) * (flux - r.fMean), dt, c.onsetTau);
-      const thr = r.fMean + c.onsetK * Math.sqrt(r.fVar);
+      const thr = r.fMean + (n === 'kick' && gridBeat !== null ? C.kickGridK : 1) * c.onsetK * Math.sqrt(r.fVar);
       r.hit *= Math.exp(-dt / c.hitDecay);
-      if (flux > thr && flux > 0 && r.env >= c.hitMin && t - r.lastHit >= c.minGap && !(masked && n !== 'kick' && n !== 'hats')) {
+      if (flux > thr && flux > 0 && r.env >= c.hitMin && t - r.lastHit >= c.minGap && !(masked && n !== 'kick' && n !== 'hats') && (n !== 'kick' || kickOnGrid)) {
         r.lastHit = t; const st = akClamp(r.env); if (st > r.hit) r.hit = st;
+        if (n === 'hats') { hatT[hatI] = t; hatI = (hatI + 1) % hatT.length; }
         if (n === 'kick') { onKickHit(t - C.kickLagMs, st); if (S.hits) S.hits.push([+(t / 1000).toFixed(3), +r.rise.toFixed(3), +st.toFixed(3)]); }
       }
       // Anwesenheit mit Hysterese; entry nur nach mindestens entryAbsentBars Takten Pause
@@ -273,7 +306,15 @@ function akCreate(sampleRate, fftSize) {
       sqMax.push(S.sqRate, t);
       S.out.acid_cutoff = S.cutS;
       S.out.acid_squelch = akClamp(S.sqRate / Math.max(sqMax.max(), C.squelchFloor));
+      S.out.acid_reso = S.reso;
     }
+    // hats_density: erkannte Anschläge im letzten Takt (hatsDensityFull = dicht)
+    { const win = C.hatsDensityBars * barMs; let c = 0; for (let i = 0; i < hatT.length; i++) if (t - hatT[i] < win) c++;
+      S.hatsD = akEma(S.hatsD, akClamp(c / (C.hatsDensityFull * C.hatsDensityBars)), dt, C.hatsDensityMs); S.out.hats_density = S.hatsD; }
+    // pads_pitch: Tonhöhe der gehaltenen Töne; ohne Pads den letzten Wert halten und langsam zur Mitte zurück
+    { const r = R.pads, on = (r.gate || 0) > C.padPitchGate && (r.gateNow || 0) > C.padPitchGate && r.pitchRaw >= 0;   // nur folgen, solange das Pads-Tor deutlich offen ist (beim Zugehen nicht dem Restklang nach)
+      S.padPitch = on ? akEma(S.padPitch, r.pitchRaw, dt, C.padPitchMs) : akEma(S.padPitch, 0.5, dt, C.padPitchHomeMs);
+      S.out.pads_pitch = S.padPitch; }
     // novelty: 8 Bänder (dB) jetzt gegen die letzten Sekunden
     if (!silent) {
       let d = 0;
@@ -378,11 +419,11 @@ let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
   if (want) { const miss = want.filter(n => !(n in AKV)), extra = have.filter(n => want.indexOf(n) < 0);
     if (miss.length || extra.length) err('Klangrollen: Namen passen nicht zu AK_VAR_NAMES (fehlt: ' + miss.join(',') + ' · zu viel: ' + extra.join(',') + ')'); } }
 // Messung fürs Protokoll (jede Minute mit Musik): hilft, AKCFG mit echten Tracks einzustellen
-const akM = { n: 0, env: { kick: 0, acid: 0, hats: 0, pads: 0 }, mx: { kick: 0, acid: 0, hats: 0, pads: 0 }, ent: { kick: 0, acid: 0, hats: 0, pads: 0 }, kick: 0, sec: [0, 0, 0, 0], t: 0 };
+const akM = { n: 0, held: 0, reso: 0, hd: 0, pp: 0, env: { kick: 0, acid: 0, hats: 0, pads: 0 }, mx: { kick: 0, acid: 0, hats: 0, pads: 0 }, ent: { kick: 0, acid: 0, hats: 0, pads: 0 }, kick: 0, sec: [0, 0, 0, 0], t: 0 };
 AK.onEntry = n => { akM.ent[n]++; if (akDbg.on) akDbgFlash(n); };
 function akMeasure(t) {
   if (akSilent) return;
-  akM.n++; for (const r of AK_ROLES) { const v = AKV[r + '_env']; akM.env[r] += v; if (v > akM.mx[r]) akM.mx[r] = v; }
+  akM.n++; akM.held += AK.R.pads.held || 0; akM.reso += AKV.acid_reso; akM.hd += AKV.hats_density; akM.pp += AKV.pads_pitch; for (const r of AK_ROLES) { const v = AKV[r + '_env']; akM.env[r] += v; if (v > akM.mx[r]) akM.mx[r] = v; }
   if (AK.R.kick.lastSeen === t) akM.kick++; akM.sec[AKV.ak_section]++;
   if (!akM.t) akM.t = t;
   if (t - akM.t < 60000 || akM.n < 1800) return;
@@ -390,11 +431,26 @@ function akMeasure(t) {
   erg('Klangrollen-Messung (' + f(min) + ' min): env Ø/max Kick ' + f(akM.env.kick / akM.n) + '/' + f(akM.mx.kick) + ' · Acid ' + f(akM.env.acid / akM.n) + '/' + f(akM.mx.acid)
     + ' · Hats ' + f(akM.env.hats / akM.n) + '/' + f(akM.mx.hats) + ' · Pads ' + f(akM.env.pads / akM.n) + '/' + f(akM.mx.pads)
     + ' · Kick-Schläge ' + Math.round(akM.kick / min) + '/min · NEU: Kick ' + akM.ent.kick + ', Acid ' + akM.ent.acid + ', Hats ' + akM.ent.hats + ', Pads ' + akM.ent.pads
-    + ' · Abschnitt % G/B/U/D ' + akM.sec.map(x => Math.round(100 * x / akM.n)).join('/') + ' · ' + Math.round(AKV.ak_bpm) + ' BPM' + (AK.scanSec ? ' (Scan)' : ' (live)'));
+    + ' · Abschnitt % G/B/U/D ' + akM.sec.map(x => Math.round(100 * x / akM.n)).join('/') + ' · ' + Math.round(AKV.ak_bpm) + ' BPM' + (AK.scanSec ? ' (Scan)' : ' (live)')
+    + ' · Pads-Gehaltenheit Ø ' + (akM.held / akM.n).toFixed(4).replace('.', ',') + ' (unter 0,006 keine Pads, über 0,025 volle) · Resonanz Ø ' + f(akM.reso / akM.n) + ' · Hats-Dichte Ø ' + f(akM.hd / akM.n) + ' · Pads-Tonhöhe Ø ' + f(akM.pp / akM.n));
+  akM.held = 0; akM.reso = 0; akM.hd = 0; akM.pp = 0;
   akM.n = 0; akM.kick = 0; akM.t = t; akM.sec.fill(0); for (const r of AK_ROLES) { akM.env[r] = 0; akM.mx[r] = 0; akM.ent[r] = 0; }
 }
 AK.onSection = s => { rea('Klangrollen: Abschnitt ' + AK_SECTION[s] + ' (ak_section ' + s + ')'); };
 
+// ak_build_strength / ak_drop_strength aus dem Aufbau-Detektor (Partitur, js/analyse.js aufbauFor), nur mit Scan. Keine festen Längen:
+//   ak_build_strength = gemessener Aufbau im laufenden Takt (0..1, zum nächsten Takt hin weich übergeblendet)
+//   ak_drop_strength  = Stärke des letzten Drops, solange nach ihm noch keine neue Pause begonnen hat (danach 0)
+function akDirigent(ts) {
+  const P = curAnalysis && curAnalysis.aufbau;
+  if (ts === null || !P || !P.n) { AKV.ak_build_strength = 0; AKV.ak_drop_strength = 0; return; }
+  const x = (ts - P.t0) / P.barS, b = Math.floor(x), f = x - b;
+  const at = i => i >= 0 && i < P.n ? P.build[i] : 0;
+  AKV.ak_build_strength = akClamp(at(b) + (at(b + 1) - at(b)) * f * f);   // erst gegen Ende des Takts zum nächsten Wert
+  let ds = 0;
+  for (let i = 0; i < P.drops.length; i++) { const d = P.drops[i], nx = P.drops[i + 1]; if (b >= d.bar && (!nx || b < nx.pauseFrom)) ds = d.strength; }
+  AKV.ak_drop_strength = ds;
+}
 function rollenFrame(t) {
   try {
     const t0 = performance.now();
@@ -412,6 +468,7 @@ function rollenFrame(t) {
       if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     }
     AK.step(akSpec, t, dt, grid);
+    akDirigent(grid ? audio.currentTime - (+latEl.value) / 1000 : null);
     akMeasure(t);
     if (akDbg.on) akDbgFrame();
     akMs += performance.now() - t0; akN++;

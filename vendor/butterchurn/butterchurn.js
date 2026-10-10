@@ -39,7 +39,8 @@ var AK_VAR_NAMES = Object.freeze([
   'hats_env', 'hats_hit', 'hats_entry', 'hats_age', 'hats_build', 'hats_release',
   'pads_env', 'pads_hit', 'pads_entry', 'pads_age', 'pads_build', 'pads_release',
   'acid_cutoff', 'acid_squelch',
-  'ak_bpm', 'ak_beatphase', 'ak_bar', 'ak_barno', 'ak_phrase', 'ak_novelty', 'ak_section'
+  'ak_bpm', 'ak_beatphase', 'ak_bar', 'ak_barno', 'ak_phrase', 'ak_novelty', 'ak_section',
+  'acid_reso', 'hats_density', 'pads_pitch', 'ak_build_strength', 'ak_drop_strength'
 ]);
 var AK_BLOCKS = Math.ceil(AK_VAR_NAMES.length / 4);
 var AK_SHADER_HEADER = (function () {
