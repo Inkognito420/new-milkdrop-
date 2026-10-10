@@ -20,7 +20,7 @@ if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzen
 // Noch nicht in 3a (siehe ANWEISUNG-NAECHSTER-CHAT.md): Kick-Ebene (Drehen), Acid-Ebene (Verzerrung, braucht die Butterchurn-Kopie).
 // Alles stark geglättet; jede Ebene einzeln in der Werkstatt (Gruppe „Schaltzentrale“) von 0 bis 150 % einstellbar.
 const SZCFG = {
-  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1, kick: 1 },      // Voreinstellung der Regler (1 = 100 %)
+  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1, kick: 1, acid: 1 },      // Voreinstellung der Regler (1 = 100 %)
   panMaxFloorSec: 6,        // Position wird auf ihr gleitendes Maximum der letzten Sekunden bezogen (live erreicht sie nur ca. ±0,5, offline ±0,9)
   panFloor: 0.35,           // ... mindestens dieses Maximum (sonst würde Rauschen bei Mono voll ausschlagen)
   panSmoothMs: 120,         // Glättung der Position für das Bild (flackerfrei)
@@ -35,6 +35,11 @@ const SZCFG = {
   kickRot: 0.25,            // Drehen im Takt: Anstoß je Kick (mal Welle des Takts); die Richtung wechselt mit jeder Takt-Eins
   acidRotShare: 0.7,        // so viel vom Drehen der 303-Filterfahrt geht an die Kick-Ebene über (bei Regler Kick 100 %)
   breakBreath: 0.012,       // im Break atmet das Bild mit den Pads: Zoom höchstens +1,2 % mal Pads-Pegel
+  acidUpMs: 80, acidDownMs: 450,     // Acid-Verzerrung (Build 109, AK-PATCH 10): Anstieg frühestens 60 ms, Abfall frühestens 300 ms
+  acidBuild: 0.6, acidDrop: 0.4,     // Aufbau (ak_build_strength) und Drop (ak_drop_strength) verstärken die Verzerrung um bis zu so viel
+  acidPhase: [0.12, 1.2],            // Wellen-Tempo (Umdrehungen pro Sekunde) bei ruhigem / schnell wechselndem Filter (acid_squelch)
+  grainMax: 0.7, glitterMax: 0.8,    // Hats-Körnung und Glitzern: größte Stärke (Shader: Körnung ±6 %, Glitzer-Punkte bis +0,28)
+  grainMs: [120, 500], seedHz: 3,    // Hats-Hüllkurve für das Bild: Anstieg/Abfall in ms; neue Körnungs-Muster höchstens 3 pro Sekunde (kein Flackern)
   actMs: 900,               // so langsam geht die Ebene „Raum“ an und aus
   xMaxPct: 1.3,             // größte Verschiebung (Prozent der Bildbreite)
   skewMaxDeg: 1.0,          // größte Verzerrung (Grad)
@@ -48,9 +53,9 @@ const SZCFG = {
   hatsMin: 0.5, hatsMax: 1.5,                              // Funken-Menge: 50 % bei keiner Hats-Dichte bis 150 % bei dichten Hats
   dropWuchtMin: 0.5, dropWuchtMax: 1.4                     // Drop-Wucht (Blitz, Funken, Zoom-Stoß) aus ak_drop_strength 0..1
 };
-const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, kickS: 1, kickDir: 1, speedS: 0, widthS: 0,
+const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, acA: 0, acPh: 0, gr: 0, gl: 0, stage: new Float32Array(8), kickS: 1, kickDir: 1, speedS: 0, widthS: 0,
   pe: 0, pp: 0.5, hueT: 0, hue: 0, entryPrev: 0, bright: 1, satMul: 1, x: 0, skew: 0, lastT: 0,
-  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 } };
+  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0 } };
 { const g = store.get('sz-gain', null); if (g) for (const k in SZ.gain) if (typeof g[k] === 'number' && g[k] >= 0 && g[k] <= 1.5) SZ.gain[k] = g[k]; }
 const szActive = () => SZ.on && toggles.mix && !reduceMotion;
 const szScan = () => scanActive() && curAnalysis && curAnalysis.aufbau;
@@ -74,6 +79,19 @@ function szFrame(dt) {
   SZ.x = SZ.panS * SZCFG.xMaxPct * g; SZ.skew = SZ.panS * SZCFG.skewMaxDeg * g;
   SZ.kickS = ems(SZ.kickS, szActive() && sectionKey() === 'break' ? SZCFG.kickBreak : 1, SZCFG.kickMs);
   SZ.breath = ems(SZ.breath || 0, szActive() ? SZCFG.breathMax * SZ.gain.raum * wd * (0.5 + 0.5 * AKSIDE.ak_side) : 0, SZCFG.breathMs);
+  // ACID (Verzerrung) und HATS (Körnung, Glitzern): Werte für die Endstufe in der Butterchurn-Kopie (AK-PATCH 10). Alles 0 = Stufe übersprungen.
+  { const on = szActive(), ga = on ? Math.min(1.5, SZ.gain.acid) : 0, gh = on ? Math.min(1.5, SZ.gain.hats) : 0, dg = on && SZ.gain.dirigent > 0 && szScan() ? Math.min(1.5, SZ.gain.dirigent) : 0;
+    const wA = V.acid_env * (0.25 + 0.75 * V.acid_cutoff) * (1 + dg * (SZCFG.acidBuild * V.ak_build_strength + SZCFG.acidDrop * V.ak_drop_strength * (V.ak_section === 3 ? 1 : 0)));
+    const tA = Math.min(1, wA) * ga;
+    SZ.acA = ems(SZ.acA, tA, tA > SZ.acA ? SZCFG.acidUpMs : SZCFG.acidDownMs);
+    SZ.acPh = (SZ.acPh + dt * (SZCFG.acidPhase[0] + (SZCFG.acidPhase[1] - SZCFG.acidPhase[0]) * V.acid_squelch)) % 1000;
+    const tG = Math.min(1, V.hats_env * (0.3 + 0.7 * V.hats_density)) * gh;
+    SZ.gr = ems(SZ.gr, tG, tG > SZ.gr ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
+    SZ.gl = ems(SZ.gl, Math.min(1, V.hats_hit * 0.6 + 0.4 * tG) * gh, SZ.gl < tG ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
+    const st = SZ.stage; st[0] = SZ.acA < 0.003 ? 0 : SZ.acA; st[1] = SZ.acPh; st[2] = SZ.acA < 0.003 ? 0 : V.acid_reso;
+    st[4] = SZ.gr < 0.01 ? 0 : SZ.gr * SZCFG.grainMax; st[5] = SZ.gl < 0.01 ? 0 : SZ.gl * SZCFG.glitterMax; st[6] = AKSIDE.hats_side * (on ? Math.min(1, SZ.gain.raum) : 0);
+    st[7] = Math.floor(performance.now() / 1000 * SZCFG.seedHz) % 997;
+    SZ.st.ac += SZ.acA; SZ.st.gr += SZ.gr; if (SZ.acA > SZ.st.acMax) SZ.st.acMax = SZ.acA; }
   // PADS
   SZ.pe = ems(SZ.pe, V.pads_env, SZCFG.padSmoothMs); SZ.pp = ems(SZ.pp, V.pads_pitch, SZCFG.padSmoothMs);
   const gp = szActive() ? SZ.gain.pads : 0;
@@ -108,6 +126,12 @@ window.szKickRot = (r, k, wR, one) => {                                         
 };
 window.szAcidRot = () => szActive() ? 1 - SZCFG.acidRotShare * Math.min(1, SZ.gain.kick) : 1;   // js/12b: 303-Filterfahrt dreht weniger
 window.szBreakBreath = () => szActive() && sectionKey() === 'break' ? SZCFG.breakBreath * Math.min(1, SZ.gain.pads) * SZ.pe : 0;   // js/12b: Break atmet mit den Pads
+const SZ_ZERO = new Float32Array(8);
+// Die Acid-Verzerrung sitzt im Ausgabe-Durchgang der Kopie (AK-PATCH 10); der läuft nur, wenn setOutputAA(true) gesetzt ist (das Bild geht dann erst in eine Textur und von dort
+// verzerrt auf den Schirm, kostet einen Durchgang). Darum nur einschalten, solange die Verzerrung wirklich sichtbar ist (Schalten mit Hysterese, damit es nicht hin und her springt).
+let szAA = false;
+window.szOutputAA = () => { const a = szActive() ? SZ.stage[0] : 0; szAA = szAA ? a > 0.004 : a > 0.02; return szAA; };
+window.szStage = () => szActive() ? SZ.stage : SZ_ZERO;                                                         // js/09: Werte für viz.setAkStage (AK-PATCH 10)
 window.szSide = () => {                                                              // js/13 onHat: Seite des letzten Hats-Treffers, Stärke 0..1 (0 = Mitte oder Regler aus)
   const a = szActive() ? Math.min(1, SZ.gain.raum) : 0, v = AKSIDE.hats_side * a;
   SZ.st.sp++; if (v < 0) SZ.st.spL++; else if (v > 0) SZ.st.spR++;
@@ -127,7 +151,7 @@ window.__SZ = SZ;
   if (werk) {
     const box = document.createElement('div'); box.className = 'grp';
     const lb = document.createElement('span'); lb.className = 'gl'; lb.textContent = 'Schaltzentrale'; box.appendChild(lb);
-    const NAMES = { kick: 'Kick (Puls, Drehen)', raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)' };
+    const NAMES = { kick: 'Kick (Puls, Drehen)', acid: 'Acid (Verzerrung)', raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)' };
     for (const k of Object.keys(NAMES)) {
       const row = document.createElement('label'); row.style.cssText = 'flex:0 0 100%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)';
       const t = document.createElement('span'); t.style.cssText = 'flex:0 0 150px'; t.textContent = NAMES[k];
@@ -143,7 +167,7 @@ window.__SZ = SZ;
 setInterval(() => {
   const S = SZ.st; if (S.n < 600 || !szActive()) return;
   const f = x => x.toFixed(2).replace('.', ',');
-  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
-    + ' · Regler Kick/Raum/Pads/Hats/Dirigent ' + ['kick', 'raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
-  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 };
+  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Acid-Verzerrung Ø ' + f(S.ac / S.n) + ' (max ' + f(S.acMax) + ') · Hats-Körnung Ø ' + f(S.gr / S.n) + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
+    + ' · Regler Kick/Acid/Raum/Pads/Hats/Dirigent ' + ['kick', 'acid', 'raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
+  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0 };
 }, 60000);

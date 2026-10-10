@@ -32,6 +32,7 @@ Insbesondere nicht: die Berechnung von bass/mid/treb (und damit der Einhängepun
 | 7 | `createShader` von Comp und Warp | Uniform-Orte `_akN` holen, je Block ein `Float32Array(4)` einmal anlegen |
 | 8 | `renderQuadTexture` von Comp und Warp | jedes Bild die Werte aus `mdVSFrame` in die Blöcke schreiben (ohne `new`), nur für Blöcke, die der Shader benutzt |
 | 9 | `Visualizer` | neue Methode `setExtraVars(obj)` (übernimmt nur bekannte Namen, NaN wird 0) und `Visualizer.AK_VAR_NAMES` |
+| 10 | Fabrik-Funktion (Hilfsfunktionen), `CompShader`, `OutputShader`, `createShader`/`renderQuadTexture`, `Visualizer` | Endstufe: `AK_STAGE` (8 Zahlen), `uniform vec4 akfx_a, akfx_b`. (a) Comp-Shader, NACH dem Preset-Code: Kantenkontrast (Acid), Körnung und Glitzern (Hats, Seite). Der Preset-Code und `uv` bleiben unangetastet (eine Änderung von `uv` verschob bei „steel spring“ das Bild 90 im Regressionstest). (b) `OutputShader` (beide Varianten, FXAA und einfach): Verzerrung der Abtast-Koordinaten (Acid); der Durchgang läuft nur bei `setOutputAA(true)` (die App schaltet ihn nur bei sichtbarer Verzerrung ein). Alle Blöcke stehen hinter `if (Wert > 0.0)`: bei 0 (Voreinstellung) ändert sich kein Pixel. Neue Methode `Visualizer.setAkStage([acid, phase, reso, 0, körnung, glitzern, seite, saat])`. Die Werte laufen bewusst NICHT über `AK_VAR_NAMES` (die 41 Namen bleiben) |
 
 ## Geprüft (test/butterchurn-regression.js, test/klangrollen-namen.test.js)
 

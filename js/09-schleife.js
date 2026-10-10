@@ -9,7 +9,7 @@ const switchMs = () => PHRASE_BEATS * 60000 / bpm;
 const engaged = () => scanActive() || beat.state !== 'warten';
 
 let frameCount = 0, fpsT = performance.now();
-let lastDraw = 0;
+let lastDraw = 0, outAA = false;
 const FRAME_MIN = 1000 / 60 - 3;                 // fest 60 Bilder pro Sekunde: auf 120-Hz-Displays wird jedes zweite Bild gezeichnet
 function loop() {
   requestAnimationFrame(loop);
@@ -17,7 +17,7 @@ function loop() {
   const t = performance.now();
   if (t - lastDraw < FRAME_MIN) return;
   lastDraw = t;
-  rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV);   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen
+  rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV); if (viz.setAkStage && window.szStage) { viz.setAkStage(window.szStage()); if (viz.setOutputAA && window.szOutputAA) { const aa = window.szOutputAA(); if (aa !== outAA) { outAA = aa; viz.setOutputAA(aa); } } }   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen
   if (!frozen) {
     const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
     if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); } }

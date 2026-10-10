@@ -153,7 +153,7 @@ async function probe(browser) {
 
   console.log('\nAlte Presets unverändert (Original 2.6.7 gegen Kopie mit Werten ≠ 0)');
   const pg = await browser.newPage(); await pg.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=orig`);
-  const names = (await pg.evaluate(() => window.__names)).slice(0, max); await pg.close();
+  const names = (await pg.evaluate(() => window.__names)).filter(n => !process.env.ONLY || process.env.ONLY.split('|').includes(n)).slice(0, max); await pg.close();
   // Vorprüfung: das Original ist mit dem festen Zufall reproduzierbar (sonst sagt der Vergleich nichts)
   const rep = []; for (const n of names.slice(0, 3)) { const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'orig', n); rep.push(a.h.join() === b.h.join()); }
   check('Vorprüfung: Original zweimal gezeichnet = bit-gleich (fester Zufall wirkt), 3 von 3', rep.every(Boolean), JSON.stringify(rep));
