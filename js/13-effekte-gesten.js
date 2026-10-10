@@ -14,7 +14,8 @@ function onHat(s) {
   const kn = kmNow(), hk = kn ? 0.6 + 0.8 * kn.hektik : 1;                 // Build 43: viele schnelle Hats im Takt = mehr Funken, ruhiger Takt = weniger
   let n = 2 + Math.floor(s * 4 * hk * (1 + 3 * (toggles.build ? build : 0)));
   if (window.__AMX && toggles.mix) n = mxSparks(n);                       // Build 46: Funken kosten Energie aus dem Konto
-  for (let i = 0; i < n; i++) sparks.push({ x: Math.random() * fxc.width, y: Math.random() * fxc.height, r: (1 + 2.2 * Math.random()) * fxScale, life: 0, max: 160 + Math.random() * 140, acid: Math.random() < 0.5 });
+  const sd = window.szSide ? window.szSide() : 0, sa = Math.abs(sd);       // Build 108: Funken auf der Seite, auf der der Hats-Treffer klingt (links −, rechts +)
+  for (let i = 0; i < n; i++) sparks.push({ x: (sa > 0 && Math.random() < sa ? (sd < 0 ? 0 : 0.5) + 0.5 * Math.random() : Math.random()) * fxc.width, y: Math.random() * fxc.height, r: (1 + 2.2 * Math.random()) * fxScale, life: 0, max: 160 + Math.random() * 140, acid: Math.random() < 0.5 });
 }
 function onSnare(s) {
   if (!toggles.spark || rings.length > 6) return;

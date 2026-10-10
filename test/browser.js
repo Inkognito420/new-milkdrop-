@@ -666,8 +666,8 @@ const SZ = {
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
     const { page, errs, close } = await open();
-    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [] }; const t0 = performance.now(); const iv = setInterval(() => { v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); res(v); } }, 40); }), ms);
-    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2) });
+    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [], hs: [] }; const t0 = performance.now(); const iv = setInterval(() => { v.hs.push(AKSIDE.hats_side); v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); res(v); } }, 40); }), ms);
+    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2), hsMin: +Math.min(...v.hs).toFixed(2), hsMax: +Math.max(...v.hs).toFixed(2) });
     await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
     await page.evaluate(() => { audio.currentTime = 12; }); await page.waitForTimeout(2500);    // Ping-Pong 1/Schlag
@@ -676,6 +676,13 @@ const SZ = {
     const b2 = sum(await sample(5000));
     console.log('       (Info) Stereo live: Ping-Pong 1/Schlag ' + JSON.stringify(a) + ' · 2/Schlag ' + JSON.stringify(b2));
     check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,4 und über +0,4), Wechsel-Tempo über 0,05 und mit 2/Schlag höher als mit 1/Schlag (genaue Zahlen: Offline-Prüfung, Echtzeit hängt an der Bildrate des Rechners)', a.min < -0.4 && a.max > 0.4 && a.sp > 0.05 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
+    check('Seiten-Funken live: hats_side zeigt beim Ping-Pong auf beide Seiten (unter -0,5 und über +0,5), nie außerhalb von ±1', a.hsMin < -0.5 && a.hsMax > 0.5 && a.hsMin >= -1 && a.hsMax <= 1, JSON.stringify({ a }));
+    { const q = await page.evaluate(() => { // Funken auf der Seite des Treffers: hats_side festhalten, Hats-Treffer auslösen, Lage der neuen Funken messen
+        const old = AKSIDE.hats_side, w = fxc.width, res = {}; toggles.spark = true;
+        for (const sd of [-1, 1, 0]) { sparks.length = 0; MX.konto = 1; AKSIDE.hats_side = sd; for (let i = 0; i < 20; i++) { onHat(1); if (sparks.length > 100) break; }
+          const xs = sparks.map(s => s.x / w); res[sd] = { n: xs.length, links: xs.filter(x => x < 0.5).length, rechts: xs.filter(x => x >= 0.5).length }; }
+        sparks.length = 0; AKSIDE.hats_side = old; return res; });
+      check('Seiten-Funken: Treffer links erzeugt nur Funken in der linken Bildhälfte, rechts nur rechts, Mitte verteilt auf beide', q[-1].n > 0 && q[-1].rechts === 0 && q[1].n > 0 && q[1].links === 0 && q[0].links > 0 && q[0].rechts > 0, JSON.stringify(q)); }
     await close();
     const m = await open();
     await m.page.setInputFiles('#fileIn', [T[0]]);

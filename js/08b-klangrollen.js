@@ -52,6 +52,7 @@ const AKCFG = {
   panGate: 0.2,             // ak_pan ändert sich nur, solange der Pegel mindestens so viel vom Maximum der letzten 30 s hat (zwischen den Anschlägen bleibt er stehen)
   panPeakMs: 150,           // ak_pan und ak_width werden nur an der lautesten Stelle der letzten so vielen ms nachgeführt (sonst ziehen Nachhall und Kick-Reste den Wert zur Mitte)
   panPeak: 0.6,             // ... und zwar ab diesem Anteil dieses lokalen Maximums
+  sideDead: 0.08, sideFull: 0.3, sidePulseMs: 250,   // Seiten-Funken (Build 108): Hats-Treffer tragen ihre Seite; unter ±0,08 = Mitte, ab ±0,3 ganz auf der Seite; ak_side klingt in 250 ms ab
   panSide: 0.3,             // ein Seitenwechsel zählt, wenn ak_pan von unter -0,3 nach über +0,3 (oder zurück) geht
   panSpeedFull: 16,         // ak_pan_speed = Seitenwechsel im letzten Takt / 16 (16 = jede Sechzehntel wechselt = 1, jeder Schlag = 0,25)
   panSpeedMs: 300,          // Glättung von ak_pan_speed
@@ -177,6 +178,7 @@ function akCreate(sampleRate, fftSize) {
     beatT: 0, beatTotal: 0, barBeat: 0, barno: 0, phase: 0, gridScan: false, scanSec: false,
     sec: 0, secStartBeat: 0, kickEver: false, dropEnd: 0, buildupMs: 0, silentMs: 0, total: 0,
     nov: 0, novInit: false, reso: 0, hatsD: 0, padPitch: 0.5, pan: 0, panHeld: 0, widthHeld: 0, stLoc: 0, kickPh: new Float64Array(8), kickAll: 0, kickIn: 0, panSide: 0, panSpeed: 0, width: 0, stMx: akBuckets(C.maxBuckets, bucketMs), swings: new Float64Array(32).fill(-1e9), swI: 0, cut: 0.5, cutRaw: 0, cutPrev: -1, cutS: 0.5, sq: 0, sqRate: 0,
+    side: { hats_side: 0, ak_side: 0 }, hatHit: false,   // Build 108: nicht in AKV (die 41 Preset-Variablen bleiben); hats_side −1…+1 hält bis zum nächsten Hats-Treffer, ak_side 0…1 Puls am Anschlag
     hits: null,                                      // nur für Test: Kick-Treffer [t, Anstieg, Stärke]
     events: null,                                    // nur für Test und Anzeige: [{t, kind, role}] (wird nur gefüllt, wenn gesetzt)
     onEntry: null, onSection: null
@@ -281,7 +283,7 @@ function akCreate(sampleRate, fftSize) {
       if (n === 'kick' && hitOk && gridBeat !== null) { S.kickPh[Math.min(7, Math.floor((gridOff + 0.5) * 8))]++; S.kickAll++; if (kickOnGrid) S.kickIn++; }   // Diagnose fürs Protokoll
       if (hitOk && (n !== 'kick' || kickOnGrid)) {
         r.lastHit = t; const st = akClamp(r.env); if (st > r.hit) r.hit = st;
-        if (n === 'hats') { hatT[hatI] = t; hatI = (hatI + 1) % hatT.length; }
+        if (n === 'hats') { hatT[hatI] = t; hatI = (hatI + 1) % hatT.length; S.hatHit = true; }
         if (n === 'kick') { onKickHit(t - C.kickLagMs, st); if (S.hits) S.hits.push([+(t / 1000).toFixed(3), +r.rise.toFixed(3), +st.toFixed(3)]); }
       }
       // Anwesenheit mit Hysterese; entry nur nach mindestens entryAbsentBars Takten Pause
@@ -374,6 +376,13 @@ function akCreate(sampleRate, fftSize) {
       if (sd !== 0 && sd !== S.panSide) { if (S.panSide !== 0) { S.swings[S.swI] = t; S.swI = (S.swI + 1) % S.swings.length; } S.panSide = sd; }
       let c = 0; for (let i = 0; i < S.swings.length; i++) if (t - S.swings[i] < barMs) c++;
       S.panSpeed = akEma(S.panSpeed, akClamp(c / C.panSpeedFull), dt, C.panSpeedMs);
+      { const sd2 = S.side, lv = st && !silent ? st.l + st.r : 0;
+        if (S.hatHit && lv > 0) {
+          const x = (st.r - st.l) / (lv + 1e-9), a = Math.abs(x);
+          sd2.hats_side = a < C.sideDead ? 0 : (x < 0 ? -1 : 1) * akClamp(a / C.sideFull);
+          sd2.ak_side = Math.max(sd2.ak_side, akClamp(2 * st.s / (st.m + st.s + 1e-9)));
+        } else if (!lv) sd2.hats_side = 0;
+        S.hatHit = false; sd2.ak_side = akEma(sd2.ak_side, 0, dt, C.sidePulseMs); }
       S.out.ak_pan = S.pan; S.out.ak_pan_speed = S.panSpeed; S.out.ak_width = S.width; }
 
     // Raster: Schlag, Takt, Phrase
@@ -464,7 +473,7 @@ akAnL.fftSize = AKCFG.stN; akAnR.fftSize = AKCFG.stN;
 delayNode.connect(akUp); akUp.connect(akSp); akSp.connect(akAnL, 0); akSp.connect(akAnR, 1);
 const akTL = new Float32Array(AKCFG.stN), akTR = new Float32Array(AKCFG.stN);
 const AK = akCreate(ctx.sampleRate, AKCFG.fftSize);
-const AKV = AK.out;                                  // diese Werte gehen jedes Bild an viz.setExtraVars
+const AKV = AK.out; const AKSIDE = AK.side;                                  // diese Werte gehen jedes Bild an viz.setExtraVars
 let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
 // Prüft einmal, ob die Analyse genau die Namen liefert, die die Butterchurn-Kopie erwartet
 { const want = window.AK_VAR_NAMES, have = Object.keys(AKV);

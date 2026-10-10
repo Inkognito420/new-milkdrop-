@@ -167,7 +167,7 @@ function mxFrame(t, dtMs) {
   // --- Ausgabe: Zoom so groß, dass beim Drehen und Schieben nie ein schwarzer Rand zu sehen ist ---
   const Wv = innerWidth || 1, Hv = innerHeight || 1, th = Math.abs(rO) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
   const cover = Math.max((Wv * cs + Hv * sn) / Wv, (Wv * sn + Hv * cs) / Hv) + 2 * Math.max(Math.abs(xO), Math.abs(yO)) / 100 + (Hv / Wv) * Math.tan(Math.abs(szK) * Math.PI / 180);
-  const S = cover * (1 + 0.012 + Math.max(-0.012, zO));
+  const S = cover * (1 + 0.012 + Math.max(-0.012, zO)) * (1 + (window.__SZ ? window.__SZ.breath || 0 : 0));
   MX.out.z = zO; MX.out.r = rO; MX.out.x = xO; MX.out.y = yO; MX.out.s = S;
   mxStats(t, zO, rO, xO, yO);
   if (Math.abs(rO) < 0.01 && Math.abs(xO) < 0.005 && Math.abs(yO) < 0.005 && Math.abs(S - 1.012) < 0.0005 && !playing) return '';
