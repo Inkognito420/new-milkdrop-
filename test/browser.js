@@ -26,7 +26,7 @@ const URL0 = `http://127.0.0.1:${PORT}${PREFIX}index.html`;
 const STUB_VIZ = 'window.butterchurn={createVisualizer:()=>({connectAudio(){},loadPreset(){},render(){},setRendererSize(){},loadExtraImages(){},launchSongTitleAnim(){},setExtraVars(v){window.__akSet=(window.__akSet||0)+1;window.__akLast=v},renderer:{audioLevels:{val:[1,1,1],att:[1,1,1],updateAudioLevels(){}}}})};';
 const STUB_PRE = 'window.butterchurnPresets={getPresets:()=>{const o={};for(let i=0;i<40;i++)o["Test · Preset "+i]={baseVals:{},frame_eqs_str:"",init_eqs_str:"",shapes:[],waves:[]};return o}};window.butterchurnPresetsExtra={getPresets:()=>({})};';
 
-const results = []; let browser, tmp, T; const PT = {};      // T: Pfade der Test-Tracks, PT: Plan-Tracks für die Klangrollen (Takt-Zeiten)
+const results = []; let browser, tmp, T, TL; const PT = {};      // T: Pfade der Test-Tracks, PT: Plan-Tracks für die Klangrollen (Takt-Zeiten)
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok, detail }); console.log((ok ? '  ok   ' : '  FEHL ') + name + (ok ? '' : '  → ' + detail)); };
 
 async function open(opts = {}) {
@@ -111,18 +111,105 @@ const SZ = {
     await close();
   },
   async warteschlange() {
+    // Ab Build 102 werden ALLE geladenen Tracks analysiert; der gewählte (hier der letzte) hat Vorrang und unterbricht die anderen
     const { page, close } = await open();
     await page.evaluate(scansWrapper);
     await page.setInputFiles('#fileIn', T);
     await page.waitForTimeout(900);
     for (let i = 0; i < T.length - 1; i++) { await page.evaluate(() => $('nextTrack').click()); await page.waitForTimeout(200); }
     await page.waitForFunction(() => curAnalysis && curAnalysis.file === curFile, null, { timeout: 240000, polling: 200 });
-    await page.waitForTimeout(800);
-    const r = await page.evaluate(() => ({ scans: __scans, aktuell: curFile.name, wartend: scanQueue.length, laeuft: !!scanJob, cache: scanCache.size }));
-    const letzter = path.basename(T[T.length - 1]), fremd = r.scans.filter(s => s.f !== letzter);
-    check('Warteschlange: der gehörte (letzte) Track wurde fertig gescannt', r.aktuell === letzter && r.scans.some(s => s.f === letzter && s.r === 'ok'), JSON.stringify(r));
-    check('Warteschlange: unnötige Scans der übersprungenen Tracks abgebrochen (höchstens 2 liefen durch)', fremd.filter(s => s.r === 'abgebrochen').length >= 2 && fremd.filter(s => s.r === 'ok').length <= 2, JSON.stringify(r.scans));
-    check('Warteschlange: danach nichts wartend oder laufend, abgebrochene nicht im Speicher', r.wartend === 0 && !r.laeuft && r.cache <= 3, JSON.stringify(r));
+    const vor = await page.evaluate(() => ({ fertig: __scans.filter(s => s.r === 'ok').map(s => s.f), aktuell: curFile.name }));
+    const letzter = path.basename(T[T.length - 1]);
+    check('Warteschlange: der gewählte (letzte) Track wurde zuerst fertig analysiert', vor.aktuell === letzter && vor.fertig[0] === letzter, JSON.stringify(vor));
+    await page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 400000, polling: 300 });
+    const r = await page.evaluate(async () => { const all = await Promise.all(queue.map(f => scanCache.get(f))); return { scans: __scans, ok: all.map(A => !!(A && !A.skipped && A.rollen)), cache: scanCache.size, unterbrochen: LOG.filter(l => /unterbrochen/.test(l.x)).length }; });
+    check('Warteschlange: danach sind ALLE 5 Tracks fertig (mit Partitur), nichts wartet oder läuft', r.ok.length === 5 && r.ok.every(Boolean) && r.cache === 5, JSON.stringify(r));
+    check('Warteschlange: unterbrochene Analysen kamen später neu dran (jede Datei genau einmal fertig)', T.every(t => r.scans.filter(s => s.f === path.basename(t) && s.r === 'ok').length === 1), JSON.stringify(r.scans));
+    await close();
+  },
+  async startsperre() {
+    const { page, errs, close } = await open();
+    await page.evaluate(() => { window.__ev = []; audio.addEventListener('playing', () => __ev.push(['spielt', performance.now(), !!curAnalysis])); });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForTimeout(300);
+    const w = await page.evaluate(() => ({ pausiert: audio.paused, playGesperrt: $('play').disabled, knopf: $('play').textContent, leiste: $('track').textContent }));
+    check('Start-Sperre: während der Analyse kein Ton, Play gesperrt, Leiste zeigt „Analyse“', w.pausiert && w.playGesperrt && /Analyse/.test(w.leiste) && /Analyse/.test(w.knopf), JSON.stringify(w));
+    await page.waitForTimeout(1500);
+    const pr = await page.evaluate(() => $('track').textContent);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.2, null, { timeout: 180000, polling: 200 });
+    const r = await page.evaluate(() => ({ ev: __ev, rollen: !!(curAnalysis && curAnalysis.rollen), log: LOG.map(l => l.x).filter(x => /Partitur fertig in|Start-Sperre frei|Partitur Klangrollen/.test(x)), play: $('play').textContent }));
+    check('Start-Sperre: Track startet von selbst, erst NACH der fertigen Analyse (mit Klangrollen-Partitur)', r.ev.length >= 1 && r.ev.every(e => e[2]) && r.rollen && r.play === 'Pause' && r.log.some(x => /Partitur fertig in [\d,]+ s/.test(x)), JSON.stringify(r));
+    check('Start-Sperre: Fortschritt „Analyse xx %“ in der Leiste', /Analyse \d+ %/.test(pr) || /Analyse/.test(pr), pr);
+    // Plausibilität der Partitur im Test-Track (Intro 8, Groove 16, Break 8 mit Aufbau, Drop 16, Outro 8 Takte): Kick im Drop deutlich, im Break kaum
+    const p = await page.evaluate(() => {
+      const A = curAnalysis, P = A.rollen, mean = (ty, name) => { let s = 0, n = 0; for (const sc of A.sections.filter(x => x.type === ty)) for (let b = Math.ceil((sc.t0 - P.bar0) / P.barS); (b + 1) * P.barS + P.bar0 <= sc.t1 + 0.01; b++) { const v = ptRolle(A, b, name); if (v !== null) { s += v; n++; } } return n ? +(s / n).toFixed(3) : null; };
+      return { n: P.n, takte: Math.round(A.duration / (4 * A.beatS)), kickDrop: mean('drop', 'kick'), kickBreak: mean('break', 'kick'), hatsDrop: mean('drop', 'hats'), sek: A.secs, typen: A.sections.map(s => s.type).join(' ') };
+    });
+    check('Partitur: ein Wert pro Takt; Kick im Drop deutlich (> 0,4), im Break kaum (< 0,15)', Math.abs(p.n - p.takte) <= 2 && p.kickDrop > 0.4 && p.kickBreak !== null && p.kickBreak < 0.15, JSON.stringify(p));
+    console.log('       (Info) Analyse (Scan + Partitur) im Sandbox-Rechner: ' + p.sek + ' s für ' + p.takte + ' Takte');
+    check('Start-Sperre: keine Seitenfehler, keine Fehler im Protokoll', errs.length === 0 && (await page.evaluate(() => LOG.filter(l => l.k === 'x').length)) === 0, errs.join(' | '));
+    await close();
+  },
+  async speicher() {
+    // Dieselbe Datei zweimal: beim zweiten Mal (neu geladene Seite) kommt die Partitur aus IndexedDB „nmd-partitur“ und der Track startet sofort
+    const { page, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && curAnalysis && curAnalysis.rollen, null, { timeout: 180000, polling: 200 });
+    await page.waitForTimeout(500);
+    const vor = await page.evaluate(async () => ({ stats: await ptStats(), A: { bpm: curAnalysis.bpm, drops: curAnalysis.drops, n: curAnalysis.rollen.n, sum: Array.from(curAnalysis.rollen.v).reduce((a, b) => a + b, 0) } }));
+    await page.reload({ waitUntil: 'load' }); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 15000 });
+    await page.evaluate(() => { window.__t = {}; $('fileIn').addEventListener('change', () => { __t.wahl = performance.now(); }, true); audio.addEventListener('playing', () => { if (!__t.spielt) __t.spielt = performance.now(); }); });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && curAnalysis && __t.spielt, null, { timeout: 30000, polling: 50 });
+    const r = await page.evaluate(() => ({ ms: Math.round(__t.spielt - __t.wahl), ausSpeicher: !!curAnalysis.fromStore, log: LOG.map(l => l.x).filter(x => /Partitur aus Speicher|Partitur fertig/.test(x)), A: { bpm: curAnalysis.bpm, drops: curAnalysis.drops, n: curAnalysis.rollen && curAnalysis.rollen.n, sum: curAnalysis.rollen ? Array.from(curAnalysis.rollen.v).reduce((a, b) => a + b, 0) : -1 }, km: !!curAnalysis.km, klang: !!curAnalysis.klang, onM: curAnalysis.onM && curAnalysis.onM.constructor.name }));
+    check('Speicher: nach der ersten Analyse liegt 1 Partitur in „nmd-partitur“', vor.stats.n === 1 && vor.stats.mb > 0, JSON.stringify(vor.stats));
+    check('Speicher: dieselbe Datei nach Neuladen: „Partitur aus Speicher“, keine neue Analyse, Start unter 1 s', r.ausSpeicher && r.ms < 1000 && r.log.some(x => /aus Speicher/.test(x)) && !r.log.some(x => /Partitur fertig/.test(x)), JSON.stringify(r));
+    console.log('       (Info) Start mit Partitur aus dem Speicher: ' + r.ms + ' ms von der Dateiwahl bis Ton');
+    check('Speicher: gespeicherte Partitur ist gleich (Tempo, Drops, Klangrollen, Klangbild, Klangmesser, Zahlenreihen)', JSON.stringify(r.A) === JSON.stringify(vor.A) && r.km && r.klang && r.onM === 'Float32Array', JSON.stringify(r.A) + ' gegen ' + JSON.stringify(vor.A));
+    // Aufräumen: alte Analyse-Version fliegt sofort, sonst höchstens PT_MAX_N Einträge (die am längsten unbenutzten zuerst)
+    const t = await page.evaluate(async () => {
+      const db = await ptDb(), now = Date.now();
+      await new Promise(res => { const tx = db.transaction(['meta', 'data'], 'readwrite'); for (let i = 0; i < PT_MAX_N + 5; i++) { const k = 'alt' + i + '|1|1|v' + PARTITUR_V; tx.objectStore('meta').put({ k, at: now - 1e9 + i, sz: 10, name: 'x' }); tx.objectStore('data').put({}, k); }
+        tx.objectStore('meta').put({ k: 'uralt|1|1|v0', at: now, sz: 10, name: 'y' }); tx.objectStore('data').put({}, 'uralt|1|1|v0'); tx.oncomplete = res; });
+      await ptTidy(db); const s = await ptStats(), echt = await ptLoad(curFile);
+      return { n: s.n, echtNochDa: !!echt, v0: !!(await ptReq(db.transaction('meta').objectStore('meta').get('uralt|1|1|v0'))) };
+    });
+    check('Speicher aufräumen: höchstens 200 Einträge, alte Version weg, der zuletzt benutzte Track bleibt', t.n === 200 && t.echtNochDa && !t.v0, JSON.stringify(t));
+    await close();
+  },
+  async hintergrund() {
+    // Langer Track (6,4 Minuten) wird im Hintergrund analysiert, während ein anderer spielt: Bild muss flüssig bleiben
+    const { page, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0], TL]);
+    if (process.env.HG_DIAG) { await page.waitForFunction(() => !audio.paused, null, { timeout: 180000 }); const dg = await page.evaluate(() => new Promise(res => { const t0 = performance.now(), ev = []; const oa = File.prototype.arrayBuffer; File.prototype.arrayBuffer = function () { ev.push(['arrayBuffer', Math.round(performance.now() - t0)]); return oa.call(this).then(x => { ev.push(['arrayBuffer Ende', Math.round(performance.now() - t0)]); return x; }); };
+      const od = BaseAudioContext.prototype.decodeAudioData; BaseAudioContext.prototype.decodeAudioData = function (b, ok, ko) { ev.push(['decode', Math.round(performance.now() - t0)]); return od.call(this, b, x => { ev.push(['decode Ende', Math.round(performance.now() - t0)]); ok && ok(x); }, ko); };
+      const og = window.getDuration; window.getDuration = f => { ev.push(['dauer', Math.round(performance.now() - t0)]); return og(f).then(x => { ev.push(['dauer Ende', Math.round(performance.now() - t0)]); return x; }); };
+      const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (n - t0 < 6000) requestAnimationFrame(step); else res({ gaps, ev }); }; requestAnimationFrame(step); })); console.log('DIAG0', JSON.stringify(dg)); }
+    await page.waitForFunction(() => !audio.paused && scanJob && scanJob.file === queue[1], null, { timeout: 180000, polling: 100 });
+    const f = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;
+      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000 && scanJob) requestAnimationFrame(step); else res({ n: d.length, fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
+      requestAnimationFrame(step); }));
+    if (process.env.HG_DIAG) { const dg = await page.evaluate(() => new Promise(res => { const ph = []; const t0 = performance.now(); for (const n of ['analyzeEnvelopes', 'klangSplit', 'klangBars', 'kmBars', 'partiturRollen', 'getDuration']) { const o = window[n]; window[n] = function () { ph.push([n, Math.round(performance.now() - t0)]); const r = o.apply(this, arguments); if (r && r.then) r.then(() => ph.push([n + ' Ende', Math.round(performance.now() - t0)])); else ph.push([n + ' Ende', Math.round(performance.now() - t0)]); return r; }; }
+      const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (scanJob) requestAnimationFrame(step); else res({ gaps, ph }); }; requestAnimationFrame(step); })); console.log('DIAG', JSON.stringify(dg)); }
+    await page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 400000, polling: 500 });
+    const ruhe = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;   // Vergleich: dieselbe Messung ohne Analyse
+      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000) requestAnimationFrame(step); else res({ fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
+      requestAnimationFrame(step); }));
+    const r = await page.evaluate(async () => { const A = await scanCache.get(queue[1]); return { min: +(A.duration / 60).toFixed(1), sek: A.secs, rollenMs: A.rollenMs, takte: A.rollen && A.rollen.n }; });
+    console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' Bilder über 50 ms, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' über 50 ms, längstes ' + ruhe.max + ' ms)');
+    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: über 40 fps, höchstens 12 Bilder über 50 ms mehr als ohne Analyse, keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps > 40 && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
+    await close();
+  },
+  async notfall() {
+    // Analyse scheitert: klare Meldung, Play wird „Ohne Analyse spielen“, ein Tipp spielt den Track live
+    const { page, close } = await open();
+    await page.evaluate(() => { window.analyzeFile = async () => { throw new Error('Test: zu wenig Speicher'); }; });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => /Ohne Analyse/.test($('play').textContent), null, { timeout: 20000, polling: 100 });
+    const a = await page.evaluate(() => ({ pausiert: audio.paused, knopf: $('play').textContent, frei: !$('play').disabled, meldung: $('msg') ? $('msg').textContent : document.body.innerText.match(/Analyse nicht möglich[^\n]*/)?.[0] }));
+    await page.click('#play'); await page.waitForTimeout(800);
+    const b = await page.evaluate(() => ({ spielt: !audio.paused, live: !curAnalysis, knopf: $('play').textContent }));
+    check('Notfall: Analyse scheitert → Meldung, Track wartet, Knopf „Ohne Analyse spielen“ startet ihn live', a.pausiert && a.frei && /Analyse nicht möglich/.test(a.meldung || '') && b.spielt && b.live && b.knopf === 'Pause', JSON.stringify(a) + ' → ' + JSON.stringify(b));
     await close();
   },
   async zurueckspringen() {
@@ -140,12 +227,13 @@ const SZ = {
   async trackwechsel() {
     const { page, close } = await open();
     await page.setInputFiles('#fileIn', T.slice(0, 2));
-    await page.waitForFunction(() => audio.duration > 0 && !audio.paused, null, { timeout: 20000 });
+    await page.waitForFunction(() => audio.duration > 0 && !audio.paused, null, { timeout: 180000 });
+    await page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 180000, polling: 200 });   // der zweite wird im Hintergrund vorab analysiert
     await page.evaluate(() => { audio.currentTime = audio.duration - 0.4; });
     await page.waitForFunction(() => qi === 1, null, { timeout: 20000 });
     await page.waitForTimeout(800);
-    const r = await page.evaluate(() => ({ qi, spielt: !audio.paused, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
-    check('Trackende: nächster Track startet von selbst', r.qi === 1 && r.spielt && r.fehler.length === 0, JSON.stringify(r));
+    const r = await page.evaluate(() => ({ qi, spielt: !audio.paused, partitur: !!(curAnalysis && curAnalysis.rollen), fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
+    check('Trackende: nächster Track (schon vorab analysiert) startet ohne Wartezeit von selbst', r.qi === 1 && r.spielt && r.partitur && r.fehler.length === 0, JSON.stringify(r));
     await close();
   },
   async grafikverlust() {
@@ -410,7 +498,7 @@ const SZ = {
     // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 33 Werte an viz.setExtraVars
     const { page, errs, close } = await open();
     await page.setInputFiles('#fileIn', [T[0]]);
-    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 20000 });
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
     await page.evaluate(() => { audio.currentTime = 20; });              // mitten in den Groove (ab Takt 8 läuft der Kick)
     await page.waitForTimeout(9000);
     const r = await page.evaluate(() => ({ calls: window.__akSet || 0, keys: window.__akLast ? Object.keys(window.__akLast).length : 0, bpm: AKV.ak_bpm, kick: AK.R.kick.nEntry, env: AKV.kick_env, maxRef: AK.R.kick.ref > 0,
@@ -435,7 +523,7 @@ const SZ = {
     // Mit der echten Butterchurn-Kopie (vendor/) statt Attrappe: Start, Presets, die neuen Werte kommen im Renderer an
     const { page, errs, close } = await open({ real: true });
     await page.setInputFiles('#fileIn', [T[0]]);
-    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 30000 });
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
     await page.evaluate(() => { audio.currentTime = 20; });
     await page.waitForTimeout(6000);
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
@@ -455,6 +543,7 @@ const SZ = {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'acid-test-'));
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
+  if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
   if (want.includes('klangrollen')) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,

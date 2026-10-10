@@ -22,7 +22,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - Alle gespeicherten Einstellungen, Sterne, Sperren und Protokolle haben den Vorsatz `nmd:` (`KEY_NS` in `js/01-grundlagen.js`).
 - Beim allerersten Start werden Acids Sterne und vermessene Presets einmal **gelesen** und kopiert. Acids Speicher bleibt unberührt.
   Später lassen sich Sterne mit „Sichern/Laden“ zwischen beiden Apps austauschen (gleiches Dateiformat).
-- Offline-Speicher heißt `nmd-<Build>`, Hänger-Wächter-Datenbank `nmd-wd`. Beim Aufräumen werden nur eigene `nmd-`-Speicher gelöscht.
+- Offline-Speicher heißt `nmd-<Build>`, Hänger-Wächter-Datenbank `nmd-wd`, Partitur-Speicher `nmd-partitur`. Beim Aufräumen werden nur eigene `nmd-`-Speicher gelöscht.
 - Name auf dem Home-Bildschirm: „New Milkdrop“ (Acid: „Acid“).
 
 ## Dateien
@@ -33,11 +33,30 @@ new-milkdrop- nie etwas von Acid verändert:
 - `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js` und `butterchurnPresetsExtra.min.js` (unverändert), Lizenz.
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
+- `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
 - `acid-shader.js`, `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: eigene Shader, die 5 eigenen Acid-Presets, vermessene Presets.
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
+
+## Partitur: Tracks werden vorher ganz analysiert (ab Build 102)
+
+- Ein geladener Track spielt **erst, wenn seine Analyse fertig ist** (Scan + Partitur). Bis dahin ist Play gesperrt („Analyse …“),
+  die Leiste zeigt „Analyse xx %“, das Bild läuft ohne Musik weiter. Danach startet er wie bisher von selbst (iPhone: falls der
+  Browser das nicht erlaubt, steht „Analyse fertig. Tippe auf Play.“ da).
+- Alle Tracks der Liste werden direkt nacheinander analysiert: der laufende, dann der nächste, dann der Rest. Springt man auf einen
+  noch nicht fertigen Track, unterbricht die laufende Analyse eines anderen Tracks und kommt später neu dran. Der dekodierte Ton wird
+  nach der Analyse sofort freigegeben, übrig bleibt nur die kleine Partitur.
+- **Partitur** = bisheriger Scan (Tempo, Raster, Abschnitte, Drops, Klangbild, Klangmesser) + Klangrollen pro Takt: die Analyse aus
+  `js/08b-klangrollen.js` läuft einmal offline über den ganzen Track (gleiches Spektrum wie live, 60 Bilder/s); pro Takt bleiben die
+  mittleren Werte von Kick, Acid, Hats, Pads, Filteröffnung, Filtertempo, Neuheit und welche Rolle NEU einsetzt (`curAnalysis.rollen`,
+  Lesen mit `ptRolle(A, takt, 'kick')`).
+- Gespeichert in IndexedDB `nmd-partitur` (Schlüssel: Dateiname, Größe, Änderungsdatum, Analyse-Version `PARTITUR_V`). Dieselbe Datei
+  später wieder geladen: „Partitur aus Speicher“, Start ohne Wartezeit. Aufräumen: höchstens 200 Tracks bzw. 50 MB, die am längsten
+  unbenutzten zuerst; Einträge alter Analyse-Versionen sofort.
+- Notfall: scheitert die Analyse (Datei nicht lesbar, über 15 Minuten, zu wenig Speicher), kommt eine Meldung und Play heißt
+  „Ohne Analyse spielen“: ein Tipp spielt den Track, das Bild reagiert dann nur live.
 
 ## Klangrollen: die neuen Variablen
 
@@ -91,7 +110,8 @@ Läuft bei jedem Push als GitHub-Aktion (`.github/workflows/pruefen.yml`). Von H
 - Im Browser (Chromium über Playwright, ohne Internet):
   `PLAYWRIGHT_MODULE=… CHROMIUM_PATH=… node test/browser.js [Szenario,...]`: alle Acid-Prüfungen (Start, Bedienung, Shader, Scan, Offline,
   Notaus, Hänger-Wächter, Lastbremse …) und neu `klangrollen` (künstliche Tracks aus `test/gen-track.js`: Kick durchgehend, Kick-Lücke,
-  neue 303, voll gegen halb laut), `klangrollenLive` und `echtbutterchurn` (mit der echten Kopie statt Attrappe).
+  neue 303, voll gegen halb laut), `klangrollenLive`, `echtbutterchurn` (mit der echten Kopie statt Attrappe) und ab Build 102
+  `startsperre`, `speicher`, `notfall` (Partitur: erst analysieren, dann spielen; Speicher und Aufräumen; Analyse scheitert).
 - `node test/butterchurn-regression.js`: alle 245 Presets mit dem Original und mit der Kopie zeichnen und die Pixel vergleichen (dauert etwa 8 Minuten).
 
 Geprüft wird in einer Sandbox mit Software-Grafik. Ob es auf dem Handy flüssig läuft (60 fps auf dem iPhone 15 Pro), zeigt nur ein echter Lauf:
