@@ -157,20 +157,28 @@ async function probe(browser) {
   // Vorprüfung: das Original ist mit dem festen Zufall reproduzierbar (sonst sagt der Vergleich nichts)
   const rep = []; for (const n of names.slice(0, 3)) { const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'orig', n); rep.push(a.h.join() === b.h.join()); }
   check('Vorprüfung: Original zweimal gezeichnet = bit-gleich (fester Zufall wirkt), 3 von 3', rep.every(Boolean), JSON.stringify(rep));
-  const JOBS = +process.env.JOBS || 4, diff = [], shaderNew = [], errsNew = [], seen = new Set(); let same = 0, idx = 0, done = 0;
+  const JOBS = +process.env.JOBS || 4, diff = [], wackel = [], shaderNew = [], errsNew = [], seen = new Set(); let same = 0, idx = 0, done = 0;
   const worker = async () => {
     while (idx < names.length) {
       const n = names[idx++];
       const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'copy', n, EXTRA);
       seen.add(a.h[1]);
-      if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++; else diff.push({ n, orig: a.h, kopie: b.h, eo: a.err, ek: b.err });
+      if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
+      else {
+        // Abweichung: zeichnet das ORIGINAL dieses Preset überhaupt jedes Mal gleich? Wenn nicht (gesehen bei „Magellan's Nebula“: Original jedes Mal anders,
+        // Kopie immer gleich), lässt sich nichts vergleichen. Dann zählt es als „Original wackelt“, nicht als Fehler der Kopie.
+        const a2 = await runOne(browser, 'orig', n);
+        if (a2.h.join() !== a.h.join()) wackel.push({ n, orig: [a.h, a2.h], kopie: b.h });
+        else diff.push({ n, orig: a.h, kopie: b.h, eo: a.err, ek: b.err });
+      }
       if ((b.warp !== 'ok' && a.warp === 'ok') || (b.comp !== 'ok' && a.comp === 'ok')) shaderNew.push({ n, warp: b.warp, comp: b.comp });
       if (b.pageErr && !a.pageErr) errsNew.push({ n, e: b.pageErr });
       if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)');
     }
   };
   await Promise.all(Array.from({ length: JOBS }, worker));
-  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich', same === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)));
+  if (wackel.length) console.log('       (Info) Original zeichnet nicht jedes Mal gleich, darum nicht vergleichbar: ' + wackel.map(w => w.n + ' (Original ' + w.orig.map(h => h.join('/')).join(' bzw. ') + ', Kopie ' + w.kopie.join('/') + ')').join(' · '));
+  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 3, die schon das Original nicht wiederholbar zeichnet)', diff.length === 0 && wackel.length <= 3 && same + wackel.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length);
   check('Der Vergleich sieht etwas: die Presets ergeben verschiedene Bilder (mindestens 90 % verschiedene Prüfsummen)', seen.size >= 0.9 * names.length, seen.size + ' verschiedene bei ' + names.length);
   check('Shader: kein Warp- oder Comp-Shader schlägt mit der neuen Kopfzeile fehl, der im Original klappt', shaderNew.length === 0, JSON.stringify(shaderNew.slice(0, 5)));
   check('Keine neuen Seitenfehler mit der Kopie', errsNew.length === 0, JSON.stringify(errsNew.slice(0, 5)));
