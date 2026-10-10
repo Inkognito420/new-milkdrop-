@@ -294,7 +294,8 @@ const SZ = {
   },
   async fehlermeldungen() {
     const { page, close } = await open();
-    await page.setInputFiles('#fileIn', [T[0]]); await page.waitForTimeout(1500);
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => curAnalysis && !audio.paused, null, { timeout: 180000, polling: 200 });   // ab Build 102 startet der Track erst nach der Analyse
     const r = await page.evaluate(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
       reactive.update = () => { throw new Error('Test-Fehler A'); }; await wait(800);
