@@ -22,6 +22,7 @@ const SZCFG = {
   panSmoothMs: 120,         // Glättung der Position für das Bild (flackerfrei)
   panSlew: 5,               // größte Änderung der (normierten) Position pro Sekunde, unabhängig von der Bildrate: ein voller Seitenwechsel dauert mindestens 0,4 s,
                             // darum werden sehr schnelle Wechsel (Sechzehntel) zu einem sanften Schimmern statt Flackern (1,3 % × 5 = 6,5 % pro Sekunde)
+  moveMin: 0.2, moveFull: 0.5,   // größter |ak_pan| der letzten Sekunden: darunter keine Raum-Bewegung, ab moveFull volle
   widthDead: 0.12,          // Breite unter diesem Wert zählt als Mono (Test-Track mit leicht gepanntem Rauschen: Breite 0,07-0,1)
   actMs: 900,               // so langsam geht die Ebene „Raum“ an und aus
   xMaxPct: 1.3,             // größte Verschiebung (Prozent der Bildbreite)
@@ -51,8 +52,12 @@ function szFrame(dt) {
   { const tgt = ems(SZ.panS, Math.max(-1, Math.min(1, V.ak_pan / SZ.panMax)), SZCFG.panSmoothMs), mxStep = SZCFG.panSlew * dt;
     SZ.panS += Math.max(-mxStep, Math.min(mxStep, tgt - SZ.panS)); }
   SZ.speedS = ems(SZ.speedS, V.ak_pan_speed, SZCFG.actMs); SZ.widthS = ems(SZ.widthS, V.ak_width, SZCFG.actMs);
+  SZ.panRaw = Math.max(Math.abs(V.ak_pan), (SZ.panRaw || 0) * Math.exp(-dt / SZCFG.panMaxFloorSec));
+  // Build 106 (iPhone-Protokoll: Raum Ø 0,97 bei einem breiten, aber mittigen Track ohne Ping-Pong, Breite 0,75, Wechsel-Tempo 0): aktiv wird die Ebene nur, wenn die Position
+  // wirklich ausschlägt (größter Ausschlag der letzten Sekunden über moveMin, voll ab moveFull). Breite allein genügt nicht.
+  const move = Math.max(0, Math.min(1, (SZ.panRaw - SZCFG.moveMin) / (SZCFG.moveFull - SZCFG.moveMin)));
   const wd = Math.max(0, SZ.widthS - SZCFG.widthDead) / (1 - SZCFG.widthDead);
-  const want = Math.min(1, 1.5 * wd + SZ.speedS) * (V.ak_pan_speed > 0.02 || SZ.act > 0.05 ? 1 : 0.4);   // nur Breite allein zählt weniger als wirkliche Bewegung
+  const want = move * (0.5 + 0.5 * Math.min(1, 4 * SZ.speedS + 1.5 * wd));
   SZ.act = ems(SZ.act, szActive() ? want : 0, SZCFG.actMs);
   const g = SZ.gain.raum * SZ.act;
   SZ.x = SZ.panS * SZCFG.xMaxPct * g; SZ.skew = SZ.panS * SZCFG.skewMaxDeg * g;
@@ -84,7 +89,8 @@ window.szHats = () => {                                                         
 };
 window.szDropWucht = () => {                                                        // js/12b mxDrop: Wucht des Drops
   if (!szActive() || SZ.gain.dirigent <= 0 || !szScan()) return 1;
-  const s = AKV.ak_drop_strength, w = SZCFG.dropWuchtMin + (SZCFG.dropWuchtMax - SZCFG.dropWuchtMin) * s;
+  const s = AKV.ak_drop_strength; if (s <= 0) return 1;                            // keine Stärke bekannt (z. B. erster Kick nach dem Intro): Wucht wie vorher
+  const w = SZCFG.dropWuchtMin + (SZCFG.dropWuchtMax - SZCFG.dropWuchtMin) * s;
   SZ.st.drops++; return 1 + (w - 1) * Math.min(1.5, SZ.gain.dirigent);
 };
 window.szBuild = () => szActive() && SZ.gain.dirigent > 0 && szScan() ? Math.min(1, AKV.ak_build_strength * SZ.gain.dirigent) : -1;   // js/12 scanFrame: -1 = alte Regel (8 Takte)

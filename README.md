@@ -70,7 +70,7 @@ new-milkdrop- nie etwas von Acid verändert:
 
 Jede Klangrolle bekommt genau EINE Bildebene, wie Kanäle am Mischpult. Läuft über den Schalter „Mischpult“ (aus = alte Effekte). In der Werkstatt
 gibt es die Gruppe „Schaltzentrale“ mit vier Reglern (0 = aus, 100 % normal, bis 150 %; gespeichert unter `nmd:sz-gain`).
-- **Raum (Stereo):** `ak_pan` schiebt das Bild bis 1,3 % nach links/rechts und verzieht es bis 1° (`skewX`), `ak_pan_speed` und `ak_width` bestimmen, wie stark. Die Position wird auf ihr
+- **Raum (Stereo):** aktiv nur bei echter Wanderung (größter Ausschlag von `ak_pan` über 0,2, voll ab 0,5); Breite allein genügt nicht. `ak_pan` schiebt das Bild bis 1,3 % nach links/rechts und verzieht es bis 1° (`skewX`), `ak_pan_speed` und `ak_width` bestimmen, wie stark. Die Position wird auf ihr
   gleitendes Maximum bezogen (live erreicht sie nur ca. ±0,5) und hart in der Änderungsgeschwindigkeit begrenzt (`SZCFG.panSlew`): sehr schnelles Ping-Pong wird zum sanften Schimmern,
   nichts flackert. Ohne Stereo-Bewegung bleibt das alte Schwanken im Takt.
 - **Pads (Farbe):** Farbton gleitet (Tempo = `pads_env`), `pads_pitch` steuert Helligkeit und Sättigung (tief = düster und satt, hoch = hell und leuchtend), `pads_entry` = weicher Farbwechsel.
@@ -90,7 +90,8 @@ Bisher läuft das an Butterchurn vorbei: `bass`, `mid`, `treb` und „Instrument
 Rollen und Frequenzbereiche: **kick** 40–120 Hz · **acid** 300–3000 Hz (nur, wo sich der Klang bewegt, wie bei einer 303) ·
 **hats** 6–16 kHz · **pads** 150–1500 Hz (je Frequenz nur, was mindestens 0,5 s durchgehend klingt, also gehaltene Akkorde und Flächen, nicht die 303; über etwa 1 s geglättet, Kick-Schläge ausgeblendet).
 Der Kick zählt nur bei echten Schlägen (steiler Anstieg), nicht bei tiefem Bass im selben Band. Ab Build 104 zählt er mit Scan außerdem nur
-auf den Schlägen des Rasters (rollende Basslines zwischen den Kicks zählten vorher mit). Ab Build 105 wird auch Stereo gemessen (`akStereoStats`: Links und Rechts getrennt, ab 500 Hz; Mono-Quellen und das Mikrofon geben Position 0).
+auf den Schlägen des Rasters (rollende Basslines zwischen den Kicks zählten vorher mit). Ab Build 107 zählt das Pads-Band erst ab 300 Hz (gehaltene Basstöne und ihre Obertöne zählten vorher mit, iPhone-Protokoll: Pads fast immer 50–90 %) und ein Ton muss 0,75 s stehen bleiben.
+Ab Build 105 wird auch Stereo gemessen (`akStereoStats`: Links und Rechts getrennt, ab 500 Hz; Mono-Quellen und das Mikrofon geben Position 0).
 Pads zählen ab Build 104 nur, soweit der Klang im
 Pads-Bereich wirklich gehalten ist („Gehaltenheit“, `AKCFG.padHeld`); vorher ergab jeder gleichmäßige Klangteppich etwa 0,8.
 
@@ -118,7 +119,7 @@ Pads-Bereich wirklich gehalten ist („Gehaltenheit“, `AKCFG.padHeld`); vorher
 | `ak_pan_speed` | wie schnell die Position die Seite wechselt: 0 = steht, 0,25 = ein Wechsel pro Schlag, 0,5 = zwei, 1 = jede Sechzehntel | 0–1 |
 | `ak_width` | Breite des Stereobilds in den Mitten und Höhen: 0 = Mono, 1 = sehr breit | 0–1 |
 | `ak_build_strength` | gemessener Aufbau vor dem nächsten Drop (Aufbau-Detektor, nur mit Scan) | 0–1 |
-| `ak_drop_strength` | Stärke des laufenden Drops (lange Pause und großer Aufbau = stark), 0 sobald die nächste Pause beginnt; nur mit Scan | 0–1 |
+| `ak_drop_strength` | Stärke des nächsten Drops ab Beginn seiner Pause (lange Pause und großer Aufbau = stark), nach dem Drop bleibt sie bis zur nächsten Pause stehen; nur mit Scan | 0–1 |
 
 Abschnitte: **Break**, wenn der Kick mindestens 1 Takt fehlt. **Build-up**, wenn danach (frühestens 2 Takte im Break) Hi-Hats oder Acid
 anwachsen oder sich der Klang stark ändert und der Kick weiter fehlt. **Drop**, wenn der Kick nach mindestens 4 Takten Break zurückkommt
