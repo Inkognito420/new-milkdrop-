@@ -345,8 +345,8 @@ const SZ = {
       const src = oc.createBufferSource(); src.buffer = ab; const g = oc.createGain(); g.gain.value = gain;
       const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
       src.connect(g); g.connect(an); an.connect(oc.destination);
-      const S = akCreate(sr, AKCFG.fftSize); S.events = [];
-      const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
+      const S = akCreate(sr, AKCFG.fftSize); S.events = []; S.hits = [];
+      const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, rel = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
       let ms = 0, msMax = 0, n = 0, lastT = 0;
       const N = Math.floor((ab.duration - 0.05) * 60);
       for (let i = 1; i <= N; i++) {
@@ -355,14 +355,19 @@ const SZ = {
           an.getFloatFrequencyData(spec);
           const t = ts * 1000, a = performance.now(); S.step(spec, t, lastT ? t - lastT : 16.7, null); const d = performance.now() - a; lastT = t;
           ms += d; if (d > msMax) msMax = d; n++;
-          for (const r in env) env[r].push(+S.out[r + '_env'].toFixed(4)); sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
+          for (const r in env) { env[r].push(+S.out[r + '_env'].toFixed(4)); rel[r].push(S.totRef > 0 ? S.R[r].x / S.totRef : 0); } sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
           oc.resume();
         });
       }
       src.start(0); await oc.startRendering();
-      return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, sec, bpm, ms: ms / n, msMax, n };
+      return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, rel, sec, bpm, hits: S.hits, ms: ms / n, msMax, n };
     }, [PREFIX + '__tmp/' + name + '.wav', gain]);
     const barT = (P, b) => P.bar0 + b * P.barS, beatS = PT.kickDurch.barS / 4;
+    // Diagnose (KR_DIAG=1): pro Takt Mittelwert von env und Anteil am Gesamtpegel je Rolle
+    const diag = (name, R, P) => { if (!process.env.KR_DIAG) return; console.log('       DIAG ' + name + ' (Takt: env k/a/h/p · Anteil k/a/h/p)');
+      const nb = Math.floor((R.env.kick.length / 60 - P.bar0) / P.barS);
+      for (let b = 0; b < nb; b++) { const i0 = Math.round((P.bar0 + b * P.barS) * 60), i1 = Math.round((P.bar0 + (b + 1) * P.barS) * 60), m = a => { let x = 0; for (let i = i0; i < i1; i++) x += a[i] || 0; return (x / (i1 - i0)).toFixed(3); };
+        console.log('         ' + String(b).padStart(2) + '  ' + ['kick', 'acid', 'hats', 'pads'].map(r => m(R.env[r])).join(' ') + '  ·  ' + ['kick', 'acid', 'hats', 'pads'].map(r => m(R.rel[r])).join(' ')); } };
 
     // 1) Durchgehender Kick: kick_entry nur einmal am Anfang
     const a = await run('kickDurch', 1), ke = a.events.filter(e => e.k === 'entry' && e.r === 'kick');
@@ -370,17 +375,22 @@ const SZ = {
     const bpmEnd = a.bpm[a.bpm.length - 1];
     check('Klangrollen: Tempo erkannt (140 BPM ± 1), Abschnitt bleibt groove', Math.abs(bpmEnd - 140) <= 1 && a.sec.slice(120).every(x => x === 0), 'BPM ' + bpmEnd + ' · Abschnitte ' + JSON.stringify(a.events.filter(e => e.k === 'section')));
     // 2) Kick fehlt einen Takt (Takt 8): break spätestens am Ende des Takts + 1 Schlag, danach wieder groove (kurze Lücke, kein drop)
+    if (process.env.KR_DIAG) { const bb = await run('kickLuecke', 1), B8_ = barT(PT.kickLuecke, 8); console.log('       DIAG Kick-Treffer [t, Anstieg, Stärke] um die Lücke (Takt 8 ab ' + B8_.toFixed(2) + ' s): ' + JSON.stringify(bb.hits.filter(h => h[0] > B8_ - 3 && h[0] < B8_ + 5))); const rs = a.hits.slice(20).map(h => h[1]).sort((x, y) => x - y); console.log('       DIAG Anstieg bei durchgehendem Kick: 5% ' + rs[Math.floor(rs.length * 0.05)] + ' · Median ' + rs[rs.length >> 1] + ' · n ' + rs.length); }
     const b = await run('kickLuecke', 1), bs = b.events.filter(e => e.k === 'section');
     const B8 = barT(PT.kickLuecke, 8), brk = bs.find(e => e.r === 'break'), back = brk && bs.find(e => e.t > brk.t);
     check('Klangrollen 2: Kick fehlt 1 Takt: ak_section wird 1 (break) bis Ende des Takts + 1 Schlag, danach wieder 0 (kein drop)',
       brk && brk.t >= B8 && brk.t <= B8 + 5 * beatS && back && back.r === 'groove' && back.t <= B8 + 6 * beatS && b.sec[b.sec.length - 1] === 0 && !bs.some(e => e.r === 'drop'),
       'Takt 8 beginnt bei ' + B8.toFixed(2) + ' s, Abschnitte: ' + JSON.stringify(bs));
     // 3) Acid fehlt Takt 8-9 und kommt in Takt 10 wieder: acid_entry innerhalb 1 Takt
-    const c = await run('acidNeu', 1), ae = c.events.filter(e => e.k === 'entry' && e.r === 'acid'), B10 = barT(PT.acidNeu, 10);
+    const c = await run('acidNeu', 1); diag('acidNeu (Acid 0-7, 10-19; Pad 14-19)', c, PT.acidNeu); const ae = c.events.filter(e => e.k === 'entry' && e.r === 'acid'), B10 = barT(PT.acidNeu, 10);
     check('Klangrollen 3: neue 303 nach 2 Takten Pause: acid_entry innerhalb 1 Takt', ae.some(e => e.t >= B10 && e.t <= B10 + PT.acidNeu.barS), 'Takt 10 bei ' + B10.toFixed(2) + ' s, acid_entry: ' + JSON.stringify(ae));
     check('Klangrollen 3: kein falsches acid_entry, solange die 303 durchläuft', ae.filter(e => e.t > barT(PT.acidNeu, 1) && e.t < B10).length === 0, JSON.stringify(ae));
     const pe = c.events.filter(e => e.k === 'entry' && e.r === 'pads'), B14 = barT(PT.acidNeu, 14);
-    console.log('       (Info) Pad-Akkord ab Takt 14 (' + B14.toFixed(2) + ' s): pads_entry ' + JSON.stringify(pe) + ' · alle Einsätze: ' + JSON.stringify(c.events.filter(e => e.k === 'entry')));
+    const barMean = (R, P, r, b0, b1) => { const i0 = Math.round(barT(P, b0) * 60), i1 = Math.round(barT(P, b1) * 60); let x = 0; for (let i = i0; i < i1; i++) x += R.env[r][i]; return x / (i1 - i0); };
+    const padOhne = barMean(c, PT.acidNeu, 'pads', 1, 14), padMit = barMean(c, PT.acidNeu, 'pads', 15, 20);
+    check('Klangrollen 5: Pads trennen sich von der 303: ohne Pad (Takt 1-13, nur 303/Kick/Hats) pads_env im Mittel unter 0,25, mit Pad (Takt 15-19) über 0,6',
+      padOhne < 0.25 && padMit > 0.6, 'ohne ' + padOhne.toFixed(3) + ' · mit ' + padMit.toFixed(3));
+    check('Klangrollen 5: pads_entry erst, wenn das Pad kommt (innerhalb 2 Takte ab Takt 14), vorher nicht', pe.length >= 1 && pe[0].t >= B14 && pe[0].t <= B14 + 2 * PT.acidNeu.barS, JSON.stringify(pe));
     // 4) Lautstärke: derselbe Track voll und halb so laut: nach den ersten 30 s höchstens 10 % Unterschied in den env-Werten
     await page.evaluate(() => 0);
     const full = await run('t1', 1), half = await run('t1', 0.5), from = 30 * 60, diffs = {};
@@ -407,6 +417,17 @@ const SZ = {
       ms: akN ? akMs / akN : null, fehler: LOG.filter(l => l.k === 'x').map(l => l.x), dbg: !!$('akDbgBtn') }));
     check('Klangrollen live: setExtraVars bekommt jedes Bild alle 33 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 33 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     const d = await page.evaluate(async () => { $('fineBtn').click(); $('werkBtn').click(); $('akDbgBtn').click(); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', schalter: document.querySelectorAll('#werk button[id^="t-"]').length }; });
+    // Mit Scan kommt der Abschnitt aus dem Scan: in einen Break und an einen Drop-Anfang springen
+    await page.waitForFunction(() => curAnalysis && curAnalysis.beatS && scanActive(), null, { timeout: 120000, polling: 200 });
+    const sc = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), S = curAnalysis.sections, out = {};
+      for (const [ty, want] of [['break', 1], ['drop', 3], ['groove', 0]]) {
+        const s = S.find(x => x.type === ty && x.t1 - x.t0 > 4); if (!s) { out[ty] = 'fehlt'; continue; }
+        audio.currentTime = s.t0 + 0.6; await w(900); out[ty] = { erwartet: want, ak_section: AKV.ak_section, phrase: +AKV.ak_phrase.toFixed(3) };
+      }
+      return out;
+    });
+    check('Klangrollen mit Scan: ak_section folgt dem Scan (break 1, drop 3, groove 0), Phrase zählt ab Abschnittsbeginn', ['break', 'drop', 'groove'].every(k => sc[k] && sc[k].ak_section === sc[k].erwartet && sc[k].phrase < 0.1), JSON.stringify(sc));
     check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
     await close();
   },

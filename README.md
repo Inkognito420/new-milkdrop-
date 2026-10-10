@@ -47,7 +47,8 @@ Die Namen legt **eine** Stelle fest: `AK_VAR_NAMES` in `vendor/butterchurn/butte
 Bisher läuft das an Butterchurn vorbei: `bass`, `mid`, `treb` und „Instrumente hören“ aus Acid bleiben genau wie vorher.
 
 Rollen und Frequenzbereiche: **kick** 40–120 Hz · **acid** 300–3000 Hz (nur, wo sich der Klang bewegt, wie bei einer 303) ·
-**hats** 6–16 kHz · **pads** 150–1500 Hz (nur die langsamen, gleichmäßigen Anteile, über etwa 1 s geglättet, Kick-Schläge ausgeblendet).
+**hats** 6–16 kHz · **pads** 150–1500 Hz (je Frequenz nur, was mindestens 0,5 s durchgehend klingt, also gehaltene Akkorde und Flächen, nicht die 303; über etwa 1 s geglättet, Kick-Schläge ausgeblendet).
+Der Kick zählt nur bei echten Schlägen (steiler Anstieg), nicht bei tiefem Bass im selben Band.
 
 | Variable (R = kick, acid, hats, pads) | Bedeutung | Bereich |
 |---|---|---|
@@ -69,8 +70,9 @@ Rollen und Frequenzbereiche: **kick** 40–120 Hz · **acid** 300–3000 Hz (nur
 
 Abschnitte: **Break**, wenn der Kick mindestens 1 Takt fehlt. **Build-up**, wenn danach (frühestens 2 Takte im Break) Hi-Hats oder Acid
 anwachsen oder sich der Klang stark ändert und der Kick weiter fehlt. **Drop**, wenn der Kick nach mindestens 4 Takten Break zurückkommt
-(bei kürzerer Lücke: Groove). Der Drop hält 8 Takte, dann Groove. Liegt ein Scan des Tracks vor, kommen Tempo, Schlag, Takt und Phrase
-aus dem Scan. Alle Zahlen (Bänder, Schwellen, Takte, Rauschboden, Tempo-Bereich …) stehen mit Erklärung im Objekt **`AKCFG`** oben in
+(bei kürzerer Lücke: Groove). Der Drop hält 8 Takte, dann Groove. Liegt ein Scan des Tracks vor, kommen Tempo, Schlag, Takt, Phrase
+**und der Abschnitt** aus dem Scan (der kennt den ganzen Track und war auf dem iPhone zuverlässiger). Die Regeln oben gelten dann fürs Mikrofon
+und bis der Scan fertig ist. Jede Minute mit Musik steht eine Zeile „Klangrollen-Messung“ im Protokoll (Mittel und Maximum je Rolle, Einsätze, Abschnitte). Alle Zahlen (Bänder, Schwellen, Takte, Rauschboden, Tempo-Bereich …) stehen mit Erklärung im Objekt **`AKCFG`** oben in
 `js/08b-klangrollen.js`.
 
 **Zum Prüfen:** In „Mehr“ → „Werkstatt“ → „Anzeige“ gibt es den Knopf **„Klangrollen-Anzeige“** (oder `?debug` an die Adresse hängen).
