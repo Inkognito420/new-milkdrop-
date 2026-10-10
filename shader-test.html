@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="icon-192.png" type="image/png">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shader-Test</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;font:14px system-ui;overflow:hidden}
+  canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #bar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:6px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:#000a}
+  button{padding:10px 12px;border:0;border-radius:8px;background:#333;color:#fff;font-size:14px}
+  button.on{background:#c0f}
+  button.mode{background:#0a6}
+  button.mode.alt{background:#a40}
+  #info{position:fixed;top:calc(6px + env(safe-area-inset-top));left:8px;right:8px;font-size:13px;line-height:1.35;white-space:pre-wrap;text-shadow:0 0 4px #000,0 0 2px #000}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info"></div>
+<div id="bar"></div>
+<script src="acid-shader.js"></script>
+<script>
+// Modus: "neu" (Spar-Tricks an) oder "alt" (wie Build 30). Umschalten lädt die Seite neu,
+// damit jeder Modus frisch startet (sonst sieht man das Ruckeln beim ersten Wechsel nicht).
+var ALT = /[?&]alt\b/.test(location.search);
+var cv = document.getElementById('c'), bar = document.getElementById('bar'), info = document.getElementById('info');
+// Gleiche Größe wie im Visualizer: Bildschirm-Pixel, höchstens 2K an der langen Seite, davon die Hälfte
+function fit(){
+  var dpr = window.devicePixelRatio || 1, cw = innerWidth, ch = innerHeight;
+  var sc = Math.min(dpr, 2560 / Math.max(cw, ch)) * 0.5;
+  cv.width = Math.max(2, Math.round(cw * sc)); cv.height = Math.max(2, Math.round(ch * sc));
+}
+fit(); addEventListener('resize', fit);
+var pl = new AcidShaderPlayer(cv, { fast: !ALT });
+var warmMs = ALT ? 0 : pl.warmAll();       // neu: alle Shader gleich beim Laden vorbereiten
+
+var cur = ACID_SHADERS[0].id, worst = 0, worstShown = 0, lastMs = 0, frames = 0, t0 = performance.now(), fps = 0;
+var spike = '';            // Ruckler beim letzten Wechsel
+var run = null, results = [];
+window.__status = { errors: pl.errors, frames: 0, fps: 0, mode: ALT ? 'alt' : 'neu', results: results, warmMs: warmMs };
+
+var mb = document.createElement('button');
+mb.className = 'mode' + (ALT ? ' alt' : ''); mb.textContent = ALT ? 'Modus: ALT' : 'Modus: NEU';
+mb.onclick = function(){ location.search = ALT ? '' : '?alt'; };
+bar.appendChild(mb);
+var rb = document.createElement('button'); rb.textContent = 'Messlauf';
+rb.onclick = function(){ startRun(); };
+bar.appendChild(rb);
+ACID_SHADERS.forEach(function(s){
+  var b = document.createElement('button'); b.textContent = s.name;
+  b.onclick = function(){ run = null; select(s.id); };
+  b.id = 'b-' + s.id; bar.appendChild(b);
+});
+function nameOf(id){ for (var i = 0; i < ACID_SHADERS.length; i++) if (ACID_SHADERS[i].id === id) return ACID_SHADERS[i].name; return id; }
+function select(id){
+  var a = performance.now();
+  var ok = pl.use(id); cur = id;
+  pl.draw(state(a / 1000));         // gleich ein Bild zeichnen, damit die Zeit für den Wechsel stimmt
+  pl.gl.finish();
+  var ms = performance.now() - a;
+  spike = 'Wechsel: ' + Math.round(ms) + ' ms' + (ms > 34 ? '  ← Ruckler (' + Math.round(ms / 16.7) + ' Bilder weg)' : '');
+  [].forEach.call(bar.children, function(b){ if (b.id) b.className = (b.id === 'b-' + id) ? 'on' : ''; });
+  frames = 0; t0 = performance.now(); worst = 0;
+  if (!ok) spike = 'FEHLER ' + id + ': ' + pl.errors[id];
+}
+// Messlauf: jeder Shader 5 s, die ersten 1 s zählen nicht (Einschwingen)
+function startRun(){ results.length = 0; run = { i: 0, t: performance.now(), n: 0, worst: 0 }; select(ACID_SHADERS[0].id); }
+function runStep(ms, dt){
+  if (!run) return;
+  var el = ms - run.t;
+  if (el > 1000) { run.n++; if (dt > run.worst) run.worst = dt; }
+  if (el > 5000) {
+    results.push({ name: ACID_SHADERS[run.i].name, fps: Math.round(run.n * 1000 / (el - 1000)), worst: Math.round(run.worst) });
+    run.i++;
+    if (run.i >= ACID_SHADERS.length) { run = null; return; }
+    run.t = performance.now(); run.n = 0; run.worst = 0; select(ACID_SHADERS[run.i].id);
+  }
+}
+// künstlicher Takt: 140 BPM
+function state(t){
+  var bps = 140/60, ph = (t*bps) % 1, barph = (t*bps/4) % 1;
+  var beat = Math.pow(1 - ph, 3), bark = Math.pow(1 - barph, 4);
+  return { time:t, bass:0.4+0.5*beat, mid:0.5+0.4*Math.sin(t*0.9), treb:0.3+0.3*Math.sin(t*7.0),
+           beat:beat, bar:bark, build:Math.max(0, Math.sin(t*0.15)), hue:(t*0.02)%1, flash:1 };
+}
+select(cur);
+function frame(ms){
+  var dt = lastMs ? ms - lastMs : 16; lastMs = ms;
+  if (dt > worst) worst = dt;
+  pl.draw(state(ms/1000));
+  frames++; window.__status.frames = frames;
+  runStep(ms, dt);
+  if (ms - t0 > 1000){
+    fps = Math.round(frames*1000/(ms-t0)); window.__status.fps = fps; worstShown = Math.round(worst);
+    frames = 0; t0 = ms; worst = 0;
+  }
+  var txt = (ALT ? 'ALT (wie Build 30)' : 'NEU (Build 31)') + ' · ' + cv.width + '×' + cv.height + ' Pixel\n' +
+            (ALT ? '' : 'Alle vorbereitet in ' + Math.round(warmMs) + ' ms (beim Laden)\n') +
+            nameOf(cur) + ': ' + fps + ' fps · längstes Bild ' + worstShown + ' ms\n' + spike;
+  if (run) txt += '\nMesslauf ' + (run.i + 1) + '/' + ACID_SHADERS.length + ' …';
+  if (results.length) txt += '\n\nErgebnis ' + (ALT ? 'ALT' : 'NEU') + ':\n' + results.map(function(r){ return r.name + ': ' + r.fps + ' fps (längstes ' + r.worst + ' ms)'; }).join('\n');
+  if (info.textContent !== txt) info.textContent = txt;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

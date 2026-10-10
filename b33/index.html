@@ -1,0 +1,1926 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Acid Milkdrop · Build 33</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: full-bleed canvas, a slim mixer-strip overlay along the bottom that hides on tap */
+:root{
+  --bg:#000; --fg:#e9ecef; --dim:#8a9099; --panel:rgba(10,11,13,.78);
+  --line:rgba(233,236,239,.14); --acid:#c6f432; --warn:#ffb347;
+  --sec-intro:#3a3f46; --sec-groove:#6b7280; --sec-break:#3b82c4; --sec-build:#ff9f1c; --sec-drop:#c6f432; --sec-outro:#3a3f46;
+  --display:"Unbounded",system-ui,sans-serif; --mono:"Azeret Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--mono);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;background:#000;touch-action:none;transform-origin:50% 50%;will-change:transform}
+#sh{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#pname{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));max-width:62vw;text-align:right;font:500 11px/1.3 var(--mono);color:#fff;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;pointer-events:none;z-index:5;word-break:break-word;letter-spacing:.01em}
+#pname:empty,#pname.off{display:none}
+#hud{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(to top,var(--panel) 70%,transparent);display:flex;flex-direction:column;gap:10px;transition:opacity .35s}
+@media (orientation:landscape){#hud{max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}}
+#hud.off{opacity:0;pointer-events:none}
+button,select,input,#hud{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brand{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:.04em;margin-right:auto}
+.brand b{color:var(--acid)}
+button,select{font:600 12px var(--mono);color:var(--fg);background:rgba(255,255,255,.06);border:1px solid var(--line);
+  border-radius:6px;padding:9px 12px;min-height:38px;cursor:pointer}
+button:disabled{opacity:.4}
+button:focus-visible,select:focus-visible,a.btn:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
+button.hot{background:var(--acid);color:#111;border-color:var(--acid)}
+.stat{font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-variant-numeric:tabular-nums}
+.stat em{font-style:normal;color:var(--fg)}
+#preset,#track{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+#track em{font-style:normal;color:var(--fg)}
+#msg{font-size:12px;color:var(--warn)}
+#msg:empty{display:none}
+#intro{position:fixed;inset:0;display:grid;place-items:center;padding:24px 16px;text-align:center;pointer-events:none}
+#intro h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,8vw,64px);line-height:1;margin:0 0 12px;text-wrap:balance}
+#intro h1 span{color:var(--acid)}
+#intro p{margin:0 auto;max-width:38ch;color:var(--dim);font-size:13px;line-height:1.6}
+#drop{position:fixed;inset:0;display:grid;place-items:center;padding:24px 16px;background:rgba(0,0,0,.72);
+  border:3px dashed var(--acid);font-family:var(--display);font-weight:800;font-size:clamp(20px,6vw,40px);color:var(--acid);text-align:center;pointer-events:none}
+.beats{display:flex;gap:4px;align-items:center}
+.beats i{width:10px;height:10px;border-radius:2px;background:rgba(255,255,255,.12);transition:background .06s}
+.beats i.on{background:var(--acid)}
+.beats i.kick{box-shadow:0 0 0 2px rgba(198,244,50,.45)}
+#state{min-width:8ch}
+#timeline{position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
+#timeline span{position:absolute;top:0;bottom:0}
+#timeline .t-intro{background:var(--sec-intro)} #timeline .t-groove{background:var(--sec-groove)}
+#timeline .t-break{background:var(--sec-break)} #timeline .t-buildup{background:var(--sec-build)}
+#timeline .t-drop{background:var(--sec-drop)} #timeline .t-outro{background:var(--sec-outro)}
+#timeline #head{width:2px;background:#fff;box-shadow:0 0 6px #fff}
+[hidden]{display:none!important}
+#logbox{display:flex;flex-direction:column;gap:8px}
+#logpre{margin:0;max-height:34vh;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.55);
+  font:400 10px/1.45 var(--mono);color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+#logpre .a{color:var(--acid)} #logpre .r{color:#7cc4ff} #logpre .e{color:#ffb347} #logpre .x{color:#ff6b6b}
+#fine{display:flex;flex-direction:column;gap:10px;padding-top:4px;border-top:1px solid var(--line)}
+.slider{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.slider input{flex:1;min-width:0;accent-color:var(--acid);height:28px}
+.slider output{color:var(--fg);min-width:6ch;text-align:right;font-variant-numeric:tabular-nums}
+a.btn{font:600 12px var(--mono);color:#111;background:var(--acid);border:1px solid var(--acid);border-radius:6px;padding:9px 12px;min-height:38px;display:inline-flex;align-items:center;text-decoration:none}
+.note{font-size:11px;color:var(--dim);line-height:1.5}
+#mood{font-size:12px;color:var(--fg)}
+#linkTxt{-webkit-user-select:text;user-select:text;overflow-wrap:anywhere;min-width:0}
+@media (prefers-reduced-motion:reduce){#hud{transition:none}}
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+<canvas id="sh"></canvas>
+<canvas id="fx"></canvas>
+<div id="intro"><div><h1>ACID<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
+
+<div id="flash"></div>
+<div id="pname"></div>
+<div id="drop" hidden>Tracks hier loslassen</div>
+
+<div id="hud">
+  <div class="row">
+    <div class="brand">ACID <b>MILKDROP</b></div>
+    <span class="stat">FPS <em id="fps">–</em></span>
+    <span class="stat">RES <em id="res">–</em></span>
+    <span class="stat">HZ <em id="hz">–</em></span>
+    <span class="stat">BPM <em id="bpm">–</em></span>
+    <span class="beats" aria-label="Beat-Anzeige"><i></i><i></i><i></i><i></i></span>
+    <span class="stat"><em id="state">–</em></span>
+  </div>
+  <div id="timeline" hidden aria-label="Ablauf des Tracks"></div>
+  <div class="row">
+    <button id="addBtn" type="button" class="hot" aria-label="Tracks aus Dateien hinzufügen">＋ Tracks</button>
+    <input id="fileIn" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf,.ogg,.opus" hidden>
+    <button id="play" type="button" disabled>Play</button>
+    <button id="micBtn" type="button" aria-pressed="false" title="Auf den Ton aus der Umgebung reagieren (Mikrofon)">🎤 Mikro</button>
+    <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
+    <select id="quality" aria-label="Auflösung" hidden>
+      <option value="native">Nativ (Max)</option>
+      <option value="2k" selected>2K · 2560</option>
+      <option value="1080">1080p</option>
+      <option value="720">720p (Akku)</option>
+    </select>
+    <select id="color" aria-label="Farbdarstellung" hidden>
+      <option value="srgb">Farbe: Original</option>
+      <option value="p3">Farbe: P3 Vivid</option>
+      <option value="p3oled">Farbe: P3 + OLED-Schwarz</option>
+    </select>
+    <div id="track">Noch kein Track</div>
+  </div>
+  <div class="row">
+    <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
+    <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
+    <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
+    <button id="auto" type="button" class="hot" hidden>Auto</button>
+    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
+    <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Sound ⚙</button>
+    <div id="preset">–</div>
+  </div>
+  <div id="fine" hidden>
+    <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
+    <div class="row">
+      <button id="t-auto" type="button" class="hot">Auto-Pegel</button>
+      <button id="t-mood" type="button" class="hot">Stimmungs-Presets</button>
+      <button id="t-phrase" type="button" class="hot">Phrasen-Sync</button>
+      <button id="t-drop" type="button" class="hot">Drop-Cut</button>
+      <button id="t-build" type="button" class="hot">Build-up</button>
+      <button id="t-pulse" type="button" class="hot">Kick-Puls</button>
+      <button id="t-spark" type="button" class="hot">Hats &amp; Snares</button>
+      <button id="t-acid" type="button" class="hot">Acid-Farbe</button>
+      <button id="t-bar" type="button" class="hot" title="Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er">Takt-Farbe</button>
+      <button id="t-instr" type="button" class="hot" title="Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche: der Kick kommt taktgenau, Hats und Mitten flackern im Rhythmus. Zum Vergleichen aus- und einschalten.">Instrumente hören</button>
+      <button id="t-tune" type="button" class="hot" title="Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)">Reaktions-Angleich</button>
+      <button id="t-morph" type="button" class="hot" title="Beim Bildwechsel verformt sich das Bild kurz mit dem Klang">Übergangs-Verformung</button>
+      <button id="t-name" type="button" class="hot" title="Name des laufenden Presets oder Shaders oben rechts im Bild (auch bei ausgeblendeter Leiste, damit er auf Screenshots zu sehen ist)">Name oben rechts</button>
+      <button id="t-own" type="button" class="hot" title="Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt">Eigene Shader</button>
+    </div>
+    <div class="row">
+      <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
+      <label class="slider" for="latency">Latenz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
+    </div>
+    <div class="note" id="autoInfo"></div>
+    <div class="row">
+      <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
+      <button id="beepA" type="button">Testton 1</button>
+      <button id="beepB" type="button">Testton 2</button>
+    </div>
+    <div id="logbox" hidden>
+      <pre id="logpre"></pre>
+      <div class="row">
+        <button id="logSnap" type="button">Status jetzt</button>
+        <button id="logCopy" type="button">Kopieren</button>
+        <button id="logClear" type="button">Leeren</button>
+      </div>
+    </div>
+    <div class="note">Latenz: Lautsprecher am Kabel 0 ms, Bluetooth-Box oder AirPods etwa 150–250 ms. Stell so ein, dass der Puls genau mit dem Kick kommt, den du hörst. Die Stimmungs-Presets lernen mit: Jedes Preset wird beim Laufen vermessen und gemerkt.</div>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<audio id="audio" playsinline preload="auto"></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
+<script src="audio-reactive-controller.js"></script>
+<script src="adaptive-preset-blender.js"></script>
+<script src="acid-presets.js"></script>
+<script src="acid-profile.js"></script>
+<script src="acid-shader.js"></script>
+<script>
+// ===== Track-Analyse (reine Rechenfunktion, ohne Browser-Abhängigkeiten) =====
+// env: {low, m1, m2, hi, full} als Float32Arrays mit RMS pro Frame, hopS: Sekunden pro Frame
+function analyzeEnvelopes(env, hopS) {
+  const N = env.full.length;
+  const clamp = v => Math.max(0, Math.min(1, v));
+  const mean = (a, s = 0, e = a.length) => { let x = 0; for (let i = s; i < e; i++) x += a[i]; return e > s ? x / (e - s) : 0; };
+
+  // Kick-Onsets aus dem Bassband
+  const o = new Float32Array(N);
+  for (let i = 1; i < N; i++) o[i] = Math.max(0, env.low[i] - env.low[i - 1]);
+
+  // Tempo: Raster mit der stärksten Kick-Übereinstimmung, 100–200 BPM
+  let best = -1, bpm = 140, phase = 0;
+  for (let b = 100; b <= 200; b += 0.25) {
+    const P = 60 / b / hopS;
+    let sc = -1, ph = 0;
+    for (let p = 0; p < P; p += P / 16) {
+      let s = 0, c = 0;
+      for (let x = p; x < N - 1; x += P) { const i = Math.round(x); s += o[i] + 0.5 * ((i > 0 ? o[i - 1] : 0) + o[i + 1]); c++; }
+      s /= Math.max(1, c);
+      if (s > sc) { sc = s; ph = p; }
+    }
+    const w = 1 + 0.08 * Math.exp(-(((b - 140) / 25) ** 2));
+    if (sc * w > best) { best = sc * w; bpm = b; phase = ph; }
+  }
+  // Phase fein nachziehen
+  let Pf = 60 / bpm / hopS;
+  let bestPh = phase, bestS = -1;
+  for (let p = phase - Pf / 16; p <= phase + Pf / 16; p += 0.25) {
+    let s = 0; for (let x = p; x < N - 1; x += Pf) { const i = Math.round(x); if (i >= 0) s += o[i]; }
+    if (s > bestS) { bestS = s; bestPh = p; }
+  }
+  phase = ((bestPh % Pf) + Pf) % Pf;
+
+  // Feinabgleich: jeden Kick einzeln im 6-ms-Raster suchen und eine Gerade durch alle legen.
+  // Ergebnis: Tempo auf ca. 0,01 BPM genau, das Raster driftet bis zum Track-Ende nicht weg.
+  if (env.lowF && env.lowF.length > 64) {
+    const q = env.lowF.length / N, L = env.lowF.length, of = new Float32Array(L), Pf0 = Pf;
+    for (let i = 1; i < L; i++) of[i] = Math.max(0, env.lowF[i] - env.lowF[i - 1]);
+    // Startfenster: die 32 Schläge mit dem stärksten Kick; dann Fenster verdoppeln, bis der ganze Track drin ist
+    const K0 = Math.floor((L - 2 - phase * q) / (Pf * q));
+    let c0 = 0, cBest = -1;
+    for (let k = 0; k + 32 <= K0; k += 8) {
+      let e = 0; for (let j = k; j < k + 32; j++) { const i = Math.round(phase + j * Pf); if (i > 0 && i < N) e += o[i]; }
+      if (e > cBest) { cBest = e; c0 = k + 16; }
+    }
+    for (let span = 32, it = 0; it < 14; it++, span = Math.min(span * 2, 2 * K0 + 2)) {
+      const P4 = Pf * q, ph4 = phase * q, win = P4 * 0.12, pk = [];
+      const kLo = Math.max(0, Math.round(c0 - span / 2)), kHi = Math.min(K0, Math.round(c0 + span / 2));
+      for (let k = kLo; k < kHi; k++) {
+        const c = ph4 + k * P4; let bi = -1, bv = 0;
+        for (let i = Math.max(1, Math.ceil(c - win)); i <= Math.min(L - 2, Math.floor(c + win)); i++) if (of[i] > bv) { bv = of[i]; bi = i; }
+        if (bi > 0) {
+          const a1 = of[bi - 1], a3 = of[bi + 1], den = a1 - 2 * bv + a3;
+          const d = den < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a1 - a3) / den)) : 0;
+          pk.push([k, bi + d, bv]);
+        }
+      }
+      if (pk.length < 16) break;
+      const vs = pk.map(p => p[2]).sort((x, y) => x - y), thr = Math.max(vs[Math.floor(vs.length * 0.4)], 0.25 * vs[Math.floor(vs.length * 0.9)]);
+      let sw = 0, sk = 0, st = 0, skk = 0, skt = 0;
+      for (const [k, tt, v] of pk) if (v >= thr && v > 0) { sw += v; sk += v * k; st += v * tt; skk += v * k * k; skt += v * k * tt; }
+      const det = sw * skk - sk * sk;
+      if (!(det > 0)) break;
+      const slope = (sw * skt - sk * st) / det, icpt = (st - slope * sk) / sw;
+      const nP = slope / q;
+      if (!isFinite(nP) || Math.abs(nP - Pf0) / Pf0 > 0.012) break;   // Sicherheitsnetz: nur kleine Korrekturen
+      Pf = nP; phase = icpt / q;
+      if (kLo === 0 && kHi === K0 && it >= 10) break;
+    }
+    phase = ((phase % Pf) + Pf) % Pf;
+    bpm = 60 / (Pf * hopS);
+  }
+  const beatS = 60 / bpm;
+
+  // Werte pro Schlag
+  const K = Math.floor((N - phase) / Pf);
+  const bFull = new Float32Array(K), bKick = new Float32Array(K), bHi = new Float32Array(K), bMid = new Float32Array(K);
+  for (let k = 0; k < K; k++) {
+    const s = Math.round(phase + k * Pf), e = Math.min(N, Math.round(phase + (k + 1) * Pf));
+    bFull[k] = mean(env.full, s, e); bHi[k] = mean(env.hi, s, e); bMid[k] = mean(env.m2, s, e);
+    let mx = 0; for (let i = Math.max(1, s - 2); i <= Math.min(N - 1, s + 2); i++) mx = Math.max(mx, o[i]);
+    bKick[k] = mx;
+  }
+
+  // Takt-Eins: dort, wo sich der Klang von Takt zu Takt am deutlichsten ändert (quadriert, damit halbe Übergänge weniger zählen)
+  let barPhase = 0, bestBar = -1;
+  for (let b = 0; b < 4; b++) {
+    let s = 0, c = 0;
+    for (let k = b + 4; k + 4 <= K; k += 4) {
+      const dd = (mean(bFull, k, k + 4) - mean(bFull, k - 4, k)) / (mean(bFull, k - 4, k + 4) + 1e-9);
+      s += dd * dd;
+      c++;
+    }
+    s /= Math.max(1, c);
+    if (s > bestBar) { bestBar = s; barPhase = b; }
+  }
+
+  // Kick pro Takt
+  const nBars = Math.max(0, Math.floor((K - barPhase) / 4));
+  const kickness = new Float32Array(nBars), barLow = new Float32Array(nBars);
+  for (let j = 0; j < nBars; j++) {
+    kickness[j] = mean(bKick, barPhase + 4 * j, barPhase + 4 * j + 4);
+    const s = Math.round(phase + (barPhase + 4 * j) * Pf), e = Math.min(N, Math.round(phase + (barPhase + 4 * j + 4) * Pf));
+    barLow[j] = mean(env.low, s, e);
+  }
+  const pct = (arr, q) => { const s = Array.from(arr).sort((a, b) => a - b); return s[Math.floor(s.length * q)] || 0; };
+  const p75 = pct(kickness, 0.75), p75Low = pct(barLow, 0.75);
+  // Kick-Takt: deutliche Kick-Anschläge und voller Bassdruck. Halbe Takte und einzelne Fill-Kicks zählen nicht.
+  const kick = Array.from(kickness, (v, j) => p75 > 0 && v > 0.35 * p75 && barLow[j] > 0.5 * p75Low);
+  for (let j = 1; j < nBars - 1; j++) if (!kick[j] && kick[j - 1] && kick[j + 1]) kick[j] = true;
+  for (let j = 1; j < nBars - 1; j++) if (kick[j] && !kick[j - 1] && !kick[j + 1]) kick[j] = false;
+  const kickShare = kick.filter(Boolean).length / Math.max(1, nBars);
+  const grid = nBars >= 8 && kickShare >= 0.2;
+
+  const barT = j => (phase + (barPhase + 4 * j) * Pf) * hopS;
+  const types = new Array(nBars).fill('groove');
+  const first = kick.indexOf(true), last = kick.lastIndexOf(true);
+  if (grid) {
+    for (let j = 0; j < nBars; j++) {
+      if (j < first) types[j] = 'intro';
+      else if (j > last) types[j] = 'outro';
+    }
+    // Läufe ohne Kick zwischen erstem und letztem Kick
+    let j = first;
+    while (j <= last) {
+      if (!kick[j]) {
+        let e = j; while (e <= last && !kick[e]) e++;
+        const len = e - j;
+        if (len >= 4) {
+          for (let x = j; x < e; x++) types[x] = 'break';
+          // Build-up: letzte Takte des Breaks, wenn Höhen und Mitten ansteigen
+          const n = Math.min(8, Math.floor(len / 2));
+          const a = mean(bHi, barPhase + 4 * j, barPhase + 4 * (j + 2)) + mean(bMid, barPhase + 4 * j, barPhase + 4 * (j + 2));
+          const z = mean(bHi, barPhase + 4 * (e - 2), barPhase + 4 * e) + mean(bMid, barPhase + 4 * (e - 2), barPhase + 4 * e);
+          if (n >= 2 && z > a * 1.15) for (let x = e - n; x < e; x++) types[x] = 'buildup';
+          // Drop: die ersten 4 Takte, wenn der Kick zurückkommt
+          for (let x = e; x < Math.min(e + 4, last + 1); x++) types[x] = 'drop';
+        }
+        j = e;
+      } else j++;
+    }
+    // Langes Intro ohne Kick: Einstieg des Kicks zählt als Drop
+    if (first >= 8) for (let x = first; x < Math.min(first + 4, nBars); x++) if (types[x] === 'groove') types[x] = 'drop';
+  }
+
+  // Abschnitte zusammenfassen
+  const sections = [];
+  for (let j = 0; j < nBars; j++) {
+    const ty = grid ? types[j] : 'groove';
+    const s = sections[sections.length - 1];
+    if (s && s.type === ty) { s.endBar = j + 1; s.t1 = barT(j + 1); }
+    else sections.push({ type: ty, startBar: j, endBar: j + 1, t0: barT(j), t1: barT(j + 1) });
+  }
+  if (sections.length) { sections[0].t0 = 0; sections[sections.length - 1].t1 = N * hopS; }
+  else sections.push({ type: 'groove', startBar: 0, endBar: 0, t0: 0, t1: N * hopS });
+
+  // Stimmung des Tracks aus den Abschnitten mit Kick
+  let sl = 0, sm1 = 0, sm2 = 0, shi = 0, sfull = 0, cnt = 0, sweep = 0, swc = 0, mod = 0, modc = 0;
+  const beatFrames = Math.max(2, Math.round(Pf));
+  for (let j = 0; j < nBars; j++) {
+    if (grid && !(types[j] === 'groove' || types[j] === 'drop')) continue;
+    const s = Math.round(phase + (barPhase + 4 * j) * Pf), e = Math.min(N, Math.round(phase + (barPhase + 4 * j + 4) * Pf));
+    for (let i = s; i < e; i++) {
+      sl += env.low[i]; sm1 += env.m1[i]; sm2 += env.m2[i]; shi += env.hi[i]; sfull += env.full[i]; cnt++;
+      if (i > s) { const m = env.m1[i] + env.m2[i], mp = env.m1[i - 1] + env.m2[i - 1]; mod += Math.abs(m - mp); modc += m; }
+    }
+    // Filterfahrten: wie stark sich das Verhältnis hohe/tiefe Mitten innerhalb eines Schlags bewegt
+    for (let b = s; b + beatFrames <= e; b += beatFrames) {
+      let rs = 0, rq = 0;
+      for (let i = b; i < b + beatFrames; i++) { const r = env.m2[i] / (env.m1[i] + env.m2[i] + 1e-9); rs += r; rq += r * r; }
+      const mu = rs / beatFrames; sweep += Math.sqrt(Math.max(0, rq / beatFrames - mu * mu)); swc++;
+    }
+  }
+  cnt = Math.max(1, cnt);
+  const rmsDb = 20 * Math.log10(sfull / cnt + 1e-9);
+  const brightRatio = shi / (sm1 + sm2 + shi + 1e-9);
+  const sw = sweep / Math.max(1, swc), md = mod / Math.max(1e-9, modc);
+  const mood = {
+    energy: clamp(0.5 * clamp((rmsDb + 14) / 10) + 0.5 * clamp((bpm - 118) / 30)),
+    bright: clamp((brightRatio - 0.02) / 0.2),
+    acid: clamp(clamp((sw - 0.04) / 0.12) * 0.6 + clamp((md - 0.08) / 0.25) * 0.4)
+  };
+  // Übergangslänge in ganzen Takten, vorab pro Abschnitt festgelegt: laute Grooves 2 Takte, ruhigere und Breaks/Intro/Outro 4 Takte.
+  // Kurze Abschnitte bekommen höchstens die Hälfte ihrer Länge, damit der Übergang im Abschnitt fertig wird.
+  const baseBars = { intro: 4, groove: mood.energy >= 0.65 ? 2 : 4, break: 4, buildup: 2, drop: 2, outro: 4 };
+  for (const s of sections) s.blendBars = Math.max(1, Math.min(baseBars[s.type] || 2, Math.floor((s.endBar - s.startBar) / 2) || 1));
+  const drops = sections.filter(s => s.type === 'drop').length;
+
+  // Treffer-Listen für „Instrumente hören“, vorab aus dem Track: Mitten- und Höhen-Anschläge (Zeit in s, Stärke 0..1 im Wechsel)
+  // und die Stärke jedes Schlags. So kommen sie punktgenau, die Live-Erkennung käme ca. 60–80 ms später. Gleiche Regel wie die Live-Melder (onsetStep).
+  const onsetList = (x, k, tau, minGap, skip) => {
+    const out = [], dtm = hopS * 1000, ca = 1 - Math.exp(-dtm / tau), cb = 1 - Math.exp(-dtm / 2500);
+    let prev = 0, mean = 0, varr = 0, avg = 0, last = -1e9;
+    for (let i = 1; i < x.length; i++) {
+      const e = x[i], flux = Math.max(0, e - prev); prev = e;
+      mean += (flux - mean) * ca; varr += ((flux - mean) ** 2 - varr) * ca; avg += (e - avg) * cb;
+      const thr = mean + k * Math.sqrt(varr), tm = i * dtm;
+      if (flux > thr && e > avg * 0.8 && e > 1e-5 && tm - last > minGap && !(skip && skip(tm))) { last = tm; out.push((i + 0.35) * hopS, Math.min(1, flux / (thr * 1.8 + 1e-9))); }
+    }
+    return Float32Array.from(out);
+  };
+  const kickMs = []; { const kl = onsetList(env.low, 2.0, 600, 180); for (let i = 0; i < kl.length; i += 2) kickMs.push(kl[i] * 1000); }
+  let kp = 0;
+  const nearKick = tm => { while (kp < kickMs.length && kickMs[kp] < tm - 45) kp++; return kp < kickMs.length && kickMs[kp] <= tm + 45; };   // Klick des Kicks in den Mitten nicht als Mitten-Anschlag zählen (tm steigt von Aufruf zu Aufruf)
+  const midX = new Float32Array(N); for (let i = 0; i < N; i++) midX[i] = Math.hypot(env.m1[i], env.m2[i]);
+  const onM = onsetList(midX, 1.6, 500, 80, nearKick), onH = onsetList(env.hi, 1.6, 400, 55);
+  const refK = pct(bKick, 0.75) || 1e-9, kA = new Float32Array(K); for (let k = 0; k < K; k++) kA[k] = clamp(bKick[k] / refK);
+  return { grid, bpm, beatS, beat0: phase * hopS, barPhase, sections, mood, drops, duration: N * hopS, onM, onH, kA };
+}
+
+(() => {
+  if (typeof document === 'undefined') return;
+  const $ = id => document.getElementById(id);
+  const canvas = $('stage'), fxc = $('fx'), audio = $('audio'), hud = $('hud'), msg = $('msg');
+  const say = t => { msg.textContent = t || ''; };
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  const ema = (avg, x, dt, tau) => avg + (x - avg) * (1 - Math.exp(-dt / tau));
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  const BC = window.butterchurn && (window.butterchurn.default || window.butterchurn);
+  if (!BC || !BC.createVisualizer) { say('Visualizer-Bibliothek konnte nicht laden. Prüf die Internetverbindung und lade neu.'); return; }
+
+  // iPhone: Web Audio sonst stumm, wenn der Lautlos-Schalter an ist
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+
+  const presets = {};
+  try { Object.assign(presets, window.butterchurnPresets.getPresets()); } catch (e) {}
+  try { Object.assign(presets, window.butterchurnPresetsExtra.getPresets()); } catch (e) {}
+  // Eigene Acid-Techno-Presets (acid-presets.js); fehlt die Datei, läuft alles ohne sie weiter
+  const ACID = new Set();
+  try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
+  const names = Object.keys(presets);
+  if (!names.length) { say('Keine Presets geladen. Lade die Seite neu.'); return; }
+  const broken = new Set(), slow = new Set();
+
+  // ===== Audio =====
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  const unlock = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
+
+  // Quelle → Reaktion (Gain) → Latenz (Delay) → Visualizer + Analyse. Hörbarer Ton geht unverzögert raus.
+  const inGain = ctx.createGain();
+  const delayNode = ctx.createDelay(1.0);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0;
+  inGain.connect(delayNode);
+  delayNode.connect(analyser);
+  const levelAn = ctx.createAnalyser();            // misst den Pegel der Quelle, bevor der Visualizer-Zweig sie verstärkt
+  levelAn.fftSize = 2048; levelAn.smoothingTimeConstant = 0;
+  const fbuf = new Float32Array(analyser.frequencyBinCount);
+  const binHz = ctx.sampleRate / analyser.fftSize;
+
+  // ===== Protokoll: Auslöser → Reaktion → Ergebnis =====
+  const LOG = [], LOG_MAX = 300, t0 = performance.now();
+  const stamp = () => { const t = (performance.now() - t0) / 1000; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + (t % 60).toFixed(1).padStart(4, '0'); };
+  function logEv(kind, text) {
+    LOG.push({ t: stamp(), k: kind, x: String(text) });
+    if (LOG.length > LOG_MAX) LOG.shift();
+    renderLog();
+  }
+  const trg = t => logEv('a', t), rea = t => logEv('r', t), erg = t => logEv('e', t), err = t => logEv('x', t);
+  let hudWoke = 0;                                 // Zeitpunkt, an dem ein Tipp die Leiste geweckt hat
+  const KIND = { a: 'AUSLÖSER ', r: 'REAKTION  ', e: 'ERGEBNIS  ', x: 'FEHLER    ' };
+  function logText() { return LOG.map(l => l.t + '  ' + KIND[l.k] + l.x).join('\n'); }
+  function renderLog() {
+    const box = document.getElementById('logpre'); if (!box || document.getElementById('logbox').hidden) return;
+    box.textContent = '';
+    LOG.forEach(l => { const d = document.createElement('div'); d.className = l.k; d.textContent = l.t + '  ' + KIND[l.k] + l.x; box.appendChild(d); });
+    box.scrollTop = box.scrollHeight;
+  }
+  function level() {
+    const b = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(b);
+    let sum = 0; for (let i = 0; i < b.length; i++) sum += b[i] * b[i];
+    const r = Math.sqrt(sum / b.length); return r > 1e-6 ? (20 * Math.log10(r)).toFixed(1) + ' dB' : 'kein Signal';
+  }
+  function snapshot() {
+    try {
+      const as = navigator.audioSession, a = audio;
+      return 'Status: Audio-Engine ' + ctx.state + ' · Ausgabeverzögerung ' + Math.round((ctx.outputLatency || 0) * 1000) + ' ms'
+        + ' · iOS-Audio-Modus ' + (as ? as.type + '/' + as.state : 'nicht vorhanden')
+        + ' · Player ' + (a.paused ? 'pausiert' : 'spielt') + ' ' + a.currentTime.toFixed(1) + '/' + (isFinite(a.duration) ? a.duration.toFixed(0) : '?') + ' s'
+        + ' · Lautstärke ' + a.volume + (a.muted ? ' STUMM' : '') + ' · bereit ' + a.readyState
+        + ' · Pegel im Analysator ' + level() + ' · ' + agcText() + (bufState && bufState.buf ? ' · SICHERHEITS-MODUS' : '') + ' · Track ' + (curFile ? curFile.name : '–') + ' · Erkennung ' + (curAnalysis ? 'Scan' : 'live');
+    } catch (e) { return 'Status nicht lesbar: ' + e.message; }
+  }
+  const $$ = id => document.getElementById(id);
+  const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  const BUILD = 'Build 33 · VERGLEICH (Stand 08.10. 17 Uhr)';
+  trg('Seite geladen · ' + BUILD);
+  rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
+  erg(navigator.userAgent);
+
+  ctx.addEventListener('statechange', () => { rea('Audio-Engine wechselt auf ' + ctx.state); });
+  try { if (navigator.audioSession) navigator.audioSession.addEventListener('statechange', () => rea('iOS-Audio-Modus: ' + navigator.audioSession.state)); } catch (e) {}
+  window.addEventListener('error', e => err((e.message || 'Fehler') + (e.lineno ? ' (Zeile ' + e.lineno + ')' : '')));
+  window.addEventListener('unhandledrejection', e => err('Abgelehnt: ' + (e.reason && e.reason.message || e.reason)));
+
+  // Player-Ereignisse: was passiert nach Play bzw. Track laden
+  let snapTimer = 0;
+  const afterSnap = ms => { clearTimeout(snapTimer); snapTimer = setTimeout(() => erg(snapshot()), ms); };
+  ['loadstart', 'loadedmetadata', 'canplay', 'waiting', 'stalled', 'pause', 'ended', 'volumechange'].forEach(ev =>
+    audio.addEventListener(ev, () => { rea('Player: ' + ev); if (ev === 'canplay') afterSnap(400); }));
+  audio.addEventListener('playing', () => { rea('Player: spielt'); afterSnap(1500); });
+  audio.addEventListener('error', () => err('Player-Fehler Code ' + (audio.error ? audio.error.code : '?') + (audio.error && audio.error.message ? ' ' + audio.error.message : '')));
+  canvas.addEventListener('webglcontextlost', () => err('Grafik vom System pausiert (WebGL verloren)'));
+  canvas.addEventListener('webglcontextrestored', () => rea('Grafik wiederhergestellt'));
+
+  // Bedienung protokollieren (Knöpfe, Regler, Auswahl, Tipp aufs Bild)
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('button'); if (!b || /^log|^beep/.test(b.id)) return;
+    if (performance.now() - hudWoke < 700) return;
+    trg('Tipp: ' + (b.textContent || b.id).trim() + (b.classList.contains('hot') ? ' (war an)' : ''));
+  }, true);
+  document.addEventListener('change', e => { const el = e.target; if (el && el.tagName === 'SELECT') trg('Auswahl: ' + (el.options[el.selectedIndex] || {}).text); }, true);
+  let sliderT = 0;
+  document.addEventListener('input', e => { const el = e.target; if (!el || el.type !== 'range') return; clearTimeout(sliderT); sliderT = setTimeout(() => trg('Regler ' + el.id + ' = ' + el.value), 400); }, true);
+  canvas.addEventListener('pointerup', () => trg('Tipp/Wisch aufs Bild'));
+
+  // Zurück aus dem Hintergrund (z. B. App zum zweiten Mal geöffnet): Audio-Sitzung und Engine neu anstoßen
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') { rea('Seite im Hintergrund'); return; }
+    rea('Seite wieder sichtbar · Audio-Engine ' + ctx.state);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    ctx.resume().then(() => rea('Audio-Engine nach Rückkehr: ' + ctx.state), () => {});
+  });
+  window.addEventListener('pageshow', e => { if (e.persisted) rea('Seite aus dem Zwischenspeicher zurück'); });
+
+  // Testtöne: Welcher Weg ist hörbar?
+  function makeWav(sec, freq, amp) {
+    const rate = 22050, n = Math.floor(rate * sec), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * freq * i / rate) * amp * 32767), true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  $$('beepA').addEventListener('click', async () => {
+    trg('Testton 1 (über die Audio-Engine, so wie der Track)');
+    try {
+      await ctx.resume();
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 440; g.gain.value = 0.25;
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.6);
+      rea('Ton gesendet, Engine ' + ctx.state); erg('Hörst du den Ton? Ja/Nein merken');
+    } catch (e) { err('Testton 1: ' + e.message); }
+  });
+  $$('beepB').addEventListener('click', async () => {
+    trg('Testton 2 (über den normalen Player, ohne Audio-Engine)');
+    try { const a = new Audio(makeWav(0.6, 660, 0.4)); await a.play(); rea('Player-Ton gestartet'); erg('Hörst du den Ton? Ja/Nein merken'); }
+    catch (e) { err('Testton 2: ' + e.message); }
+  });
+
+  // Lautlos-Schalter-Trick: ein stiller Player zwingt iOS in den Wiedergabe-Modus, damit die Audio-Engine nicht stumm bleibt.
+  // Er startet erst, wenn der Track schon läuft, und der Track wird danach wieder angeschoben, falls iOS ihn dabei pausiert.
+  let silentEl = null, wantPlay = false, resumeTries = 0;
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#play') && !audio.paused) wantPlay = false; }, true);
+  audio.addEventListener('ended', () => { wantPlay = false; });
+  function resumeIfCut(why) {
+    if (!wantPlay || !audio.paused || resumeTries >= 3) return;
+    resumeTries++; rea('iOS hat den Track pausiert (' + why + '), starte ihn wieder (' + resumeTries + ')');
+    audio.play().catch(e => err('Neustart fehlgeschlagen: ' + e.message));
+  }
+  function startSilent() {
+    if (silentEl) return;
+    try {
+      silentEl = new Audio(makeWav(1, 0, 0)); silentEl.loop = true; silentEl.setAttribute('playsinline', '');
+      silentEl.play().then(() => { rea('Stiller Hilfs-Player läuft (hebt den Lautlos-Modus für die Audio-Engine auf)'); setTimeout(() => resumeIfCut('Hilfs-Player gestartet'), 150); },
+        e => { rea('Hilfs-Player blockiert: ' + e.message); silentEl = null; });
+    } catch (e) { silentEl = null; }
+  }
+  audio.addEventListener('playing', () => { wantPlay = true; resumeTries = 0; startSilent(); });
+  audio.addEventListener('pause', () => { setTimeout(() => resumeIfCut('Pause ohne Tipp'), 200); });
+
+  // Bedienung des Protokoll-Fensters
+  $$('logBtn').addEventListener('click', () => {
+    const open = $$('logbox').hidden; $$('logbox').hidden = !open; $$('logBtn').setAttribute('aria-expanded', String(open)); $$('logBtn').classList.toggle('hot', open);
+    if (open) { erg(snapshot()); }
+  });
+  $$('logSnap').addEventListener('click', () => erg(snapshot()));
+  $$('logClear').addEventListener('click', () => { LOG.length = 0; renderLog(); });
+  $$('logCopy').addEventListener('click', () => {
+    const txt = 'Acid Milkdrop Protokoll\n' + logText();
+    const ok = () => { $$('logCopy').textContent = 'Kopiert'; setTimeout(() => { $$('logCopy').textContent = 'Kopieren'; }, 2000); };
+    const sel = () => { const r = document.createRange(); r.selectNodeContents($$('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
+    try { navigator.clipboard.writeText(txt).then(ok, sel); } catch (e) { sel(); }
+  });
+
+  // ===== Zustand =====
+  let viz = null, srcNode = null, fileNode = null, W = 0, H = 0, fxScale = 1;
+  let micOn = false, micStream = null, micNode = null, micGainSaved = 1;
+  let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
+  let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
+  const slowMarks = [];
+  let frozen = false;
+  let bpm = 140;
+  const savedToggles = store.get('am-toggles', null);
+  const toggles = Object.assign({ auto: true, mood: true, phrase: true, drop: true, build: true, pulse: true, spark: true, acid: true, bar: true, morph: true, tune: true, own: true, name: true, instr: true }, savedToggles || {});
+  const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (reduceMotion && !savedToggles) { toggles.pulse = false; toggles.spark = false; }
+
+  const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
+  let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
+  const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab Abschnittsbeginn gezählt, nicht mehr nach festem Zähler
+  const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
+  let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
+  // Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
+  let barHue = 0, barHueTarget = 0, barSteps = 0;
+  // Drop-Aufbau: dropPre 0..1 = wie nah der nächste Drop ist (mit Scan ab 8 Takten vorher), bang = Aufknallen im Drop
+  let dropPre = 0, bang = 0, sat = 1, lastSat = 1, preLogT = -1;
+  const PRE_BARS = 8;
+  const BAR_STEP = { groove: 20, drop: 45 };      // Grad pro Takt; Intro, Break, Build-up, Outro: Farbe bleibt stehen
+  function onBar(type) {
+    shBar = 1;                                     // eigene Shader: Takt-Eins
+    AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
+    if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
+    const st = BAR_STEP[type] || 0; if (!st) return;
+    barHueTarget += st; barSteps++;
+    if (barSteps % 32 === 1) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + '), jetzt ' + Math.round(barHueTarget % 360) + '°');
+  }
+  let hiFast = 0, hiAtBreak = 0, buildStart = 0;
+  let rFast = 0, rSlow = 0, acidAct = 0;
+  const live = { bright: 0.5, acid: 0, energy: 0.5, seen: 0 };
+  // Klangbild der letzten Sekunden: wie stark gerade Kick, Acid-Linie und Hi-Hats sind (je 0..1)
+  const snd = { kick: 0, hat: 0, acid: 0 };
+  // ===== Instrumente hören =====
+  // Milkdrop-Presets bekommen von Butterchurn nur drei verschwommene Frequenzbereiche (bass/mid/treb). Hier werden sie ersetzt durch
+  //   Bass = Kick (taktgenau: im Scan vom Raster, live vom Kick-Melder; Takt-Eins etwas stärker),
+  //   Mitte = Mitten-Anschläge (303, Synths, Claps; Acid-Passagen heben die Grundlinie),
+  //   Höhen = Hi-Hats und Snares.
+  // Maßstab wie bei Milkdrop: 1 = Durchschnitt, Spitzen bis ca. 2. Der Pegel (wie laut es gerade ist) kommt weiter von Milkdrop (att), nur die Form kommt von uns.
+  // Gilt für alles im Preset: Formeln, Formen, Wellen und Shader (Einhängepunkt: updateAudioLevels, siehe hookInstr).
+  const AMI = { t0: 0, kE: 0, kS: 0, mE: 0, mS: 0, tE: 0, tS: 0, hk: 0, hm: 0, ht: 0, bar: 0, act: 0, hooked: false, logT: 0, lt: 0, lv: [1, 1, 1], sv: [1, 1, 1], sa: [1, 1, 1],
+    n: { k: 0, m: 0, t: 0 }, so: [0, 0, 0], mo: [0, 0, 0], sn: [0, 0, 0], mn: [0, 0, 0], c: 0, lo: [0, 0, 0] };
+  const INSTR = { bV: [0.38, 2.00], bA: [0.56, 0.70], mV: [0.32, 1.70], mA: [0.55, 0.65], tV: [0.42, 2.10], tA: [0.60, 0.80] };   // [Grundwert zwischen den Schlägen, Zuschlag auf dem Schlag]
+  if (/[?&]debug\b/.test(location.search)) { window.__AMI = AMI; AMI.ev = { k: [], m: [], h: [], s: [] }; }   // nur zum Testen: Zeitpunkte der Treffer
+  const amiEv = k => { if (AMI.ev) AMI.ev[k].push(+audio.currentTime.toFixed(3)); };
+  // Läuft jedes Bild nach der Erkennung: Hüllkurven der Kanäle. Neue Treffer (kickGlow, hm, ht) kommen voll an, danach klingen sie ab.
+  function instrFrame(t) {
+    const dt = AMI.t0 ? Math.min(100, t - AMI.t0) : 16; AMI.t0 = t;
+    const hearing = !!srcNode && ctx.state === 'running' && levelAvg > 1e-4 && (micOn || !audio.paused);
+    AMI.act = ema(AMI.act, hearing ? 1 : 0, dt, 350);
+    if (AMI.act > 0.9) AMI.ams = (AMI.ams || 0) + dt;
+    if (AMI.hk > 0) { AMI.n.k++; amiEv('k'); }
+    AMI.kE = Math.max(AMI.kE * Math.exp(-dt / 110), AMI.hk); AMI.hk = 0;
+    AMI.kS = Math.max(AMI.kS * Math.exp(-dt / 260), AMI.kE);
+    AMI.mE = Math.max(AMI.mE * Math.exp(-dt / 110), AMI.hm); AMI.hm = 0;
+    AMI.mS = Math.max(AMI.mS * Math.exp(-dt / 260), AMI.mE);
+    AMI.tE = Math.max(AMI.tE * Math.exp(-dt / 80), AMI.ht); AMI.ht = 0;
+    AMI.tS = Math.max(AMI.tS * Math.exp(-dt / 220), AMI.tE);
+    AMI.bar *= Math.exp(-dt / 220);
+    if (!AMI.logT) AMI.logT = t;
+    if (t - AMI.logT >= 120000) instrLog(t);
+  }
+  // Wird von Butterchurn in jedem Bild nach der eigenen Pegelberechnung aufgerufen (val = gerade jetzt, att = geglättet)
+  function applyInstr(al) {
+    const w = toggles.instr ? AMI.act : 0, rec = AMI.act > 0.9;
+    // Pegel: wie laut ein Band gerade im Vergleich zum Durchschnitt ist (Milkdrops val, über ca. 1,2 s geglättet). Nur die Form der Schläge kommt von uns.
+    const now = performance.now(), dtl = AMI.lt ? clamp(now - AMI.lt, 4, 100) : 16; AMI.lt = now;
+    for (let i = 0; i < 3; i++) { const v = isFinite(al.val[i]) ? al.val[i] : 1; AMI.lo[i] = v; AMI.lv[i] += (v - AMI.lv[i]) * (1 - Math.exp(-dtl / 1200)); if (!isFinite(AMI.lv[i])) AMI.lv[i] = 1; }
+    if (rec) { AMI.c++; for (let i = 0; i < 3; i++) { AMI.so[i] += al.val[i]; if (al.val[i] > AMI.mo[i]) AMI.mo[i] = al.val[i]; } }
+    if (w < 0.01) return;
+    const ac = clamp(snd.acid), I = INSTR;
+    // Form der Kanäle (Boden + Zuschlag auf dem Schlag). Damit jeder Kanal im Schnitt wie bei Milkdrop bei 1 liegt, egal wie dicht die Treffer sind
+    // (4-on-the-floor, Breaks, viele oder wenige Hats), wird die Form durch ihren eigenen Durchschnitt der letzten ca. 10 s geteilt.
+    const fv = [I.bV[0] + I.bV[1] * AMI.kE + 0.35 * AMI.bar * AMI.kE, I.mV[0] + I.mV[1] * AMI.mE + 0.10 * ac, I.tV[0] + I.tV[1] * AMI.tE];
+    const fa = [I.bA[0] + I.bA[1] * AMI.kS, I.mA[0] + I.mA[1] * AMI.mS + 0.06 * ac, I.tA[0] + I.tA[1] * AMI.tS];
+    const kn = AMI.act > 0.5 ? 1 - Math.exp(-dtl / 10000) : 0;
+    const nv = [0, 0, 0], na = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+      AMI.sv[i] += (fv[i] - AMI.sv[i]) * kn; AMI.sa[i] += (fa[i] - AMI.sa[i]) * kn;
+      const L = clamp(AMI.lv[i], 0.3, 1.35);
+      nv[i] = L * fv[i] * clamp(1 / AMI.sv[i], 0.8, 1.6);
+      na[i] = L * fa[i] * clamp(1 / AMI.sa[i], 0.8, 1.6);
+    }
+    for (let i = 0; i < 3; i++) {
+      if (!isFinite(nv[i]) || !isFinite(na[i])) continue;
+      al.val[i] += (clamp(nv[i], 0.05, 3.2) - al.val[i]) * w;
+      al.att[i] += (clamp(na[i], 0.05, 3.2) - al.att[i]) * w;
+      if (rec) { AMI.sn[i] += al.val[i]; if (al.val[i] > AMI.mn[i]) AMI.mn[i] = al.val[i]; }
+    }
+  }
+  function instrLog(t) {
+    const c = AMI.c, am = (AMI.ams || 0) / 60000;
+    AMI.logT = t;
+    if (c >= 600 && toggles.instr && am > 0.2) {
+      const f = x => x.toFixed(2).replace('.', ',');
+      const row = (nm, i) => nm + ' Ø' + f(AMI.so[i] / c) + ' (max ' + f(AMI.mo[i]) + ') → Ø' + f(AMI.sn[i] / c) + ' (max ' + f(AMI.mn[i]) + ')';
+      erg('Instrumente in ' + f(am) + ' min Musik, Milkdrop → neu: ' + row('Bass', 0) + ' · ' + row('Mitte', 1) + ' · ' + row('Höhen', 2) + ' · Treffer pro Minute: Kick ' + Math.round(AMI.n.k / am) + ', Mitte ' + Math.round(AMI.n.m / am) + ', Höhen ' + Math.round(AMI.n.t / am));
+    }
+    AMI.c = 0; AMI.ams = 0; AMI.n.k = AMI.n.m = AMI.n.t = 0;
+    for (let i = 0; i < 3; i++) { AMI.so[i] = AMI.sn[i] = AMI.mo[i] = AMI.mn[i] = 0; }
+  }
+  // Scan-Modus: Mitten- und Höhen-Anschläge kommen aus der Vorab-Analyse (A.onM, A.onH) genau dann, wenn der Ton dort ankommt
+  const scanPtr = { A: null, ts: -1, m: 0, h: 0 };
+  function feedScanHits(A, ts) {
+    if (!A.onM || !A.onH) return;
+    const P = scanPtr, lower = (arr, x) => { let lo = 0, hi = arr.length >> 1; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[2 * m] < x) lo = m + 1; else hi = m; } return lo; };
+    if (P.A !== A || ts < P.ts - 0.02 || ts > P.ts + 0.5) { P.A = A; P.m = lower(A.onM, ts); P.h = lower(A.onH, ts); }   // neuer Track oder gespult: Zeiger neu setzen
+    P.ts = ts;
+    while (P.m < (A.onM.length >> 1) && A.onM[2 * P.m] <= ts) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * A.onM[2 * P.m + 1]); AMI.n.m++; amiEv('m'); P.m++; }
+    while (P.h < (A.onH.length >> 1) && A.onH[2 * P.h] <= ts) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * A.onH[2 * P.h + 1]); AMI.n.t++; amiEv('h'); P.h++; }
+  }
+  // Einhängen: Butterchurn berechnet bass/mid/treb in renderer.audioLevels; wir lassen danach unsere Werte darüberlaufen.
+  // So sehen alle Teile eines Presets (Formeln, Formen, Wellen, Shader) dieselben Werte. Fehlt der Einhängepunkt, läuft alles wie vorher.
+  function hookInstr() {
+    try {
+      const al = viz && viz.renderer && viz.renderer.audioLevels;
+      if (!al || typeof al.updateAudioLevels !== 'function' || !al.val || !al.att) { err('Instrumente hören: Einhängepunkt in Butterchurn nicht gefunden, Presets hören wie vorher'); return; }
+      const orig = al.updateAudioLevels;
+      al.updateAudioLevels = function (fps, frame) { orig.call(this, fps, frame); try { applyInstr(this); } catch (e) {} };
+      AMI.hooked = true; if (window.__AMI) AMI.al = al;
+      rea('Instrumente hören: eingehängt (Kick, Mitten, Höhen einzeln)');
+    } catch (e) { err('Instrumente hören: ' + e.message); }
+  }
+  // Feinere Klang-Analyse (24 Bänder) und Übergangs-Steuerung. Fehlen die Dateien, läuft alles wie vorher.
+  const reactive = window.AudioReactiveController ? (() => { try { return new window.AudioReactiveController(analyser, { numBands: 24, minHz: 35, maxHz: 16000, smoothing: 0.18 }); } catch (e) { return null; } })() : null;
+  const blender = window.AdaptivePresetBlender ? new window.AdaptivePresetBlender() : null;
+  const rel = { energy: 0.05, flux: 0.01, beat: 0.01, bass: 0.05, mid: 0.05, treble: 0.05 };   // langsam mitlaufende Spitzenwerte: macht die Schwellen unabhängig von der Lautstärke
+  function feedBlender(st, dt) {
+    if (!reactive || !blender) return;
+    const k = Math.exp(-dt / 20000);
+    for (const n in rel) rel[n] = Math.max(rel[n] * k, st[n] || 0, n === 'energy' ? 0.05 : 0.01);
+    const r = n => clamp((st[n] || 0) / rel[n]);
+    blender.pushAudioSample({ energy: r('energy'), flux: r('flux'), beat: r('beat'), bass: r('bass'), mid: r('mid'), treble: r('treble'), brightness: clamp((st.brightness || 0) * 3), centroid: clamp((st.centroid || 0) / 6000) });
+  }
+  // ===== Eigene Shader (acid-shader.js): eigene Zeichenfläche über Butterchurn, ca. 15 % der Wechsel =====
+  // Läuft getrennt vom Ton-Weg. Fehlt die Datei oder startet die Grafik nicht, läuft alles wie vorher.
+  const shEl = $('sh'), SH = {};
+  try { (window.ACID_SHADERS || []).forEach(d => { SH['Eigen · ' + d.name] = d; }); } catch (e) {}
+  let shPlayer = null, shCur = null, shOp = 0, shFrom = 0, shTo = 0, shT0 = 0, shDur = 0;
+  let shTime = 0, shLastT = 0, shBar = 0, shHue0 = 0, lastShStyle = '';
+  const shLv = { b: 0, m: 0, h: 0, pb: 1e-4, pm: 1e-4, ph: 1e-4 };
+  function shSize() {
+    if (!W || !H) return;
+    const w = Math.max(2, Math.round(W * 0.5)), h = Math.max(2, Math.round(H * 0.5));   // halbe Auflösung: spart Grafikleistung, Shader sind weich genug
+    if (shEl.width !== w || shEl.height !== h) { shEl.width = w; shEl.height = h; }
+  }
+  function shEnsure() {
+    if (shPlayer) return true;
+    if (!window.AcidShaderPlayer) return false;
+    try { shSize(); shPlayer = new window.AcidShaderPlayer(shEl); rea('Eigene Shader: Grafik gestartet (' + shEl.width + '×' + shEl.height + ')'); return true; }
+    catch (e) { err('Eigene Shader: Grafik startet nicht (' + e.message + ')'); for (const n in SH) broken.add(n); return false; }
+  }
+  function shFade(to, secs) { shFrom = shOp; shTo = to; shT0 = performance.now(); shDur = Math.max(150, secs * 1000); }
+  function shShow(n, blend) {
+    if (!shEnsure()) return false;
+    const d = SH[n];
+    if (!shPlayer.use(d.id)) { err('Eigener Shader kaputt: ' + n + ' · ' + (shPlayer.errors[d.id] || '')); broken.add(n); return false; }
+    if (shCur !== n) shHue0 = Math.random();
+    shCur = n; shFade(1, blend); return true;
+  }
+  // Stil aus dem Abschnitt und der Stimmung: Drop = Peak Time, viel 303 = Acid, ruhige Teile = Driving
+  function shStyle() {
+    const sec = sectionKey(), md = trackMood();
+    if (sec === 'drop') return 'peak';
+    if ((snd.acid || 0) > 0.4 || (md && md.acid > 0.35)) return 'acid';
+    if (sec === 'break' || sec === 'intro' || sec === 'outro') return 'driving';
+    return md && md.energy > 0.6 ? 'peak' : 'driving';
+  }
+  function pickShader() {
+    const st = shStyle(), lastFew = recent.slice(-8), all = Object.keys(SH);
+    const ok = n => usable(n) && n !== curName && !lastFew.includes(n);
+    let a = all.filter(n => SH[n].style === st && ok(n));
+    if (!a.length) a = all.filter(ok);
+    if (!a.length) return null;
+    const f = a.filter(n => favs.has(n)); if (f.length && Math.random() < 0.5) a = f;
+    lastShStyle = st; return a[Math.floor(Math.random() * a.length)];
+  }
+  // Pegel für die Shader: Bass, Mitten (303), Höhen, je 0..1 an der eigenen Spitze gemessen
+  function shLevels(dt, b, m, h) {
+    const k = Math.exp(-dt / 8000);
+    shLv.pb = Math.max(shLv.pb * k, b, 1e-4); shLv.pm = Math.max(shLv.pm * k, m, 1e-4); shLv.ph = Math.max(shLv.ph * k, h, 1e-4);
+    shLv.b = ema(shLv.b, clamp(b / shLv.pb), dt, 40); shLv.m = ema(shLv.m, clamp(m / shLv.pm), dt, 60); shLv.h = ema(shLv.h, clamp(h / shLv.ph), dt, 40);
+  }
+  // Vorbereiten: kurz nach dem Start jeden Shader einzeln übersetzen (unsichtbar), damit der erste echte Wechsel nicht ruckelt
+  let shWarmI = 0, shWarmAt = 0, shWarmMs = 0, shWarmMax = 0;
+  function shWarmStep(t) {
+    const list = window.ACID_SHADERS || [];
+    if (!toggles.own || frozen || shWarmI >= list.length || shCur || shOp >= 0.002) return;
+    if (!shWarmAt) { shWarmAt = t + 1500; return; }            // erst 1,5 s nach dem Start, dann alle 0,3 s einer
+    if (t < shWarmAt || !shEnsure()) return;
+    const d = list[shWarmI++], ms = shPlayer.warm(d.id);
+    shWarmAt = t + 300;
+    if (ms < 0) { err('Eigener Shader kaputt: Eigen · ' + d.name + ' · ' + (shPlayer.errors[d.id] || '')); broken.add('Eigen · ' + d.name); }
+    else { shWarmMs += ms; shWarmMax = Math.max(shWarmMax, ms); }
+    if (shWarmI >= list.length) rea('Eigene Shader vorbereitet: ' + list.length + ' Stück, zusammen ' + Math.round(shWarmMs) + ' ms, längster ' + Math.round(shWarmMax) + ' ms');
+  }
+  function shFrame(t) {
+    shWarmStep(t);
+    if (shDur) { const p = Math.min(1, (t - shT0) / shDur); shOp = shFrom + (shTo - shFrom) * p; if (p >= 1) shDur = 0; }
+    const o = shOp < 0.002 ? '0' : shOp.toFixed(3);
+    if (shEl.style.opacity !== o) shEl.style.opacity = o;
+    const dt = shLastT ? Math.min(100, t - shLastT) : 16; shLastT = t;
+    if (shOp < 0.002 || !shPlayer || frozen) return;
+    shTime += dt / 1000;
+    shSize();
+    try {
+      shPlayer.draw({ time: shTime, bass: shLv.b, mid: shLv.m, treb: shLv.h, beat: kickGlow, bar: shBar,
+        build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1 });
+    } catch (e) { if (shCur) { err('Eigener Shader Fehler: ' + e.message); broken.add(shCur); nextPreset(0.5); } }
+  }
+
+  // Worauf jedes Preset reagiert [Bass, Mitten, Höhen], vorab gemessen mit Test-Signalen (je Band eigener Rhythmus)
+  const REACT = {"$$$ Royal - Mashup (177)":[0.89,0.13,0.17],"$$$ Royal - Mashup (197)":[1.16,0.45,0.13],"$$$ Royal - Mashup (220)":[0.2,0.12,0.14],"$$$ Royal - Mashup (273)":[0.45,0.14,0.12],"$$$ Royal - Mashup (307)":[0.09,0.34,0.06],"$$$ Royal - Mashup (326)":[0.89,0.23,0.46],"$$$ Royal - Mashup (431)":[0.1,0.21,0.12],"$$$ Royal - Mashup (441)":[0.45,0.24,0.07],"AdamFX Mashup 2 Martin - reflections on black tile + Raron N Flexi ":[0,0,0],"Aderrasi + Geiss - Airhandler (Kali Mix) - Canvas Mix":[0.06,0.07,0.05],"Aderrasi + Geiss - Airhandler (Kali Mix) - Painterly Tendrils Colorfast":[0.21,0.12,0.2],"Aderrasi - Airhandler (Last Breath - Calm)":[0.31,0.16,0.16],"Aderrasi - Mother Of Pearl - mash0000 - how to piss off your eyes":[0.08,0.31,0.06],"Aderrasi - Potion of Spirits":[0.06,0.14,0.05],"Aderrasi - Songflower (Moss Posy)":[0.54,0.17,0.02],"Aderrasi - Storm of the Eye (Thunder) - mash0000 - quasi pseudo meta concentrics":[0.33,0.04,0.06],"Aderrasi - Veil of Steel (Steel Storm) - mash0000 - bob ross finally loses it":[0.17,0.11,0.07],"An AdamFX n Martin Infusion 2 flexi - Why The Sky Looks Diffrent Today - AdamFx n Martin Infusion - Tack Tile Disfunction B":[0.84,0.79,0.6],"Cope - Passage (mandala mix)":[0.03,0.11,0.06],"Cope - The Neverending Explosion of Red Liquid Fire":[0.08,0.15,0.01],"DemonLD_-_Toxic_water_diffusion threx angela vs debi brown (nice)":[0.17,0.08,0.05],"EVET + Flexi - Rainbox Splash Poolz":[0.05,0.11,0.04],"EVET - RGB Singularity":[0.01,0.03,0.01],"Eo.S. + Phat - cubetrace - v2":[0.19,0.2,0.09],"Eo.S. + Zylot - skylight (Stained Glass Majesty mix)":[0.08,0.14,0.09],"Eo.S. + flexi - glowsticks v2 05 and proton lights (+Krashâ€²s beat code) _Phat_remix02b + illumination (Stahlâ€²s Mix)":[0.27,0.18,0.28],"Eo.S. - glowsticks v2 03 music":[0.11,0.14,0.08],"Eo.S. - glowsticks v2 05 and proton lights (+Krashâ€²s beat code) _Phat_remix02b":[0.45,0.83,0.21],"Flexi + Geiss - Tokamak mindblob 2.0":[0.02,0.05,0.01],"Flexi + Geiss - pogo-cubes on tokamak matter (Jelly 5.55)":[0.02,0.04,0.03],"Flexi + Martin - astral projection":[0.05,0.08,0.01],"Flexi + Martin - cascading decay swing":[0.05,0.08,0.02],"Flexi + amandio c - piercing 05 - Kopie (2) - Kopie":[0.01,0.02,0.01],"Flexi + fiShbRaiN - operation fatcap II":[0.05,0.03,0.02],"Flexi + stahlregen - jelly showoff parade":[0.01,0.04,0.02],"Flexi - alien fader":[0.02,0.05,0.02],"Flexi - alien fish pond":[0.02,0.08,0.02],"Flexi - alien web bouncer [26]":[0.09,0.1,0.07],"Flexi - area 51":[0.04,0.05,0.01],"Flexi - crush ice 72":[0.63,0.56,0.34],"Flexi - dimensions, projection and abstraction":[0.05,0.1,0.02],"Flexi - infused with the spiral":[0.16,0.05,0.01],"Flexi - mindblob [shiny mix]":[0.04,0.07,0.04],"Flexi - mindblob mix":[0.04,0.03,0.01],"Flexi - piercing":[0.15,0.09,0.1],"Flexi - predator-prey-spirals":[0.02,0.1,0.02],"Flexi - predator-prey-spirals [stahlregens gelatine finish]":[0.15,0.17,0.03],"Flexi - psychenapping":[0.07,0.04,0.02],"Flexi - smashing fractals 2.0":[0.18,0.38,0.09],"Flexi - smashing fractals [acid etching mix]":[0.24,0.27,0.18],"Flexi - truly soft piece of software - this is generic texturing (Jelly) ":[0.03,0.02,0.01],"Flexi, Geiss and Rovastar - chaos layered tokamak":[0.09,0.16,0.06],"Flexi, fishbrain + Martin - witchery":[0.05,0.11,0.05],"Flexi, fishbrain, Geiss + Martin - tokamak witchery":[0.05,0.07,0.04],"Flexi, martin + geiss - dedicated to the sherwin maxawow":[0.6,0.12,0.09],"Flexi, martin + geiss - painterly rogue wave strike":[0.76,0.22,0.18],"Fumbling_Foo & Flexi, Martin, Orb, Unchained - Star Nova v7b":[0.4,0.33,0.05],"Geiss + Flexi + Martin - disconnected":[0,0,0],"Geiss - 3 layers (Tunnel Mix)":[0.03,0.11,0.04],"Geiss - Bipolar 2 Enhanced":[0.07,0.03,0.01],"Geiss - Brain Zoom 4":[0,0,0],"Geiss - Cauldron - painterly (saturation remix)":[0.02,0.03,0.01],"Geiss - Cauldron - painterly 2 (saturation remix)":[0.06,0.04,0.04],"Geiss - Color Pox (Acid Impression Mix) (color saturation remix)":[0.07,0.1,0.04],"Geiss - Desert Rose 4":[0.03,0.06,0.03],"Geiss - Game of Life 3":[0.31,0.24,0.14],"Geiss - Myriad Mosaics":[0.54,0.19,0.34],"Geiss - Planet 1":[0.05,0.06,0.02],"Geiss - Reaction Diffusion 2":[1.05,0.21,0.17],"Geiss - Reaction Diffusion 3":[0.13,0.63,0.15],"Geiss - Reaction Diffusion 3 (Lichen Mix)":[0.06,0.32,0.03],"Geiss - Skin Dots Multi-layer 3":[0.58,0.13,0.04],"Geiss - Spiral Artifact":[0.05,0.02,0.02],"Geiss - Thumb Drum":[0.09,0.42,0.04],"Geiss - Tokamak Plus 2":[0.21,0.21,0.09],"Geiss - Two-Pointed Pulsagon - mash0000 - bubonic super-fluid centrifuge":[0.2,0.08,0.09],"Geiss, Flexi + Stahlregen - Thumbdrum Tokamak [crossfiring aftermath jelly mashup]":[0.12,0.2,0.3],"Goody - Ego Decontructor":[0.21,0.36,0.11],"Goody - The Wild Vort":[0.22,0.28,0.07],"GreatWho - Lasershow":[0.38,0.12,0.08],"Idiot - Star Of Annon":[0.28,0.55,0.57],"Illusion & Rovastar - Dotty Mad Space (Jelly)":[0.89,0.29,0.15],"Krash + Illusion - Spiral Movement":[0.29,0.06,0.01],"Martin - Diabolo":[0.3,0.23,0.07],"Martin - QBikal - Surface Turbulence IIb":[0.04,0.06,0.05],"Martin - acid wiring":[0.11,0.21,0.4],"Martin - bombyx mori mix2":[1.08,0.13,0.09],"Martin - charisma":[0.25,0.19,0.09],"Martin - disco mix 3 -fast":[0.29,0.26,0.11],"Martin - disco mix 6":[0.32,0.36,0.09],"Martin - journey into space":[0.18,0.18,0.59],"Martin - liquid arrows":[0.09,0.02,0.03],"Milk Artist At our Best - FED - SlowFast Ft AdamFX n Martin - HD CosmoFX":[0.0,0.0,0.0],"ORB - Magma Pool":[0.77,0.15,0.05],"ORB - Pastel Primer":[0.11,0.15,0.04],"ORB - Waaa":[0.29,0.23,0.08],"Phat+fiShbRaiN+Eo.S_Mandala_Chasers_remix":[0.22,0.08,0.03],"PieturP - triptrap_(ultimate-trip-mix)":[0.05,0.1,0.1],"Redi Jedi - i dont think those were portabello mushrooms":[0.05,0.13,0.03],"Rocke - Answer.42 (New Mix 1) - mash0000 - slash and char p. jungle":[0.16,0.08,0.02],"Rovastar + Che - Asylum Animations":[0.55,0.1,0.04],"Rovastar + Flexi - Hurricane Nightmare (Moebius Mix)":[0.05,0.18,0.01],"Rovastar + Geiss - Hurricane Nightmare":[0.08,0.13,0.05],"Rovastar + Geiss - Hurricane Nightmare (Relief Mix)":[0.08,0.11,0.01],"Rovastar + Geiss - Hyperkaleidoscope Glow 2 motion blur (Jelly)":[0.67,0.19,0.17],"Rovastar + Geiss - Snapshot Of Space (LSB mix)":[0.45,0.22,0.1],"Rovastar + Loadus + Geiss - FractalDrop (Triple Mix)":[1.26,0.32,0.03],"Rovastar + Loadus + Geiss - Tone-mapped FractalDrop 7c":[1.38,0.25,0.01],"Rovastar + Telek - Altars of Madness (Rolling Oceans Mix)":[0.09,0.04,0.06],"Rovastar - A Million Miles From Earth (Wormhole Mix)":[0.65,0.14,0.02],"Rovastar - Explosive Minds":[0.85,0.14,0.04],"Rovastar - Oozing Resistance":[0.01,0.01,0.0],"Rovastar - Trippy Sperm (Jelly)":[0.07,0.24,0.05],"Rovastar-altarsofmadness(forgottenrea":[0.2,0.09,0.07],"Stahlregen & Boz + Eo.S + Geiss + Phat + Rovastar + Zylot - Machine Code [Jelly]":[0.04,0.05,0.05],"Stahlregen + martin + others - Psychedelic Metal Flower":[0.03,0.07,0.04],"TonyMilkdrop - Leonardo Da Vinci's Balloon [Flexi - merry-go-round + techstyle]":[0.28,0.12,0.05],"TonyMilkdrop - Magellan's Nebula [Flexi - fancy + $this shall not retain]":[0.79,0.19,0.08],"TonyMilkdrop - Magellan's Nebula [Flexi - you enter first + multiverse]":[0.83,0.17,0.03],"Unchained & Rovastar - Wormhole Pillars (Hall of Shadows mix)":[0.56,0.16,0.14],"Unchained - Making a Science of It 4":[0.32,0.4,0.1],"Unchained - Rewop":[0.13,0.33,0.25],"Unchained - Unified Drag 2":[0.21,0.38,0.07],"Zylot - In death there is life (Geiss Layered Mix)":[0.36,0.71,1.78],"Zylot - Paint Spill (Music Reactive Paint Mix)":[0.14,0.21,0.1],"Zylot - Star Ornament":[0.24,0.13,0.18],"Zylot - True Visionary (Final Mix)":[0.45,0.28,0.07],"_Aderrasi - Wanderer in Curved Space - mash0000 - faclempt kibitzing meshuggana schmaltz (Geiss color mix)":[0.23,0.42,0.13],"_Eo.S. - glowsticks v2 02 - Geiss HPF":[0.04,0.09,0.02],"_Flexi, martin + geiss - painterly rogue wave strike (color emboss mix)":[0.77,0.16,0.17],"_Geiss - Artifact 01":[0.09,0.12,0.05],"_Geiss - Artifact 03":[0.06,0.07,0.03],"_Geiss - Desert Rose 2":[0.12,0.08,0.01],"_Geiss - untitled":[0.97,0.15,0.12],"_Krash + Eo.S. - Photographic Sentinel":[0.36,0.11,0.07],"_Mig_004_version2":[1.06,0.39,0.18],"_Mig_028":[0.69,0.45,0.14],"_Mig_049":[0.27,0.09,0.08],"_Mig_079":[0.14,0.13,0.09],"_Mig_085":[0.35,0.31,0.08],"_Mig_COLORFUL9":[1.13,0.48,0.07],"_Mig_Oscilloscope008":[0.26,0.07,0.11],"_Rovastar + Geiss - Hurricane Nightmare (Posterize Mix)":[0.1,0.25,0.03],"_geiss_experimental__wavefronts":[0.04,0.04,0.03],"bdrv - ultramix2 #43":[0.12,0.22,0.03],"beta106i - Burning Form (Seething Mass) - mash0000 - fire paint easter egg internals":[0.05,0.04,0.11],"cope + geiss + stahlregen - cartune (bending gelatine mix)":[0.11,0.06,0.03],"cope + martin - mother-of-pearl":[0.06,0.08,0.03],"cope - strange attractor [flexis let it grow mix] (Jelly 5.56 [volume noise zoom-in])":[0.02,0.05,0.01],"cope - the drain to heaven":[0.05,0.14,0.05],"cope, martin + flexi - the slickery of alternative varnish":[0.02,0.07,0.02],"fiShbRaiN + Flexi - witchcraft 2.0":[0.02,0.04,0.03],"fiShbRaiN + geiss - witchcraft (Grow Mix 3)":[0.13,0.1,0.12],"fiShbRaiN - toffee cream and icing sugar":[0.08,0.05,0.03],"fishbrain + flexi - stitchcraft":[0.03,0.05,0.03],"flexi + amandio c - organic":[0.01,0.01,0.04],"flexi + amandio c - organic [random mashup]":[0.04,0.02,0.02],"flexi + amandio c - organic12-3d-2.milk":[0.01,0.02,0.02],"flexi + bdrv - acid etching (jelly v5.5)":[0.05,0.17,0.02],"flexi + fishbrain - neon mindblob grafitti":[0.07,0.1,0.05],"flexi + fishbrain - witchcraft [complex terraforming - fiddling twists in the fabric of space]":[0.04,0.02,0.02],"flexi + geiss - pogo cubes vs. tokamak vs. game of life [stahls jelly 4.5 finish]":[0.05,0.1,0.04],"flexi - Mindblob":[0.02,0.03,0.0],"flexi - alien canvas [learning]":[0.03,0.04,0.05],"flexi - bouncing balls [double mindblob gastrointestinal mix]":[0.04,0.11,0.01],"flexi - bouncing balls [double mindblob neon mix]":[0.04,0.12,0.04],"flexi - hyperspaceflight (bn cn Jelly 4)":[0.15,0.18,0.08],"flexi - infused with the spiral (jelly 4.x cn)":[0.11,0.1,0.02],"flexi - inter state":[0.04,0.07,0.03],"flexi - jelly fish mandala":[0.41,0.37,0.1],"flexi - mom, why the sky looks different today":[0.06,0.15,0.04],"flexi - patternton, district of media, capitol of the united abstractions of fractopia":[0.12,0.08,0.06],"flexi - splatter effects 17 the wave, a google love story written in decay roam3-2 ":[0.09,0.22,0.28],"flexi - swing out on the spiral":[0.0,0.03,0.0],"flexi - what is the matrix":[0.14,0.04,0.05],"flexi, stahlregen, geiss + tobias wolfboi - space gelatine burst - mash0000 - chromatidal pool mirror blasphemy":[0.13,0.09,0.04],"goody + martin - crystal palace - schizotoxin - the wild iris bloom - 16 iterations":[0.17,0.13,0.1],"high-altitude basket unraveling - singh grooves nitrogen argon nz+":[0.17,0.02,0.0],"martin + flexi - diamond cutter [prismaticvortex.com] - camille - i wish i wish i wish i was constrained":[0.08,0.07,0.09],"martin + stahlregen - martin in da mash 12":[0.14,0.12,0.02],"martin + stahlregen - martin in da mash 12a":[0.14,0.19,0.08],"martin + stahlregen - martin in da mash 14":[0.23,0.17,0.1],"martin + stahlregen - martin in da mash 3":[0.36,0.67,0.64],"martin - Flexis swarm in Martins pond [not yet a boid implementation] ":[0.04,0.08,0.01],"martin - The Bridge of Khazad-Dum":[0.1,0.15,0.07],"martin - angel flight":[0.27,0.08,0.05],"martin - another kind of groove":[0.16,0.13,0.03],"martin - baby one more time":[0.03,0.02,0.02],"martin - bombyx mori":[0.92,1.04,0.68],"martin - bombyx mori [flexiâ€²s logarithmic edit]":[0.35,0.29,0.31],"martin - bring up the big guns":[0.06,0.18,0.51],"martin - castle in the air":[0.01,0.02,0.01],"martin - chain breaker":[0.22,0.33,0.17],"martin - cherry brain wall mod":[0.17,0.07,0.05],"martin - city of shadows":[0.27,0.21,0.12],"martin - cope - laser dome":[0.27,1.0,0.05],"martin - crystal palace":[0.34,0.09,0.12],"martin - disco mix 4":[0.13,0.16,0.28],"martin - elusive impressions mix2 - flacc mess proph nz+2":[0.31,0.36,0.38],"martin - extreme heat":[0.06,0.01,0.02],"martin - frosty caves 2":[0.71,0.23,0.11],"martin - fruit machine":[0.04,0.11,0.08],"martin - gate to moria":[0.17,0.28,0.14],"martin - ghost city":[0.03,0.03,0.01],"martin - glass corridor":[0.03,0.03,0.05],"martin - glassball dance":[0.57,0.09,0.29],"martin - ice flames":[0.04,0.09,0.06],"martin - infinity (2010 update)":[0.07,0.23,0.1],"martin - into the fireworks":[0.22,0.15,0.19],"martin - ludicrous speed":[0.06,0.08,0.03],"martin - mandelbox explorer - high speed demo version":[0.02,0.01,0.01],"martin - move this body":[0.06,0.13,0.08],"martin - mucus cervix":[0.04,0.1,0.02],"martin - reflections on black tiles":[0.48,0.46,0.06],"martin - resonant twister - steel spring":[0.08,0.04,0.03],"martin - satellite view":[0.3,0.34,0.8],"martin - stormy sea (2010 update)":[0.59,0.22,0.04],"martin - tunnel race":[0.06,0.04,0.16],"martin - witchcraft reloaded":[0.09,0.04,0.1],"martin [shadow harlequins shape code] - fata morgana":[0.19,0.37,0.02],"martin, fishbrain + flexi - mandelbox explorer v1 Eo.S. optimize [bipolar witchcraft mix]":[0.08,0.1,0.06],"martin, flexi, fishbrain + sto - enterstate [random mashup]":[0.14,0.14,0.11],"orb - toxic goo":[0.43,0.5,0.28],"raron - a grayish blob - mash0000 - pungent gastric automata cloud fumes":[0.4,0.07,0.05],"rce-ordinary + flexi - far away distance (custom beat detection + bipolar colour ghost mix)":[0.07,0.08,0.15],"sawtooth grin roam":[0.12,0.09,0.06],"shifter - dark tides bdrv mix":[0.02,0.02,0.01],"shifter - dark tides bdrv mix 2":[0.04,0.11,0.03],"shifter - escape the worm - Eo.S. + Phat - Before_It_Eats_Your_Brain_Mix_v2":[0.14,0.12,0.06],"shifter - feathers (angel wings)_phat_remix relief 2":[0.24,0.17,0.09],"stahlregen & geiss + rovastar - fields of flowers (mashup 9 - space flower rmx) - mash0001 - pack em in, we got a long haul + flashlight":[0.02,0.12,0.03],"stahlregen + geiss + shifter - babylon":[0.04,0.04,0.04],"suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression":[0.49,0.42,0.13],"suksma - feign shoulder concern when i should be executed - everything is eternally shrinking":[0.14,0.09,0.14],"suksma - gaeomaentaec - log smell 2 - steaming wienies2":[0.36,0.42,0.14],"suksma - heretical crosscut playpen":[0.11,0.05,0.02],"suksma - nip tuck":[0.27,0.09,0.02],"suksma - uninitialized variabowl (hydroponic chronic)":[0.09,0.06,0.02],"suksma - vector exp 1 - couldnâ€²t not":[0.24,0.09,0.2],"suksma - water cooled red uranium vs dotes - freeenergynow.net":[0.31,0.28,0.12],"yin - 190 - Temporal fluctuations":[0,0,0],"yin - 191 - Temporal singularities":[0.43,0.25,0.01],"yin - 250 - Artificial poles of the continuum_Phatâ€²s_Orbit_mix":[0.18,0.06,0.03],"yin - 253 - Artificial poles of the continuum (remix #3)":[0.2,0.15,0.04],"yin - 315 - Ocean of Light (yo im peakin yo Eo.S.-Phat)":[0.04,0.03,0.02]};
+
+  const queue = []; let qi = -1, curFile = null, curAnalysis = null, scanType = null, lastBi = null;
+  const scanCache = new Map(); let scanChain = Promise.resolve();
+
+  // ===== Größe =====
+  function targetSize() {
+    const vv = window.visualViewport;
+    const cw = Math.round(vv ? vv.width : window.innerWidth);
+    const ch = Math.round(vv ? vv.height : window.innerHeight);
+    const dpr = window.devicePixelRatio || 1, long = Math.max(cw, ch), q = $('quality').value;
+    let scale = dpr;
+    if (q === '2k') scale = Math.min(dpr, 2560 / long);
+    else if (q === '1080') scale = Math.min(dpr, 1920 / long);
+    else if (q === '720') scale = Math.min(dpr, 1280 / long);
+    return [Math.max(2, Math.round(cw * scale)), Math.max(2, Math.round(ch * scale)), cw, ch, dpr];
+  }
+  function resize() {
+    const [w, h, cw, ch, dpr] = targetSize();
+    fxScale = Math.min(2, dpr);
+    const fw = Math.round(cw * fxScale), fh = Math.round(ch * fxScale);
+    if (fxc.width !== fw || fxc.height !== fh) { fxc.width = fw; fxc.height = fh; }
+    if (w === W && h === H) return;
+    W = w; H = h; canvas.width = W; canvas.height = H;
+    if (shPlayer) shSize();
+    if (viz) { try { viz.setRendererSize(W, H); } catch (e) {} }
+    $('res').textContent = W + '×' + H;
+  }
+  let rT = 0, hT1 = 0, hT2 = 0;
+  // iOS merkt sich nach dem Drehen manchmal die alte Lage der Knöpfe: Leiste zurücksetzen und neu aufbauen
+  function refreshHud() {
+    const h = $('hud'); h.scrollTop = 0;
+    h.style.display = 'none'; void h.offsetHeight; h.style.display = '';
+    const r = h.getBoundingClientRect(), vv = window.visualViewport;
+    rea('Drehung: ' + window.innerWidth + '×' + window.innerHeight + (vv ? ' (sichtbar ' + Math.round(vv.width) + '×' + Math.round(vv.height) + ')' : '') + ', Leiste Höhe ' + Math.round(r.height) + ' px');
+  }
+  const queueResize = () => { clearTimeout(rT); rT = setTimeout(resize, 150); clearTimeout(hT1); clearTimeout(hT2); hT1 = setTimeout(refreshHud, 250); hT2 = setTimeout(refreshHud, 900); };
+  window.addEventListener('resize', queueResize);
+  window.addEventListener('orientationchange', queueResize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
+  $('quality').value = '2k';                       // fest: 2K (auf dem iPhone 15 Pro entspricht das der vollen Pixelzahl)
+  $('quality').addEventListener('change', () => { store.set('am-quality', $('quality').value); W = 0; resize(); });
+  resize();
+
+  // ===== Farbe: P3, OLED-Schwarz und Acid-Farbton =====
+  const hasP3 = !!(window.matchMedia && matchMedia('(color-gamut: p3)').matches);
+  const colorEl = $('color');
+  if (!hasP3) { colorEl.querySelector('option[value="p3"]').disabled = true; colorEl.querySelector('option[value="p3oled"]').disabled = true; }
+  colorEl.value = hasP3 ? 'p3oled' : 'srgb';
+  let filterBase = '';
+  function applyColor() {
+    const mode = colorEl.value;
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (gl && 'drawingBufferColorSpace' in gl) { try { gl.drawingBufferColorSpace = mode === 'srgb' ? 'srgb' : 'display-p3'; } catch (e) {} }
+    filterBase = mode === 'p3oled' ? 'contrast(1.12) saturate(1.08)' : '';
+    applyFilter(true);
+  }
+  function applyFilter(force) {
+    const tot = hue + barHue;
+    if (!force && Math.abs(tot - lastHue) < 0.7 && Math.abs(sat - lastSat) < 0.02) return;
+    lastHue = tot; lastSat = sat;
+    const a = ((tot % 360) + 360) % 360, hh = a > 180 ? a - 360 : a;
+    const h = Math.abs(hh) >= 0.7 ? ' hue-rotate(' + hh.toFixed(1) + 'deg)' : '';
+    const sv = Math.abs(sat - 1) >= 0.02 ? ' saturate(' + sat.toFixed(2) + ')' : '';
+    canvas.style.filter = (filterBase + h + sv).trim();
+    shEl.style.filter = canvas.style.filter;          // Takt-Farbe, Acid-Farbe und Drop-Entsättigung gelten auch für eigene Shader
+  }
+  colorEl.addEventListener('change', () => { store.set('am-color', colorEl.value); applyColor(); });
+
+  // ===== Presets: vermessen und nach Stimmung auswählen =====
+  const profiles = store.get('am-profiles-v1', {}) || {};
+  // Startwerte aus der Vorab-Messung (acid-profile.js): so kennt die Auswahl jedes Preset ab dem ersten Start.
+  // Zählt wie 6 Messungen; die Live-Messung am Handy verfeinert die Werte danach weiter.
+  try {
+    const base = window.ACID_PROFILES || {};
+    let seeded = 0;
+    for (const n in base) {
+      const P = profiles[n], B = base[n];
+      if (P && P.n >= 6 && P.nm >= 4) continue;
+      profiles[n] = { b: B[0], s: B[1], hx: B[2], hy: B[3], m: B[4], n: 6, nm: 4 }; seeded++;
+    }
+    window.__acidSeeded = seeded;
+    rea('Profile: ' + seeded + ' Presets aus der Vorab-Messung übernommen, ' + Object.keys(profiles).length + ' bekannt');
+  } catch (e) {}
+  let profDirty = false, lastProfSave = 0, lastSample = 0, prevLuma = null;
+  const samp = document.createElement('canvas'); samp.width = 32; samp.height = 18;
+  const sctx = samp.getContext('2d', { willReadFrequently: true });
+  const hist = []; let histPos = -1; const recent = [];
+
+  let morphOn = false;
+  Object.assign(REACT, {"Acid \u00b7 Tunnel":[0.96,0.18,0.01],"Acid \u00b7 Kick-Gitter":[1.53,0.32,0.06],"Acid \u00b7 Strobe-Ringe":[0.32,0.13,0.2],"Acid \u00b7 Gold-Staub":[1.46,0.89,0.63],"Acid \u00b7 Glaskugel":[0.97,0.88,0.67]});
+  // Presets, die in der Messung auf keinen Ton reagiert haben, kommen in der Auswahl nicht mehr vor
+  const DEAD = new Set(Object.keys(REACT).filter(n => REACT[n][0] + REACT[n][1] + REACT[n][2] < 0.05));
+  // Reaktions-Angleich: schwach reagierende Presets bekommen am Anfang ihrer Formeln eine Zeile, die Bass/Mitten/Höhen stärker auslenkt,
+  // sehr stark reagierende werden etwas gedämpft. Wirkt nur bei Presets, die den Ton in ihren Formeln nutzen.
+  const tunedCache = new Map();
+  function tuned(n) {
+    const p = presets[n], R = REACT[n];
+    if (!toggles.tune || ACID.has(n) || !R || !p || !/a\.(bass|mid|treb)/.test(p.frame_eqs_str || '')) return p;
+    if (tunedCache.has(n)) return tunedCache.get(n);
+    const S = R[0] + R[1] + R[2], K = clamp(Math.sqrt(0.5 / Math.max(S, 0.08)), 0.7, 3);
+    let out = p;
+    if (Math.abs(K - 1) > 0.08) {
+      const k = K.toFixed(2), f = v => 'a.' + v + '=1+' + k + '*(a.' + v + '-1);';
+      out = Object.assign({}, p, { frame_eqs_str: f('bass') + f('bass_att') + f('mid') + f('mid_att') + f('treb') + f('treb_att') + p.frame_eqs_str });
+    }
+    tunedCache.set(n, out); return out;
+  }
+  // Favoriten: Stern-Knopf merkt sich Presets (bleibt im Browser gespeichert); die Auswahl nimmt sie öfter
+  const favs = new Set(store.get('am-favs', []).filter(n => typeof n === 'string'));
+  function showName() { const el = $('pname'); if (!el) return; el.classList.toggle('off', !toggles.name); el.textContent = curName ? (favs.has(curName) ? '★ ' : '') + curName : ''; }
+  function showFav() { showName(); const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  $('fav').addEventListener('click', () => {
+    if (!curName) return;
+    if (favs.has(curName)) { favs.delete(curName); rea('Favorit entfernt: ' + curName); } else { favs.add(curName); rea('Favorit: ' + curName); }
+    store.set('am-favs', [...favs]); showFav();
+  });
+  function usable(n) { return !broken.has(n) && !DEAD.has(n) && !(guard && slow.has(n)); }
+  function loadByName(n, blend, pushHist = true) {
+    rea('Preset: ' + n);
+    if (!viz) return false;
+    if (SH[n]) { if (!shShow(n, blend)) return false; }
+    else {
+      try { viz.loadPreset(tuned(n), blend); }
+      catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
+      if (shCur || shOp > 0) { shCur = null; shFade(0, Math.max(blend, 0.3)); }   // eigener Shader blendet aus, Milkdrop übernimmt
+    }
+    curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
+    if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
+    recent.push(n); if (recent.length > 90) recent.shift();
+    if (pushHist) { hist.splice(histPos + 1); hist.push(n); if (hist.length > 60) hist.shift(); histPos = hist.length - 1; }
+    $('preset').textContent = n; showFav();
+    return true;
+  }
+  function randomUsable() {
+    for (let i = 0; i < 60; i++) { const n = names[Math.floor(Math.random() * names.length)]; if (usable(n) && !recent.includes(n) && n !== curName) return n; }
+    return names.find(usable) || names[0];
+  }
+  // Ziel-Klangbild [Bass, Mitten, Höhen]: was gerade zu hören ist, plus was der Abschnitt gleich bringt
+  function soundTarget() {
+    const v = [snd.kN || 0, snd.acid || 0, snd.hN || 0];
+    const sec = sectionKey();
+    if (sec === 'drop') v[0] += 0.6;
+    else if (sec === 'buildup') { v[2] += 0.4; v[1] += 0.2; }
+    else if (sec === 'break') { v[0] *= 0.3; v[1] += 0.15; }
+    const sum = v[0] + v[1] + v[2];
+    return sum < 0.15 ? null : v.map(x => x / sum);
+  }
+  let reactRank = null;
+  function reactFit(n, v) {
+    const R = REACT[n]; if (!R || !v) return 0.5;
+    if (!reactRank) { const all = Object.values(REACT).map(r => r[0] + r[1] + r[2]).sort((a, b) => a - b); reactRank = x => { let i = 0; while (i < all.length && all[i] < x) i++; return i / Math.max(1, all.length - 1); }; }
+    const S = R[0] + R[1] + R[2] + 1e-9;
+    const match = Math.min(R[0] / S, v[0]) + Math.min(R[1] / S, v[1]) + Math.min(R[2] / S, v[2]);   // 1 = gleiche Gewichtung
+    return 0.75 * match + 0.25 * reactRank(S);                                                         // + wie stark es überhaupt reagiert
+  }
+  let lastFitInfo = '';
+  function pickPreset(tg) {
+    const sv = toggles.mood ? soundTarget() : null;
+    // Favoriten (ca. 40 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
+    const lastFew = recent.slice(-6), pool = (set, minLeft) => { const a = []; for (const n of set) if (presets[n] && usable(n) && n !== curName && !lastFew.includes(n)) a.push(n); return a.length >= minLeft ? a : []; };
+    for (const [set, chance, tag] of [[favs, 0.4, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
+      if (Math.random() >= chance) continue;
+      const a = pool(set, 1); if (!a.length) continue;
+      let best = null, bf = -9;
+      for (const n of a) { const f = reactFit(n, sv) + Math.random() * 0.35; if (f > bf) { bf = f; best = n; } }
+      lastFitInfo = ' · ' + tag; return best;
+    }
+    const known = [], unknown = [];
+    for (const n of names) {
+      if (!usable(n) || recent.includes(n) || n === curName) continue;
+      const P = profiles[n];
+      (P && P.n >= 6 && P.nm >= 4 ? known : unknown).push(n);
+    }
+    const explore = known.length < 30 ? 0.6 : 0.3;
+    if (!known.length || (unknown.length && Math.random() < explore)) {
+      if (!unknown.length) return randomUsable();
+      let best = null, bf = -1;
+      for (let i = 0; i < 10; i++) { const n = unknown[Math.floor(Math.random() * unknown.length)], f = reactFit(n, sv) + Math.random() * 0.1; if (f > bf) { bf = f; best = n; } }
+      lastFitInfo = fitText(sv, best); return best;
+    }
+    const ranker = key => {
+      const s = known.map(n => profiles[n][key]).sort((a, b) => a - b);
+      return v => { let lo = 0, hi = s.length; while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] < v) lo = m + 1; else hi = m; } return lo / Math.max(1, s.length - 1); };
+    };
+    const rb = ranker('b'), rm = ranker('m'), rs = ranker('s');
+    const scored = known.map(n => {
+      const P = profiles[n];
+      let d = (rb(P.b) - tg.b) ** 2 + 1.3 * (rm(P.m) - tg.m) ** 2 + 0.6 * (rs(P.s) - tg.s) ** 2;
+      if (tg.hueW > 0) {
+        const h = Math.atan2(P.hy, P.hx), sat = Math.hypot(P.hx, P.hy);
+        let dh = Math.abs(h - tg.hue); if (dh > Math.PI) dh = 2 * Math.PI - dh;
+        d += tg.hueW * (dh / Math.PI) ** 2 * Math.min(1, sat * 4);
+      }
+      if (sv) d += 1.6 * (1 - reactFit(n, sv));
+      return [d, n];
+    }).sort((a, b) => a[0] - b[0]);
+    const top = scored.slice(0, Math.min(scored.length, Math.max(20, Math.round(scored.length * 0.15))));   // breiter Topf statt nur 5: mehr Abwechslung
+    const pick = top[Math.floor(Math.random() * top.length)][1];
+    lastFitInfo = fitText(sv, pick); return pick;
+  }
+  function fitText(v, n) {
+    const R = REACT[n]; if (!v || !R) return '';
+    const S = R[0] + R[1] + R[2] + 1e-9, p = x => Math.round(x * 100);
+    return ' · Klang Kick ' + p(v[0]) + ' / Acid ' + p(v[1]) + ' / Hats ' + p(v[2]) + ' % → Preset Bass ' + p(R[0] / S) + ' / Mitten ' + p(R[1] / S) + ' / Höhen ' + p(R[2] / S) + ' %';
+  }
+  function trackMood() {
+    if (curAnalysis && curAnalysis.mood) return curAnalysis.mood;
+    if (live.seen > 4000) return { bright: live.bright, acid: live.acid, energy: live.energy };
+    return null;
+  }
+  function moodTarget(section) {
+    const base = {
+      intro: { b: .35, m: .35, s: .5 }, groove: { b: .55, m: .6, s: .55 }, break: { b: .22, m: .18, s: .45 },
+      buildup: { b: .5, m: .7, s: .6 }, drop: { b: .85, m: .9, s: .8 }, outro: { b: .3, m: .3, s: .45 }
+    }[section] || { b: .5, m: .5, s: .5 };
+    const tg = Object.assign({ hue: 0, hueW: 0 }, base);
+    const md = trackMood();
+    if (md) {
+      tg.b = clamp(tg.b + (md.bright - 0.5) * 0.4);
+      tg.m = clamp(tg.m + (md.energy - 0.5) * 0.3);
+      tg.s = clamp(tg.s + md.acid * 0.25);
+      if (md.acid > 0.35) { tg.hue = 75 * Math.PI / 180; tg.hueW = md.acid * 1.2; }
+      else if (md.bright < 0.35) { tg.hue = 250 * Math.PI / 180; tg.hueW = 0.5; }
+    }
+    return tg;
+  }
+  const scanActive = () => !!(curAnalysis && curAnalysis.grid && !audio.paused);
+  function sectionKey() {
+    const s = scanActive() ? scanType : beat.state;
+    return s === 'warten' || !s ? 'intro' : s;
+  }
+  // Übergangsdauer in ganzen Takten: mit Scan aus der Analyse (pro Abschnitt), sonst aus dem Live-Tempo
+  let scanSec = null;
+  function blendSecs(type) {
+    const live = { intro: 2, groove: 2, break: 4, buildup: 2, drop: 2, outro: 4 };
+    let bars = live[type] || 2, beatS = 60 / bpm;
+    if (scanActive() && curAnalysis) { beatS = curAnalysis.beatS; if (scanSec && scanSec.blendBars) bars = scanSec.blendBars; }
+    return +(bars * 4 * beatS).toFixed(3);
+  }
+  function nextPreset(blend = 2.7, tg, exact) {
+    if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
+      const a = blender.suggestDuration() / 1000;
+      blend = Math.min(a, Math.max(blend, 1.2));
+    }
+    if (toggles.own && Object.keys(SH).length && Math.random() < (shCur ? 0.05 : 0.15)) {
+      const sn = pickShader();
+      if (sn && loadByName(sn, blend)) { rea('Eigener Shader · Stil ' + lastShStyle + ' · Abschnitt ' + sectionKey()); return; }
+    }
+    for (let tries = 0; tries < 20; tries++) {
+      lastFitInfo = '';
+      const n = toggles.mood ? pickPreset(tg || moodTarget(sectionKey())) : randomUsable();
+      if (n && loadByName(n, blend)) { if (lastFitInfo) rea('Passung' + lastFitInfo); return; }
+    }
+  }
+  function goNext() {
+    if (histPos < hist.length - 1) { histPos++; loadByName(hist[histPos], 1.5, false); }
+    else nextPreset(1.5);
+  }
+  function goPrev() { if (histPos > 0) { histPos--; loadByName(hist[histPos], 1.5, false); } }
+  $('next').addEventListener('click', goNext);
+  $('prev').addEventListener('click', goPrev);
+  $('auto').addEventListener('click', () => { auto = !auto; $('auto').classList.toggle('hot', auto); lastSwitch = performance.now(); });
+
+  // Preset vermessen: Helligkeit, Sättigung, Farbton, Bewegung (nur bis genug Messungen da sind)
+  function sampleFrame(t) {
+    if (!curName || t - lastSample < 500 || t - presetStart < 3000) return;
+    const P0 = profiles[curName];
+    if (P0 && P0.n >= 30 && P0.nm >= 20) return;
+    lastSample = t;
+    let d;
+    try { sctx.drawImage(canvas, 0, 0, 32, 18); d = sctx.getImageData(0, 0, 32, 18).data; } catch (e) { return; }
+    const N = 576, luma = new Float32Array(N);
+    let sb = 0, ss = 0, hx = 0, hy = 0, mot = 0;
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      luma[p] = l; sb += l;
+      const sat = mx > 0 ? (mx - mn) / mx : 0; ss += sat;
+      if (mx - mn > 0.02) {
+        let h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4;
+        h *= Math.PI / 3; const w = sat * mx; hx += Math.cos(h) * w; hy += Math.sin(h) * w;
+      }
+      if (prevLuma) mot += Math.abs(l - prevLuma[p]);
+    }
+    const P = profiles[curName] || (profiles[curName] = { b: 0, s: 0, hx: 0, hy: 0, m: 0, n: 0, nm: 0 });
+    const k = Math.min(P.n, 40);
+    P.b = (P.b * k + sb / N) / (k + 1); P.s = (P.s * k + ss / N) / (k + 1);
+    P.hx = (P.hx * k + hx / N) / (k + 1); P.hy = (P.hy * k + hy / N) / (k + 1); P.n++;
+    if (prevLuma) { const km = Math.min(P.nm, 40); P.m = (P.m * km + mot / N) / (km + 1); P.nm++; }
+    prevLuma = luma; profDirty = true;
+    if (t - lastProfSave > 15000) saveProfiles(t);
+  }
+  function saveProfiles(t) {
+    if (!profDirty) return;
+    profDirty = false; lastProfSave = t;
+    const slim = {};
+    for (const n in profiles) { const P = profiles[n]; slim[n] = { b: +P.b.toFixed(4), s: +P.s.toFixed(4), hx: +P.hx.toFixed(4), hy: +P.hy.toFixed(4), m: +P.m.toFixed(4), n: P.n, nm: P.nm }; }
+    store.set('am-profiles-v1', slim);
+  }
+
+  function createViz() {
+    try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
+    catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
+    try { viz.connectAudio(delayNode); } catch (e) {}
+    hookInstr();
+    try { if (window.ACID_IMAGES) viz.loadExtraImages(window.ACID_IMAGES); } catch (e) {}   // Bilder für die Bild-Presets (acid-presets.js)
+    applyColor();
+    nextPreset(0);
+    return true;
+  }
+
+  // ===== Render-Schleife (fest 60 fps) und Wächter =====
+  $('guard').addEventListener('click', () => { guard = !guard; $('guard').classList.toggle('hot', guard); slowSecs = 0; });
+  const switchMs = () => PHRASE_BEATS * 60000 / bpm;
+  const engaged = () => scanActive() || beat.state !== 'warten';
+
+  let frames = 0, fpsT = performance.now();
+  let lastDraw = 0;
+  const FRAME_MIN = 1000 / 60 - 3;                 // fest 60 Bilder pro Sekunde: auf 120-Hz-Displays wird jedes zweite Bild gezeichnet
+  function loop() {
+    requestAnimationFrame(loop);
+    if (!viz) return;
+    const t = performance.now();
+    if (t - lastDraw < FRAME_MIN) return;
+    lastDraw = t;
+    if (!frozen) {
+      const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
+      if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0); } }
+      if (!shCur && shOp < 0.01) sampleFrame(t);
+    }
+    shFrame(t);
+    frames++;
+    if (t - fpsT >= 1000) {
+      const fps = Math.round(frames * 1000 / (t - fpsT));
+      frames = 0; fpsT = t;
+      if (document.visibilityState === 'visible' && !frozen) perSecond(fps, t);
+    }
+    beatFrame(t);
+    instrFrame(t);
+    fxFrame(t);
+    if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true);
+  }
+  // Leistungs-Protokoll: alle 5 Minuten Durchschnitt und tiefster Wert, dazu jede Wächter-Markierung (um zu sehen, ob das Handy mit der Zeit warm wird)
+  const perf = { t0: performance.now(), sum: 0, n: 0, min: 99, marked: 0, last: performance.now() };
+  const minSince = t => ((t - perf.t0) / 60000).toFixed(1).replace('.', ',') + ' min';
+  function perfLog(fps, t) {
+    if (fps > 0) { perf.sum += fps; perf.n++; if (fps < perf.min) perf.min = fps; }
+    if (t - perf.last < 300000 || !perf.n) return;
+    erg('Leistung nach ' + minSince(t) + ': im Schnitt ' + Math.round(perf.sum / perf.n) + ' fps, tiefster Wert ' + perf.min + ' fps, langsam markiert bisher ' + perf.marked + ' (' + slow.size + ' gesperrt)');
+    perf.sum = 0; perf.n = 0; perf.min = 99; perf.last = t;
+  }
+  function perSecond(fps, t) {
+    $('fps').textContent = fps;
+    $('hz').textContent = '60';
+    perfLog(fps, t);
+    if (!guard || t - lastSwitch < 3000) { slowSecs = 0; return; }
+    if (fps < 52) slowSecs++; else slowSecs = 0;
+    if (slowSecs >= 3 && curName) {
+      slow.add(curName); slowSecs = 0; perf.marked++;
+      erg('Wächter: zu langsam (' + fps + ' fps) nach ' + minSince(t) + ' · ' + curName + ' · gesperrt: ' + slow.size);
+      slowMarks.push(t); while (slowMarks.length && t - slowMarks[0] > 60000) slowMarks.shift();
+      if (slowMarks.length >= 6) {
+        err('Wächter aus nach ' + minSince(t) + ': 6 langsame Presets in 1 Minute (Handy vermutlich warm oder überlastet)');
+        guard = false; $('guard').classList.remove('hot'); slow.clear(); slowMarks.length = 0;
+        say('Gerade schaffen viele Presets keine 60 fps. Wächter ist aus.');
+        return;
+      }
+      nextPreset(1.5);
+    }
+  }
+
+  // Treffer-Korrektur: zählt, was man SIEHT. Landet ein Tipp (wegen iOS-Fehler nach dem Drehen) auf einem anderen Knopf als dem,
+  // über dem der Finger war, wird der Knopf unter dem Finger ausgelöst.
+  { const hud = $('hud'); let tp = null;
+    hud.addEventListener('touchstart', e => { tp = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true, capture: true });
+    hud.addEventListener('touchend', e => {
+      if (!tp || e.changedTouches.length !== 1) { tp = null; return; }
+      const c = e.changedTouches[0], moved = Math.hypot(c.clientX - tp.x, c.clientY - tp.y); tp = null;
+      if (moved > 10) return;
+      const tgt = e.target && e.target.closest ? e.target : null;
+      if (tgt && tgt.closest('select,input,label')) return;
+      const tb = tgt && tgt.closest('button');
+      let hit = null;
+      for (const b of hud.querySelectorAll('button')) {
+        if (b.disabled || !b.offsetParent) continue;
+        const r = b.getBoundingClientRect();
+        if (c.clientX >= r.left && c.clientX <= r.right && c.clientY >= r.top && c.clientY <= r.bottom) { hit = b; break; }
+      }
+      if (hit && hit !== tb) { e.preventDefault(); rea('Treffer-Versatz korrigiert: ' + (tb ? tb.id || tb.textContent : 'kein Knopf') + ' → ' + (hit.id || hit.textContent)); hit.click(); }
+    }, { capture: true });
+  }
+
+  // ===== Schalter im Sound-Menü =====
+  const togIds = { auto: 't-auto', mood: 't-mood', phrase: 't-phrase', drop: 't-drop', build: 't-build', pulse: 't-pulse', spark: 't-spark', acid: 't-acid', bar: 't-bar', morph: 't-morph', tune: 't-tune', own: 't-own', name: 't-name', instr: 't-instr' };
+  for (const k in togIds) {
+    const el = $(togIds[k]);
+    el.classList.toggle('hot', toggles[k]);
+    el.addEventListener('click', () => {
+      toggles[k] = !toggles[k]; el.classList.toggle('hot', toggles[k]); store.set('am-toggles', toggles);
+      if (k === 'phrase') lastSwitch = performance.now();
+      if (k === 'name') showName();
+      if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));
+      if (k === 'own' && !toggles.own && shCur) nextPreset(1.5);
+    });
+  }
+  $('fineBtn').addEventListener('click', () => {
+    const open = $('fine').hidden; $('fine').hidden = !open;
+    $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);
+  });
+
+  const gainEl = $('gain'), latEl = $('latency');
+  let autoGain = 1;
+  const pushGain = tc => inGain.gain.setTargetAtTime(+gainEl.value * (toggles.auto ? autoGain : 1), ctx.currentTime, tc);
+  const applyGain = () => { pushGain(0.03); $('gainOut').textContent = (+gainEl.value).toFixed(1) + '×'; };
+  const applyLat = () => { delayNode.delayTime.setTargetAtTime((micOn ? 0 : +latEl.value) / 1000, ctx.currentTime, 0.02); $('latOut').textContent = latEl.value + ' ms'; };
+  {
+    const g = store.get('am-gain2', null), l = store.get('am-lat', null);
+    if (g !== null) gainEl.value = g;
+    if (l !== null) latEl.value = l; else if (ctx.outputLatency) latEl.value = Math.round(ctx.outputLatency * 1000 / 5) * 5;
+  }
+  gainEl.addEventListener('input', () => { applyGain(); store.set('am-gain2', +gainEl.value); });
+  latEl.addEventListener('input', () => { applyLat(); store.set('am-lat', +latEl.value); });
+  applyGain(); applyLat();
+
+  // ===== Auto-Pegel: gleicht nur die Empfindlichkeit des Visualizers an, der Ton zu den Lautsprechern bleibt unverändert =====
+  // Ziel: Eingang im Mittel bei -12 dB (Spitzen bleiben unter dem Anschlag). Langsam gemittelt, damit Breaks und Drops ihren Unterschied behalten.
+  const AGC_TARGET = -12, lvBuf = new Float32Array(levelAn.fftSize);
+  const agc = { e: null, active: 0, nextLog: 3, db: null, lastSig: performance.now() };
+  function agcReset() { agc.lastSig = performance.now(); agc.e = null; agc.active = 0; agc.nextLog = 3; agc.db = null; autoGain = 1; pushGain(0.3); }
+  function agcText() {
+    if (!toggles.auto) return 'Auto-Pegel aus. Reaktion wirkt direkt.';
+    if (agc.db === null) return 'Auto-Pegel: wartet auf Ton.';
+    return 'Auto-Pegel: Eingang ' + agc.db.toFixed(1) + ' dB, Ziel ' + AGC_TARGET + ' dB, Verstärkung ×' + autoGain.toFixed(2);
+  }
+  setInterval(() => {
+    if (ctx.state !== 'running' || !srcNode || (audio.paused && srcNode === fileNode)) return;
+    levelAn.getFloatTimeDomainData(lvBuf);
+    let sum = 0; for (let i = 0; i < lvBuf.length; i++) sum += lvBuf[i] * lvBuf[i];
+    const e = sum / lvBuf.length;
+    if (e < 1e-5) return;                                  // Stille: Wert halten
+    agc.lastSig = performance.now();
+    agc.active += 0.1;
+    const tau = Math.min(12, 0.8 + 0.8 * agc.active);     // am Anfang schnell, dann langsam
+    agc.e = agc.e === null ? e : agc.e + (e - agc.e) * (1 - Math.exp(-0.1 / tau));
+    agc.db = 10 * Math.log10(agc.e);
+    autoGain = Math.pow(10, clamp(AGC_TARGET - agc.db, -12, micOn ? 36 : 15) / 20);   // Mikrofon ist viel leiser als eine Datei: bis +36 dB
+    if (toggles.auto) pushGain(0.5);
+    if (!$('fine').hidden) $('autoInfo').textContent = agcText();
+    if (agc.active >= agc.nextLog) { agc.nextLog += 20; if (toggles.auto) rea(agcText() + ' (Reaktion ×' + (+gainEl.value).toFixed(1) + ')'); }
+  }, 100);
+  $('t-auto').addEventListener('click', () => { pushGain(0.2); $('autoInfo').textContent = agcText(); rea(agcText()); });
+
+  // ===== Sicherheits-Modus: Wenn der Player dem Visualizer keinen Ton liefert (z. B. manche Formate oder nach einer Unterbrechung),
+  // wird die Datei selbst dekodiert und über die Audio-Engine abgespielt. Der Player bleibt dabei die Uhr (Zeit, Pause, Spulen). =====
+  let bufState = null, wdSilent = 0, wdLimit = 4, driftHits = 0, lastResync = 0, resyncCount = 0;
+  function bufStop() {
+    if (bufState && bufState.src) { try { bufState.src.stop(); } catch (e) {} try { bufState.src.disconnect(); } catch (e) {} bufState.src = null; }
+  }
+  function bufStart() {
+    if (!bufState || !bufState.buf) return;
+    bufStop();
+    const pos = Math.max(0, Math.min(audio.currentTime, bufState.buf.duration - 0.05));
+    const src = ctx.createBufferSource(); src.buffer = bufState.buf; src.connect(bufState.out);
+    src.start(0, pos); bufState.src = src; bufState.t0 = ctx.currentTime - pos;
+  }
+  function bufExit() {
+    if (!bufState) return;
+    bufStop(); try { bufState.out.disconnect(); } catch (e) {}
+    try { if (fileNode) fileNode.connect(ctx.destination); } catch (e) {}
+    bufState = null;
+  }
+  async function enterBufferMode(why) {
+    if (bufState || !curFile) return;
+    const f = curFile; bufState = { busy: true };
+    rea('Sicherheits-Modus: ' + why + ' Datei wird selbst dekodiert …');
+    say('Sicherheits-Modus: Ton wird neu aufgebaut …');
+    try {
+      if (f.size > 250e6) throw new Error('Datei zu groß (' + (f.size / 1048576).toFixed(0) + ' MB)');
+      const raw = await f.arrayBuffer();
+      const buf = await new Promise((res, rej) => { const p = ctx.decodeAudioData(raw, res, rej); if (p && p.then) p.then(res, rej); });
+      if (curFile !== f) { bufState = null; return; }
+      const out = ctx.createGain(); out.connect(ctx.destination);
+      try { fileNode.disconnect(ctx.destination); } catch (e) {}
+      bufState = { buf, out, src: null, t0: 0 };
+      connect(out);
+      if (!audio.paused) bufStart();
+      wdLimit = 1.5;                                    // beim nächsten Mal schneller umschalten
+      say(''); rea('Sicherheits-Modus läuft: ' + buf.duration.toFixed(0) + ' s, ' + buf.sampleRate + ' Hz, ' + buf.numberOfChannels + ' Kanäle');
+    } catch (e) {
+      bufState = null; say('Dieser Track liefert keinen Ton. Probier MP3, M4A oder WAV.'); err('Sicherheits-Modus fehlgeschlagen: ' + (e && e.message || e));
+    }
+  }
+  audio.addEventListener('playing', () => { if (bufState && bufState.buf) bufStart(); });
+  audio.addEventListener('pause', () => bufStop());
+  audio.addEventListener('ended', () => bufStop());
+  audio.addEventListener('seeked', () => { if (bufState && bufState.buf && !audio.paused) bufStart(); });
+  // Wächter: Läuft der Player, aber der Visualizer bekommt länger keinen Ton → Sicherheits-Modus. Gleichlauf im Sicherheits-Modus prüfen.
+  setInterval(() => {
+    if (ctx.state !== 'running' || audio.paused || !isFinite(audio.duration)) { wdSilent = 0; return; }
+    if (bufState && bufState.buf) {
+      if (bufState.src) {
+        const drift = (ctx.currentTime - bufState.t0) - audio.currentTime;
+        if (Math.abs(drift) > 0.5) {
+          const nowT = performance.now();
+          if (++driftHits >= 3 && nowT - lastResync > 8000 && resyncCount < 4) {
+            driftHits = 0; lastResync = nowT; resyncCount++;
+            rea('Gleichlauf korrigiert (' + (drift * 1000).toFixed(0) + ' ms Abweichung)' + (resyncCount >= 4 ? ', ab jetzt nicht mehr (Uhren laufen unterschiedlich)' : '')); bufStart();
+          }
+        } else driftHits = 0;
+      }
+      return;
+    }
+    if (bufState || srcNode !== fileNode || audio.duration - audio.currentTime < 8) { wdSilent = 0; return; }
+    if (performance.now() - agc.lastSig > 700) wdSilent += 0.5; else wdSilent = 0;
+    if (wdSilent >= wdLimit) { wdSilent = 0; enterBufferMode('Der Player läuft, liefert dem Visualizer aber keinen Ton.'); }
+  }, 500);
+
+  function setBpm(v, show) {
+    bpm = clamp(v, 60, 200);
+    if (show) $('bpm').textContent = Math.round(bpm);
+  }
+
+  // ===== Live-Erkennung: Kick, Snare, Hi-Hats, Acid-Linie =====
+  function band(lo, hi) { return { lo: Math.max(1, Math.floor(lo / binHz)), hi: Math.min(fbuf.length - 1, Math.ceil(hi / binHz)) }; }
+  function bandE(b) { let e = 0; for (let i = b.lo; i <= b.hi; i++) e += Math.pow(10, fbuf[i] / 10); return Math.sqrt(e); }
+  function mkOnset(lo, hi, k, tau, minGap) { return Object.assign(band(lo, hi), { k, tau, minGap, prev: 0, mean: 0, varr: 0, avg: 0, last: 0, e: 0 }); }
+  function onsetStep(o, t, dt) {
+    const e = bandE(o); o.e = e;
+    const flux = Math.max(0, e - o.prev); o.prev = e;
+    o.mean = ema(o.mean, flux, dt, o.tau);
+    o.varr = ema(o.varr, (flux - o.mean) ** 2, dt, o.tau);
+    o.avg = ema(o.avg, e, dt, 2500);
+    const thr = o.mean + o.k * Math.sqrt(o.varr);
+    if (flux > thr && e > o.avg * 0.8 && e > 1e-5 && t - o.last > o.minGap) { o.last = t; return Math.min(1, flux / (thr * 1.8 + 1e-9)); }
+    return 0;
+  }
+  const det = {
+    kick: mkOnset(40, 130, 2.0, 600, 180),
+    snare: mkOnset(1500, 5000, 2.2, 500, 120),
+    hat: mkOnset(7000, 15000, 1.6, 400, 55),
+    mid: mkOnset(300, 3000, 1.6, 500, 80)           // Anschläge in den Mitten: 303-Noten, Synths, Claps (für „Instrumente hören“)
+  };
+  const bM1 = band(300, 1000), bM2 = band(1000, 3000);
+
+  function resetBeat() {
+    beat.state = 'warten'; beat.n = 0; beat.iois = []; beat.kickStreak = 0; beat.lastKick = 0;
+    for (const k in det) Object.assign(det[k], { prev: 0, mean: 0, varr: 0, avg: 0 });
+    build = 0;
+  }
+
+  const LABEL = { warten: '–', intro: 'Intro', groove: 'Groove', break: 'Break', buildup: 'Build-up', drop: 'DROP', outro: 'Outro' };
+  let shownState = '';
+  function beatFrame(t) {
+    const dt = Math.min(100, t - lastT); lastT = t;
+    if (srcNode && ctx.state === 'running') {
+      analyser.getFloatFrequencyData(fbuf);
+      let all = 0;
+      for (let i = 1; i < 200; i += 4) all += Math.pow(10, fbuf[i] / 10);
+      all = Math.sqrt(all);
+      levelAvg = ema(levelAvg, all, dt, 800);
+
+      det.kick.minGap = Math.min(300, 60000 / bpm * 0.6);
+      const kS = onsetStep(det.kick, t, dt); if (kS) onKick(t, kS);
+      const sS = onsetStep(det.snare, t, dt); if (sS && t - det.kick.last > 60) { onSnare(sS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.5 + 0.5 * sS); AMI.n.t++; amiEv('s'); } }
+      const hS = onsetStep(det.hat, t, dt); if (hS) { onHat(hS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * hS); AMI.n.t++; amiEv('h'); } }
+      const mS = onsetStep(det.mid, t, dt); if (mS && t - det.kick.last > 50 && !scanActive()) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * mS); AMI.n.m++; amiEv('m'); }
+      hiFast = ema(hiFast, det.hat.e + det.snare.e, dt, 800);
+      if (reactive) { try { feedBlender(reactive.update(), dt); } catch (e) {} }
+      { const dec = Math.exp(-dt / 4000), perBeat = bpm / 60 * 4;   // ca. 4 Sekunden Gedächtnis
+        snd.kick = snd.kick * dec + kS; snd.hat = snd.hat * dec + hS;
+        snd.acid = ema(snd.acid, clamp((acidAct - 0.01) / 0.04), dt, 1500);
+        snd.kN = clamp(snd.kick / (perBeat * 0.6)); snd.hN = clamp(snd.hat / (perBeat * 0.9)); }
+
+      // Acid-Linie: Verschiebung zwischen tiefen und hohen Mitten = Filterfahrt der 303
+      const m1 = bandE(bM1), m2 = bandE(bM2), r = m2 / (m1 + m2 + 1e-12);
+      if (shPlayer) shLevels(dt, det.kick.e, m1 + m2, det.hat.e);
+      rFast = ema(rFast, r, dt, 40); rSlow = ema(rSlow, r, dt, 1500);
+      const d = rFast - rSlow;
+      acidAct = ema(acidAct, Math.abs(d), dt, 300);
+      const hTarget = toggles.acid && (m1 + m2) > 1e-4 ? clamp(d * 300, -50, 50) : 0;
+      hue = ema(hue, hTarget, dt, 80);
+
+      // Stimmung live mitschreiben (für Tracks ohne Scan)
+      if (all > 1e-4) {
+        live.seen += dt;
+        const tot = m1 + m2 + det.hat.e + 1e-9;
+        live.bright = ema(live.bright, clamp((det.hat.e / tot - 0.02) / 0.2), dt, 8000);
+        live.acid = ema(live.acid, clamp((acidAct - 0.01) / 0.04), dt, 8000);
+        live.energy = ema(live.energy, clamp(0.5 * clamp((20 * Math.log10(all + 1e-9) + 30) / 20) + 0.5 * clamp((bpm - 118) / 30)), dt, 8000);
+      }
+    } else {
+      hue = ema(hue, 0, dt, 200);
+    }
+
+    if (scanActive()) scanFrame(t);
+    else liveFrame(t);
+
+    const st = frozen ? 'FREEZE' : (LABEL[scanActive() ? scanType : beat.state] || '–');
+    if (st !== shownState) { shownState = st; $('state').textContent = st; }
+  }
+
+  function liveFrame(t) {
+    const P = 60000 / bpm;
+    while (t - beat.t >= P) { beat.t += P; beat.n++; if (beat.n % 4 === 0) onBar(beat.state); onBeat(t, P); }
+    const sinceKick = t - beat.lastKick;
+    if (beat.state === 'groove' && sinceKick > 8 * P) { beat.breakStart = beat.lastKick; beat.kickStreak = 0; hiAtBreak = hiFast; setLiveState('break', t, P); }
+    if (beat.state === 'break' && t - beat.breakStart > 16 * P && hiAtBreak > 0 && hiFast > hiAtBreak * 1.5) { buildStart = t; setLiveState('buildup', t, P); }
+    if (beat.state !== 'warten' && levelAvg < 1e-4 && sinceKick > 4000) setLiveState('warten', t, P);
+    build = beat.state === 'buildup' ? clamp((t - buildStart) / (32 * P)) : 0;
+    dropPre = build * 0.6;                         // ohne Scan weiß niemand, wann der Drop kommt: nur schwacher Aufbau
+  }
+  function setLiveState(s, t, P) {
+    const prev = beat.state; if (prev === s) return;
+    beat.state = s;
+    onSection(s, prev, P, t);
+  }
+
+  function onKick(t, strength) {
+    if (scanActive()) return;                       // im Scan-Modus kommt der Puls exakt vom Raster (scanFrame)
+    kickGlow = 1; AMI.hk = Math.max(AMI.hk, 0.55 + 0.45 * strength);
+    pulse = Math.max(pulse, 0.02 + 0.04 * strength);
+    const P = 60000 / bpm, gap = t - beat.lastKick;
+    if (beat.lastKick && gap < 2000) {
+      let p = gap; while (p < 300) p *= 2; while (p > 600) p /= 2;
+      beat.iois.push(p); if (beat.iois.length > 24) beat.iois.shift();
+      if (beat.iois.length >= 6) {
+        const m = beat.iois.slice().sort((a, b) => a - b)[beat.iois.length >> 1];
+        setBpm(bpm + (60000 / m - bpm) * 0.25, true);
+      }
+    }
+    beat.lastKick = t; beat.kickStreak++;
+    if (beat.state === 'warten' && beat.kickStreak >= 4) { beat.t = t; beat.n = 0; setLiveState('groove', t, P); return; }
+    if ((beat.state === 'break' || beat.state === 'buildup') && t - beat.breakStart > 16 * P) {
+      beat.t = t; beat.n = 0; setLiveState('drop', t, P);
+      setTimeout(() => { if (beat.state === 'drop') beat.state = 'groove'; }, 16 * P);
+      return;
+    }
+    if (beat.state === 'break' || beat.state === 'buildup') beat.state = 'groove';
+    let d = t - beat.t; if (d > P / 2) d -= P;
+    if (Math.abs(d) < P * 0.25) beat.t += d * 0.3;
+  }
+
+  function onBeat(t, P) {
+    if (!auto || frozen || !toggles.phrase) return;
+    if (!(beat.state === 'groove' || beat.state === 'drop')) return;
+    const since = beat.n - sectionBeat0;
+    if (since > 0 && since % PHRASE_BEATS === 0 && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+  }
+
+  // Abschnittswechsel: hier passieren Schnitt, Blitz und Stimmungswechsel
+  function onSection(type, prev, P, t) {
+    rea('Abschnitt: ' + (prev || '–') + ' → ' + type);
+    sectionChangeT = t; sectionBeat0 = beat.n;
+    if (frozen) return;
+    if (type === 'drop') {
+      build = 0; vign = 0; dropPre = 0;
+      if (toggles.build && !reduceMotion) { bang = 1; if (toggles.bar) barHueTarget += 60; }   // Aufknallen: Farbe satt zurück + Farbsprung
+      if (toggles.drop) {
+        if (auto) nextPreset(0, moodTarget('drop'));
+        flash = reduceMotion ? 0.2 : 0.7;
+        burst(40);
+      }
+      pulse = Math.max(pulse, 0.06);
+      return;
+    }
+    if (!auto) return;
+    if (!scanActive() && t - lastSwitch < 32 * P) { rea('Wechsel ausgelassen: letzter Wechsel weniger als 8 Takte her'); return; }
+    if (type === 'break' && (prev === 'groove' || prev === 'drop')) nextPreset(blendSecs('break'), moodTarget('break'), true);
+    else if (type === 'groove' && (prev === 'intro' || prev === 'warten')) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+    else if (type === 'outro') nextPreset(blendSecs('outro'), moodTarget('outro'), true);
+  }
+
+  // ===== Scan-Modus: Ablauf kommt aus dem vorab analysierten Track =====
+  function sectionAt(A, ts) {
+    const S = A.sections; let lo = 0, hi = S.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (S[m].t0 <= ts) lo = m; else hi = m - 1; }
+    return S[lo];
+  }
+  function scanFrame(t) {
+    const A = curAnalysis;
+    const ts = audio.currentTime - (+latEl.value) / 1000;
+    const bi = Math.floor((ts - A.beat0) / A.beatS);
+    beat.n = bi - A.barPhase;
+    const s = sectionAt(A, ts);
+    scanSec = s;
+    const type = s ? s.type : 'intro';
+    const P = A.beatS * 1000;
+    if (!audio.paused) feedScanHits(A, ts);
+    if (type !== scanType) {
+      const prev = scanType; scanType = type;
+      if (prev !== null) onSection(type, prev, P, t); else sectionChangeT = t;
+    }
+    build = type === 'buildup' && s ? clamp((ts - s.t0) / Math.max(0.1, s.t1 - s.t0)) : 0;
+    // Vorausahnen: der Scan kennt den nächsten Drop. Ab 8 Takten vorher steigt die Spannung, egal ob Break oder Build-up.
+    if (!A._drops) A._drops = A.sections.filter(x => x.type === 'drop').map(x => x.t0);
+    let nd = -1; for (const d of A._drops) if (d > ts) { nd = d; break; }
+    const lead = PRE_BARS * 4 * A.beatS;
+    if (type !== 'drop' && nd > 0 && nd - ts < lead && !audio.paused) {
+      dropPre = clamp(1 - (nd - ts) / lead);
+      if (preLogT !== nd) { preLogT = nd; rea('Drop-Aufbau: Drop in ' + Math.round((nd - ts) / (4 * A.beatS)) + ' Takten (bei ' + nd.toFixed(1) + ' s)'); }
+    } else dropPre = 0;
+    build = Math.max(build, dropPre);
+    if (bi !== lastBi) {
+      const prevBi = lastBi; lastBi = bi;
+      // Kick-Puls auf dem Raster: kommt pünktlich auf dem Schlag, nicht erst nach der Erkennung
+      if (prevBi !== null && bi === prevBi + 1 && (type === 'groove' || type === 'drop' || type === 'buildup') && !audio.paused) {
+        const sinceDrop = type === 'drop' ? 1 : 0;
+        kickGlow = 1; pulse = Math.max(pulse, type === 'drop' ? 0.05 : type === 'buildup' ? 0.02 + 0.03 * build : 0.035);
+        { const ka = A.kA && bi >= 0 && bi < A.kA.length ? A.kA[bi] : 1; if (ka >= 0.35) AMI.hk = Math.max(AMI.hk, 0.5 + 0.5 * ka); }   // Instrumente hören: nur echte Kicks, mit gemessener Stärke
+        if (beat.n % 4 === 0) { pulse += 0.01 * (1 + sinceDrop); onBar(type); }   // Takt-Eins etwas stärker, Farbe springt weiter
+      }
+      if (prevBi !== null && bi === prevBi + 1 && auto && !frozen && toggles.phrase && (type === 'groove' || type === 'drop')) {
+        const since = bi - Math.round((s.t0 - A.beat0) / A.beatS);
+        const rest = (s.t1 - ts) / A.beatS;
+        if (since > 0 && since % PHRASE_BEATS === 0 && rest >= MIN_REST_BEATS && t - sectionChangeT > 8 * P) nextPreset(blendSecs('groove'), moodTarget('groove'), true);
+      }
+    }
+  }
+
+  // ===== Effekte: Puls, Blitz, Build-up-Vignette, Funken, Ringe, Acid-Farbe =====
+  const fx2 = fxc.getContext('2d');
+  const sparks = [], rings = [];
+  let fxDirty = false, lastFx = performance.now(), lastTr = '', lastHead = 0;
+  const flashEl = $('flash'), dots = document.querySelectorAll('.beats i');
+
+  function onHat(s) {
+    if (!toggles.spark || sparks.length > 140) return;
+    const n = 2 + Math.floor(s * 4 * (1 + 3 * (toggles.build ? build : 0)));
+    for (let i = 0; i < n; i++) sparks.push({ x: Math.random() * fxc.width, y: Math.random() * fxc.height, r: (1 + 2.2 * Math.random()) * fxScale, life: 0, max: 160 + Math.random() * 140, acid: Math.random() < 0.5 });
+  }
+  function onSnare(s) {
+    if (!toggles.spark || rings.length > 6) return;
+    rings.push({ life: 0, max: 340, a: 0.2 + 0.3 * s });
+  }
+  function burst(n) {
+    if (!toggles.spark) return;
+    const cx = fxc.width / 2, cy = fxc.height / 2;
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, d = Math.random() * Math.min(cx, cy); sparks.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: (1.5 + 3 * Math.random()) * fxScale, life: 0, max: 300 + Math.random() * 300, acid: true }); }
+  }
+
+  function fxFrame(t) {
+    const dt = Math.min(100, t - lastFx); lastFx = t;
+    pulse *= Math.exp(-dt / 110);
+    flash *= Math.exp(-dt / 140);
+    kickGlow *= Math.exp(-dt / 120);
+    const b = toggles.build ? build : 0;
+    bang *= Math.exp(-dt / 900);
+    let sc = (toggles.pulse ? 1 + pulse : 1) + 0.07 * b * b;
+    const pr = toggles.build ? dropPre : 0;
+    sat = (1 - 0.7 * pr * pr) * (1 + 0.45 * bang);   // vor dem Drop Farbe raus, im Drop kurz übersatt
+    let tx = '';
+    if (morphOn && blender) {
+      const d = blender.update(null, t).deformed;
+      if (!blender.state.active) morphOn = false;
+      const rot = Math.max(-4, Math.min(4, d.rotation * 0.5));                               // höchstens 4°
+      const zoom = Math.min(0.14, (d.scale - 1) * 0.9) + Math.abs(rot) * Math.PI / 180 * 2.2;   // etwas größer, damit beim Drehen keine Ecken sichtbar werden
+      const dx = Math.max(-3, Math.min(3, d.x * 6)), dy = Math.max(-3, Math.min(3, d.y * 6));
+      sc *= 1 + zoom;
+      if (morphOn) tx = 'translate(' + dx.toFixed(2) + '%,' + dy.toFixed(2) + '%) rotate(' + rot.toFixed(2) + 'deg) ';
+    }
+    const tr = (tx || sc !== 1) ? tx + 'scale(' + sc.toFixed(4) + ')' : '';
+    if (tr !== lastTr) { canvas.style.transform = tr; shEl.style.transform = tr; lastTr = tr; }
+    shBar *= Math.exp(-dt / 250);
+    flashEl.style.opacity = flash > 0.01 ? flash.toFixed(3) : '0';
+    if (!toggles.bar) barHueTarget = barHue;      // ausgeschaltet: Farbe bleibt, wo sie ist
+    barHue = ema(barHue, barHueTarget, dt, 90);    // kurzer Sprung (ca. 0,2 s), kein langes Gleiten
+    if (barHueTarget > 3600) { barHueTarget -= 3600; barHue -= 3600; lastHue -= 3600; }
+    applyFilter(false);
+    const cur = beat.state === 'warten' && !scanActive() ? -1 : ((beat.n % 4) + 4) % 4;
+    for (let i = 0; i < 4; i++) { dots[i].classList.toggle('on', i === cur); dots[i].classList.toggle('kick', i === cur && kickGlow > 0.3); }
+    if (t - lastHead > 250) { lastHead = t; moveHead(); }
+    drawFx(dt, b);
+  }
+  function drawFx(dt, b) {
+    vign = ema(vign, b * 0.8, dt, 120);
+    if (!sparks.length && !rings.length && vign < 0.005) {
+      if (fxDirty) { fx2.clearRect(0, 0, fxc.width, fxc.height); fxDirty = false; }
+      return;
+    }
+    const w = fxc.width, h = fxc.height, cx = w / 2, cy = h / 2, mn = Math.min(w, h), mx = Math.max(w, h);
+    fx2.clearRect(0, 0, w, h); fxDirty = true;
+    if (vign >= 0.005) {
+      const g = fx2.createRadialGradient(cx, cy, mn * 0.3 * (1 - vign * 0.6), cx, cy, mx * 0.72);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + vign.toFixed(3) + ')');
+      fx2.fillStyle = g; fx2.fillRect(0, 0, w, h);
+    }
+    fx2.globalCompositeOperation = 'lighter';
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i]; s.life += dt;
+      if (s.life >= s.max) { sparks.splice(i, 1); continue; }
+      const a = 1 - s.life / s.max;
+      fx2.fillStyle = s.acid ? 'rgba(198,244,50,' + (a * 0.9).toFixed(3) + ')' : 'rgba(255,255,255,' + (a * 0.8).toFixed(3) + ')';
+      fx2.beginPath(); fx2.arc(s.x, s.y, s.r * (0.6 + a * 0.6), 0, Math.PI * 2); fx2.fill();
+    }
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i]; r.life += dt;
+      if (r.life >= r.max) { rings.splice(i, 1); continue; }
+      const p = r.life / r.max;
+      fx2.strokeStyle = 'rgba(198,244,50,' + (r.a * (1 - p)).toFixed(3) + ')';
+      fx2.lineWidth = 2.5 * fxScale;
+      fx2.beginPath(); fx2.arc(cx, cy, mn * (0.08 + 0.55 * p), 0, Math.PI * 2); fx2.stroke();
+    }
+    fx2.globalCompositeOperation = 'source-over';
+  }
+
+  // ===== Gesten auf dem Bild =====
+  let pd = null, lpTimer = 0, tapTimer = 0, lastTapT = 0, hudWokeByTap = false;
+  canvas.addEventListener('pointerdown', e => {
+    pd = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, frozen: false };
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => { if (pd) { pd.frozen = true; frozen = true; } }, 450);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!pd || pd.id !== e.pointerId || pd.frozen) return;
+    if (Math.hypot(e.clientX - pd.x, e.clientY - pd.y) > 25) clearTimeout(lpTimer);
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!pd || pd.id !== e.pointerId) return;
+    clearTimeout(lpTimer);
+    const d = pd; pd = null;
+    if (d.frozen) { frozen = false; return; }
+    const dx = e.clientX - d.x, dy = e.clientY - d.y, dur = performance.now() - d.t;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) { if (dx < 0) goNext(); else goPrev(); return; }
+    if (Math.hypot(dx, dy) < 20 && dur < 350) {
+      const now = performance.now();
+      if (now - lastTapT < 300) {
+        clearTimeout(tapTimer); lastTapT = 0;
+        if (hudWokeByTap) { hud.classList.add('off'); hudWokeByTap = false; }   // Doppeltipp ist ein Schnitt, keine Leiste
+        flash = reduceMotion ? 0.2 : 0.6; burst(30); pulse = Math.max(pulse, 0.05);
+        nextPreset(0, moodTarget('drop'));
+      } else {
+        lastTapT = now;
+        if (hud.classList.contains('off')) { hud.classList.remove('off'); hudWoke = now; hudWokeByTap = true; lastTouch = now; }   // sofort sichtbar
+        else { hudWokeByTap = false; tapTimer = setTimeout(() => { if (!$('fine').hidden) $('fineBtn').click(); else hud.classList.add('off'); }, 260); }
+      }
+    }
+  });
+  canvas.addEventListener('pointercancel', () => { if (pd && pd.frozen) frozen = false; pd = null; clearTimeout(lpTimer); });
+
+  // ===== Leiste blendet sich selbst aus =====
+  let lastTouch = performance.now();
+  const touched = () => { lastTouch = performance.now(); };
+  window.addEventListener('pointerdown', touched, true);
+  window.addEventListener('input', touched, true);
+  setInterval(() => {
+    if ((!audio.paused || micOn) && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
+  }, 1000);
+
+  // ===== Track-Scan =====
+  function getDuration(file) {
+    return new Promise(res => {
+      const a = new Audio(); const url = URL.createObjectURL(file);
+      let to = 0;
+      const done = v => { clearTimeout(to); URL.revokeObjectURL(url); a.removeAttribute('src'); res(v); };
+      to = setTimeout(() => done(NaN), 5000);
+      a.preload = 'metadata';
+      a.onloadedmetadata = () => done(a.duration);
+      a.onerror = () => done(NaN);
+      a.src = url;
+    });
+  }
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  async function analyzeFile(file) {
+    const dur = await getDuration(file);
+    if ((isFinite(dur) && dur > 900) || (!isFinite(dur) && file.size > 40e6) || file.size > 150e6) return { skipped: 'lang' };
+    const report = p => { if (file === curFile) setTrackInfo('Scan ' + Math.round(p * 100) + ' %'); };
+    report(0);
+    const raw = await file.arrayBuffer();
+    const decoded = await new Promise((res, rej) => { const p = ctx.decodeAudioData(raw, res, rej); if (p && p.then) p.then(res, rej); });
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    let SR = 22050;
+    try { new OAC(1, 1, SR); } catch (e) { SR = 44100; }
+    const hop = Math.round(SR * 0.02322);
+    const segFrames = Math.round(60 / (hop / SR));
+    const total = Math.floor(decoded.duration * SR / hop);
+    const SUB = 4;                                     // Bassband zusätzlich 4x feiner (ca. 6 ms) für genaues Tempo
+    const env = { lowF: new Float32Array(total * SUB), low: new Float32Array(total), m1: new Float32Array(total), m2: new Float32Array(total), hi: new Float32Array(total), full: new Float32Array(total) };
+    const keys = ['low', 'm1', 'm2', 'hi', 'full'];
+    for (let f0 = 0; f0 < total; f0 += segFrames) {
+      const frames = Math.min(segFrames, total - f0);
+      const off = new OAC(5, frames * hop, SR);
+      const src = off.createBufferSource(); src.buffer = decoded;
+      const merger = off.createChannelMerger(5);
+      const bq = (type, f) => { const b = off.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = 0.707; return b; };
+      const chain = (...nodes) => { let p = src; for (const n of nodes) { p.connect(n); p = n; } return p; };
+      chain(bq('lowpass', 130), bq('lowpass', 130)).connect(merger, 0, 0);
+      chain(bq('highpass', 300), bq('lowpass', 1000)).connect(merger, 0, 1);
+      chain(bq('highpass', 1000), bq('lowpass', 3000)).connect(merger, 0, 2);
+      chain(bq('highpass', 7000), bq('highpass', 7000)).connect(merger, 0, 3);
+      src.connect(merger, 0, 4);
+      merger.connect(off.destination);
+      src.start(0, f0 * hop / SR, frames * hop / SR);
+      const r = await off.startRendering();
+      for (let c = 0; c < 5; c++) {
+        const d = r.getChannelData(c), out = env[keys[c]];
+        for (let f = 0; f < frames; f++) {
+          let s = 0; const base = f * hop;
+          for (let k = 0; k < hop; k++) { const v = d[base + k]; s += v * v; }
+          out[f0 + f] = Math.sqrt(s / hop);
+          if (c === 0) {
+            const sh = hop / SUB;
+            for (let u = 0; u < SUB; u++) {
+              let s2 = 0; const b2 = base + Math.round(u * sh), e2 = base + Math.round((u + 1) * sh);
+              for (let k = b2; k < e2; k++) { const v = d[k]; s2 += v * v; }
+              env.lowF[(f0 + f) * SUB + u] = Math.sqrt(s2 / Math.max(1, e2 - b2));
+            }
+          }
+        }
+      }
+      report(Math.min(0.95, (f0 + frames) / total));
+      await tick();
+    }
+    const A = analyzeEnvelopes(env, hop / SR);
+    A.file = file;
+    return A;
+  }
+  function ensureScan(file) {
+    if (!scanCache.has(file)) {
+      const p = scanChain.then(() => analyzeFile(file)).catch(() => ({ skipped: 'fehler' }));
+      scanChain = p.then(() => {});
+      scanCache.set(file, p);
+    }
+    return scanCache.get(file);
+  }
+
+  function moodText(md) {
+    const tone = md.bright < 0.38 ? 'dunkel' : md.bright > 0.62 ? 'hell' : 'neutral';
+    const drive = md.energy > 0.6 ? 'treibend' : md.energy < 0.35 ? 'ruhig' : 'mittel';
+    return tone + ' · ' + drive + ' · Acid ' + Math.round(md.acid * 100) + ' %';
+  }
+  function drawTimeline(A) {
+    const tl = $('timeline');
+    if (!A || !A.grid) { tl.hidden = true; return; }
+    const dur = audio.duration && isFinite(audio.duration) ? audio.duration : A.duration;
+    tl.innerHTML = A.sections.map(s => '<span class="t-' + s.type + '" style="left:' + (100 * s.t0 / dur).toFixed(3) + '%;width:' + (100 * (s.t1 - s.t0) / dur).toFixed(3) + '%"></span>').join('') + '<span id="head" style="left:0"></span>';
+    tl.hidden = false;
+  }
+  function moveHead() {
+    const h = document.getElementById('head');
+    if (!h || !curAnalysis || !audio.duration) return;
+    h.style.left = (100 * audio.currentTime / audio.duration).toFixed(2) + '%';
+  }
+
+  // ===== Playlist und Laden =====
+  function connect(node) {
+    if (srcNode === node) return;
+    if (srcNode) { try { srcNode.disconnect(inGain); } catch (e) {} try { srcNode.disconnect(levelAn); } catch (e) {} }
+    srcNode = node; node.connect(inGain); node.connect(levelAn);
+  }
+  let trackExtra = '';
+  function setTrackInfo(extra) {
+    if (extra !== undefined) trackExtra = extra;
+    const f = queue[qi]; const el = $('track');
+    if (!f) { el.textContent = 'Noch kein Track'; return; }
+    const em = document.createElement('em'); em.textContent = f.name.replace(/\.[^.]+$/, '');
+    el.replaceChildren(document.createTextNode(queue.length > 1 ? (qi + 1) + '/' + queue.length + ' · ' : ''), em, document.createTextNode(trackExtra ? ' · ' + trackExtra : ''));
+    $('nextTrack').disabled = qi >= queue.length - 1;
+  }
+  async function playAt(i) {
+    if (i < 0 || i >= queue.length) return;
+    if (micOn) stopMic();
+    qi = i; const f = queue[i]; curFile = f;
+    trg('Track geladen: ' + f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)');
+    curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
+    bufExit(); wdSilent = 0; resyncCount = 0; driftHits = 0;
+    resetBeat(); agcReset();
+    if (audio.src) URL.revokeObjectURL(audio.src);
+    audio.src = URL.createObjectURL(f);
+    audio.load();
+    if (!fileNode) { fileNode = ctx.createMediaElementSource(audio); fileNode.connect(ctx.destination); }
+    connect(fileNode);
+    $('play').disabled = false; $('intro').hidden = true;
+    setTrackInfo('');
+    say('');
+    try { await ctx.resume(); await audio.play(); } catch (err) { say('Track geladen. Tippe auf Play.'); }
+    try { viz && viz.launchSongTitleAnim(f.name.replace(/\.[^.]+$/, '')); } catch (err) {}
+    applyScanFor(f);
+  }
+  function applyScanFor(f) {
+    ensureScan(f).then(A => {
+      if (curFile !== f || micOn) return;
+      if (!A || A.skipped) {
+        setTrackInfo(A && A.skipped === 'lang' ? 'langer Mix, läuft live' : 'läuft live');
+        erg('Kein Scan: ' + (A && A.skipped ? A.skipped : 'fehlgeschlagen') + ', läuft live');
+      } else {
+        curAnalysis = A;
+        if (A.grid) setBpm(A.bpm, true);
+        erg('Scan fertig: ' + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
+        setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
+        $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo');
+        drawTimeline(A);
+      }
+      if (queue[qi + 1]) ensureScan(queue[qi + 1]);
+    });
+  }
+  function setPlayLabel() { $('play').textContent = audio.paused ? 'Play' : 'Pause'; }
+  audio.addEventListener('play', setPlayLabel);
+  audio.addEventListener('pause', setPlayLabel);
+  audio.addEventListener('ended', () => { setPlayLabel(); if (qi < queue.length - 1) playAt(qi + 1); });
+  audio.addEventListener('error', () => say('Diese Datei kann das iPhone nicht abspielen. Nimm MP3, AAC/M4A oder WAV.'));
+  audio.addEventListener('loadedmetadata', () => { if (curAnalysis) drawTimeline(curAnalysis); });
+  $('play').addEventListener('click', async () => {
+    try { await ctx.resume(); } catch (e) {}
+    if (micOn) { stopMic(); if (audio.src) { connect(fileNode); } }
+    if (audio.paused) { try { await audio.play(); say(''); } catch (e) { say('Abspielen blockiert. Tippe nochmal auf Play.'); } }
+    else audio.pause();
+  });
+  $('nextTrack').addEventListener('click', () => playAt(qi + 1));
+
+  // ===== Mikrofon: auf den Ton aus der Umgebung reagieren =====
+  function micUi() { $('micBtn').classList.toggle('hot', micOn); $('micBtn').setAttribute('aria-pressed', String(micOn)); $('micBtn').textContent = micOn ? '🎤 Mikro an' : '🎤 Mikro'; }
+  async function startMic() {
+    if (micOn) return;
+    trg('Tipp: Mikro an');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('Das Mikrofon geht hier nicht. Öffne die Seite in Safari oder Chrome über den Link.'); erg('Mikro: getUserMedia fehlt'); return; }
+    try { await ctx.resume(); } catch (e) {}
+    try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
+    } catch (e) {
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e2) {}
+      say(e && e.name === 'NotAllowedError' ? 'Mikrofon nicht erlaubt. Erlaube es in den Einstellungen von Safari bzw. Chrome für diese Seite.' : 'Kein Mikrofon gefunden.');
+      erg('Mikro fehlgeschlagen: ' + (e && e.name) + ' ' + (e && e.message || '')); return;
+    }
+    wantPlay = false; audio.pause(); bufExit();
+    micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
+    micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
+    curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
+    resetBeat(); agcReset(); applyLat();
+    connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
+    $('intro').hidden = true; setTrackInfo(); $('track').textContent = 'Mikrofon · Umgebung, live'; say('');
+    stream.getAudioTracks().forEach(t => t.addEventListener('ended', () => { if (micOn) { rea('Mikrofon wurde vom System beendet'); stopMic(); } }));
+    micUi();
+    const st = stream.getAudioTracks()[0] && stream.getAudioTracks()[0].getSettings ? stream.getAudioTracks()[0].getSettings() : {};
+    erg('Mikro läuft · Echo-Filter ' + (st.echoCancellation ? 'AN (stört)' : 'aus') + ', Rauschfilter ' + (st.noiseSuppression ? 'AN (stört)' : 'aus') + ', Auto-Lautstärke ' + (st.autoGainControl ? 'AN (stört)' : 'aus'));
+  }
+  function stopMic() {
+    if (!micOn) return;
+    micOn = false;
+    try { if (micNode) micNode.disconnect(); } catch (e) {}
+    try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    micNode = null; micStream = null;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    if (srcNode && srcNode !== fileNode) srcNode = null;
+    gainEl.value = micGainSaved; applyGain();
+    resetBeat(); agcReset(); applyLat(); micUi();
+    setTrackInfo(); rea('Mikro aus');
+    if (curFile) applyScanFor(curFile);
+  }
+  $('micBtn').addEventListener('click', () => { if (micOn) { trg('Tipp: Mikro aus'); stopMic(); } else startMic(); });
+
+  const isAudio = f => f && (/^audio\//.test(f.type) || /\.(mp3|m4a|aac|wav|aif|aiff|flac|caf|ogg|opus)$/i.test(f.name));
+  const dropEl = $('drop');
+  let dragDepth = 0;
+  const hasFiles = e => { const t = e.dataTransfer && e.dataTransfer.types; return !!t && Array.prototype.indexOf.call(t, 'Files') !== -1; };
+  window.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; dropEl.hidden = false; });
+  window.addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dropEl.hidden = false; });
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dropEl.hidden = true; });
+  window.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; dropEl.hidden = true;
+    const dt = e.dataTransfer; if (!dt) return;
+    let files = Array.from(dt.files || []);
+    if (!files.length && dt.items) files = Array.from(dt.items).map(i => i.kind === 'file' ? i.getAsFile() : null).filter(Boolean);
+    if (!files.length) { say('Da kam keine Datei an. Nimm „＋ Tracks“ oder zieh die Tracks aus der Dateien-App.'); return; }
+    addTracks(files);
+  });
+  // Knopf „＋ Tracks“: normale Dateiauswahl (Android, iPhone, Rechner)
+  $('addBtn').addEventListener('click', () => { trg('Tipp: ＋ Tracks'); $('fileIn').value = ''; $('fileIn').click(); });
+  $('fileIn').addEventListener('change', e => {
+    const files = Array.from(e.target.files || []);
+    rea(files.length + ' Datei(en) ausgewählt');
+    if (files.length) addTracks(files);
+  });
+  function addTracks(files) {
+    const tracks = files.filter(isAudio);
+    if (!tracks.length) { say('Keine Audiodatei dabei. Nimm MP3, M4A, WAV oder AIFF.'); return; }
+    const wasIdle = qi < 0 || (audio.ended && qi >= queue.length - 1);
+    const start = queue.length;
+    queue.push(...tracks);
+    if (wasIdle) playAt(start);
+    else {
+      setTrackInfo();
+      say(tracks.length === 1 ? '„' + tracks[0].name + '“ kommt in die Liste.' : tracks.length + ' Tracks hinten angehängt.');
+      setTimeout(() => say(''), 4000);
+      if (queue[qi + 1]) ensureScan(queue[qi + 1]);
+    }
+  }
+
+  // ===== System =====
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); viz = null; say('Grafik wurde vom System pausiert. Startet neu …'); });
+  canvas.addEventListener('webglcontextrestored', () => { if (createViz()) say(''); });
+  // Bildschirm-Wachhalter: Weg 1 = Wake-Lock-API, Weg 2 (falls Weg 1 fehlt oder scheitert) = winziges stummes Video-Loop
+  let wakeSentinel = null, wakeVideo = null, wakeState = '', wakeTries = 0;
+  const WAKE_MP4 = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMzbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAl10cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAAAAABAAAAAAHVbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABgG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAUBzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAK/+EAFmdCwArZHsBEAAADAAQAAAMAEDxImSABAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAqAAAAKgAAAABhzdHRzAAAAAAAAAAEAAAAEAAAgAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAEAAAAAQAAACRzdHN6AAAAAAAAAAAAAAAEAAACgwAAAAoAAAAKAAAACQAAABRzdGNvAAAAAAAAAAEAAANjAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY2MC4xNi4xMDAAAAAIZnJlZQAAAqhtZGF0AAACcAYF//9s3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwOCAzMWUxOWY5IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MToweDExMSBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MCBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTEgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0wIHdlaWdodHA9MCBrZXlpbnQ9MjUwIGtleWludF9taW49MiBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAAtliIQFPJigAD+/gAAAAAZBmjgKeoAAAAAGQZpUAp6gAAAABUGaYBL1';
+  const WAKE_WEBM = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAInEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEeTbuMU6uEHFO7a1OsggIR7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjAuMTYuMTAwV0GNTGF2ZjYwLjE2LjEwMESJiECfQAAAAAAAFlSua8GuAQAAAAAAADjXgQFzxYjFMvH4un7ZEJyBACK1nIN1bmSIgQCGhVZfVlA4g4EBI+ODhB3NZQDgibCBELqBEJqBAhJUw2f8c3OgY8CAZ8iaRaOHRU5DT0RFUkSHjUxhdmY2MC4xNi4xMDBzc9ZjwItjxYjFMvH4un7ZEGfIoUWjh0VOQ09ERVJEh5RMYXZjNjAuMzEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDIuMDAwMDAwMDAwAB9DtnXt54EAo6OBAACAEAIAnQEqEAAQAABHCIWFiIWEiAICAAwNYAD+/6tQgKOVgQH0ALEBAAEQEAAYABhYL/QACAAAo5WBA+gAsQEAARAQABgAGFgv9AAIAACjlYEF3ACxAQABEBAAGAAYWC/0AAgAABxTu2uRu4+zgQC3iveBAfGCAZ/wgQM=';
+  function wakeLog(s) { if (s !== wakeState) { wakeState = s; rea('Bildschirm-Wachhalter: ' + s); } }
+  function wakeFallback(why) {
+    try {
+      if (!wakeVideo) {
+        wakeVideo = document.createElement('video');
+        wakeVideo.muted = true; wakeVideo.loop = true; wakeVideo.setAttribute('playsinline', ''); wakeVideo.setAttribute('muted', '');
+        wakeVideo.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0.01;pointer-events:none;left:0;top:0';
+        for (const [u, ty] of [[WAKE_MP4, 'video/mp4'], [WAKE_WEBM, 'video/webm']]) { const so = document.createElement('source'); so.src = u; so.type = ty; wakeVideo.appendChild(so); }
+        document.body.appendChild(wakeVideo); wakeVideo.load();
+      }
+      wakeVideo.play().then(() => wakeLog('an über Video-Ersatz (' + why + ')'), e => wakeLog('Video-Ersatz wartet auf Tipp (' + why + '; ' + (e && e.name) + ')'));
+    } catch (e) { wakeLog('aus (' + why + '; ' + (e && e.message) + ')'); }
+  }
+  async function requestWake() {
+    if (document.visibilityState !== 'visible') return;
+    if (wakeSentinel && !wakeSentinel.released) return;
+    if (!('wakeLock' in navigator)) { wakeFallback('API fehlt'); return; }
+    try {
+      wakeSentinel = await navigator.wakeLock.request('screen');
+      wakeLog('an (Wake-Lock)');
+      wakeSentinel.addEventListener('release', () => { wakeLog('Sperre freigegeben, hole sie neu'); wakeSentinel = null; setTimeout(requestWake, 300); });
+    } catch (e) {
+      wakeTries++; wakeLog('Wake-Lock abgelehnt (' + (e && e.name) + ')'); wakeFallback('Wake-Lock abgelehnt');
+    }
+  }
+  // erster Tipp und Start der Wiedergabe: nochmal versuchen (manche Browser erlauben es erst nach einer Berührung)
+  ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, () => { if (!wakeSentinel || wakeSentinel.released) requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().then(() => wakeLog('an über Video-Ersatz (nach Tipp)'), () => {}); }, { capture: true, passive: true }));
+  audio.addEventListener('playing', () => requestWake());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { requestWake(); if (wakeVideo && wakeVideo.paused) wakeVideo.play().catch(() => {}); unlock(); resize(); }
+    else saveProfiles(performance.now());
+  });
+  window.addEventListener('pagehide', () => saveProfiles(performance.now()));
+
+  if (createViz()) requestWake();
+  loop();
+})();
+</script>
+
+</body>
+</html>

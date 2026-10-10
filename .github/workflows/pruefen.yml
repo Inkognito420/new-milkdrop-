@@ -1,0 +1,46 @@
+name: Prüfen
+on: [push, pull_request]
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax aller Skripte (auch die eigene Butterchurn-Kopie)
+        run: for f in js/*.js *.js test/*.js vendor/butterchurn/butterchurn.js; do node --check "$f" || exit 1; done
+      - name: Dateiliste und Build-Nummer
+        run: node test/files.test.js
+      - name: Track-Analyse mit künstlichem Track
+        run: node test/analyse.test.js
+      - name: Klangrollen-Namen kollidieren mit keinem der 245 Standard-Presets
+        run: node test/klangrollen-namen.test.js
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright und Chromium holen
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Browser-Prüfung (Start, Bedienung, Shader, Scan, Warteschlange, Grafik-Verlust, Mikrofon, Offline, Klangrollen, echte Butterchurn-Kopie)
+        run: node test/browser.js
+  butterchurn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright und Chromium holen
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Alte Presets laufen unverändert (245 Presets, Original 2.6.7 gegen Kopie, Pixel-Prüfsummen)
+        run: node test/butterchurn-regression.js

@@ -1,39 +1,149 @@
 <!doctype html>
 <html lang="de">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>new-milkdrop-</title>
-    <link rel="stylesheet" href="./style.css" />
-  </head>
-  <body>
-    <div id="app">
-      <canvas id="stage"></canvas>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>New Milkdrop</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
+<script>var B=100;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+</head>
+<body>
 
-      <div id="hud">
-        <div class="row">
-          <span class="brand">NEW <b>MILKDROP</b></span>
-          <button id="nextPreset" type="button">Next Preset</button>
-          <button id="playBtn" type="button">Load Audio</button>
-          <label class="fileButton">
-            <input id="fileInput" type="file" accept="audio/*" />
-            Select Track
-          </label>
-        </div>
-        <div class="row small">
-          <span id="presetName">Preset: loading…</span>
-          <span id="stateInfo">State: waiting</span>
-        </div>
+<canvas id="stage"></canvas>
+<canvas id="sh"></canvas>
+<canvas id="fx"></canvas>
+<div id="intro"><div><h1>NEW<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
+
+<div id="panicBox" hidden><div><h1>GESTOPPT</h1><p>Ton, Mikrofon, Bildschirmsperre und Grafik sind aus.</p><button id="panicReload" type="button" class="hot">Neu laden</button></div></div>
+<div id="flash"></div>
+<div id="pname"></div>
+<div id="drop" hidden>Tracks hier loslassen</div>
+
+<div id="hud">
+  <div class="row">
+    <div class="brand">NEW <b>MILKDROP</b></div>
+    <span class="stat">BPM <em id="bpm">–</em></span>
+    <span class="beats" aria-label="Beat-Anzeige"><i></i><i></i><i></i><i></i></span>
+    <span class="stat"><em id="state">–</em></span>
+  </div>
+  <div id="timeline" hidden aria-label="Ablauf des Tracks"></div>
+  <div class="row">
+    <button id="addBtn" type="button" class="hot" aria-label="Tracks aus Dateien hinzufügen">＋ Tracks</button>
+    <input id="fileIn" type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf,.ogg,.opus" hidden>
+    <button id="play" type="button" disabled>Play</button>
+    <button id="panic" type="button" class="warn" aria-label="Notaus: alles sofort stoppen" title="Notaus: Ton, Mikrofon und Grafik sofort aus. Geht auch mit drei Fingern gleichzeitig aufs Bild tippen.">■ Stopp</button>
+    <button id="micBtn" type="button" aria-pressed="false" title="Auf den Ton aus der Umgebung reagieren (Mikrofon)">🎤 Mikro</button>
+    <button id="nextTrack" type="button" disabled aria-label="Nächster Track">⏭</button>
+    <select id="quality" aria-label="Auflösung" hidden>
+      <option value="native">Nativ (Max)</option>
+      <option value="2k">2K · 2560</option>
+      <option value="1080" selected>1080p · 1920 (Standard)</option>
+      <option value="720">720p (Akku)</option>
+    </select>
+    <select id="color" aria-label="Farbdarstellung" hidden>
+      <option value="srgb">Farbe: Original</option>
+      <option value="p3">Farbe: P3 Vivid</option>
+      <option value="p3oled">Farbe: P3 + OLED-Schwarz</option>
+    </select>
+    <div id="track">Noch kein Track</div>
+  </div>
+  <div class="row">
+    <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
+    <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
+    <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
+    <button id="auto" type="button" class="hot" hidden>Auto</button>
+    <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
+    <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Mehr</button>
+    <div id="preset">–</div>
+  </div>
+  <div id="fine" hidden>
+    <div id="autoCard" class="card">
+      <div id="autoTxt">Alles läuft automatisch.</div>
+      <button id="allAuto" type="button" class="hot" hidden>Alles auf Auto</button>
+    </div>
+    <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
+    <div class="row">
+      <label class="slider" for="latency" title="Lautsprecher am Kabel 0 ms, Bluetooth-Box oder AirPods etwa 150–250 ms. So einstellen, dass der Puls genau mit dem Kick kommt, den du hörst.">Bluetooth-Versatz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
+    </div>
+    <div class="row">
+      <button id="dBtn" type="button" aria-expanded="false" aria-controls="dBox" title="Sterne, vermessene Presets und Mitschrift sichern oder laden (gleicht Safari und Icon ab)">Sichern/Laden</button>
+      <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
+      <button id="werkBtn" type="button" aria-expanded="false" aria-controls="werk" title="Alle Einzelschalter zum Ausprobieren und Vergleichen. Normal brauchst du hier nichts.">Werkstatt</button>
+    </div>
+    <div id="dBox" hidden>
+    <div class="row">
+      <button id="dSave" type="button" title="Sterne, vermessene Presets und Mitschrift als Datei sichern (Teilen-Menü: In Dateien sichern, AirDrop, Mail …)">Sichern</button>
+      <button id="dLoad" type="button" title="Eine gesicherte Datei laden und mit dem Stand hier zusammenführen">Laden</button>
+      <button id="dCopy" type="button" title="Die Sicherung als Text kopieren">Text kopieren</button>
+      <button id="dPaste" type="button" title="Kopierten Sicherungstext einfügen und laden">Text einfügen</button>
+      <input id="dFile" type="file" accept=".json,application/json,text/plain" hidden>
+    </div>
+    <div id="dPane" hidden>
+      <textarea id="dText" rows="3" placeholder="Hier den kopierten Sicherungstext einfügen" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Sicherungstext"></textarea>
+      <div class="note" id="dSum"></div>
+      <label class="chk" for="dSet"><input id="dSet" type="checkbox"> Einstellungen auch übernehmen (Schalter, Reaktion, Latenz, Auflösung, Farbe)</label>
+      <div class="row">
+        <button id="dApply" type="button" class="hot" disabled>Übernehmen</button>
+        <button id="dClose" type="button">Schließen</button>
       </div>
     </div>
+    <div class="row">
+      <div class="note" id="dInfo" style="flex:1 1 200px"></div>
+      <button id="dClear" type="button" title="Löscht die Mitschrift (Läufe und Track-Steckbriefe) in diesem Browser. Sterne und vermessene Presets bleiben.">Mitschrift leeren</button>
+    </div>
+    </div>
+    <div id="logbox" hidden>
+      <pre id="logpre"></pre>
+      <div class="row">
+        <button id="logSnap" type="button">Status jetzt</button>
+        <button id="logCopy" type="button">Kopieren</button>
+        <button id="logPrev" type="button" title="Die letzten Zeilen vom vorigen Start (auch nach einem Hänger)">Letzter Lauf</button>
+        <button id="logClear" type="button">Leeren</button>
+      </div>
+    </div>
+    <div id="werk" hidden>
+      <div class="note">Werkstatt: nur zum Ausprobieren und Vergleichen. Grün = an. Mit „Alles auf Auto“ oben ist alles wieder wie gedacht.</div>
+      <div class="grp"><span class="gl">Bildwechsel</span>
+      </div>
+      <div class="grp"><span class="gl">Effekte</span>
+      </div>
+      <div class="grp"><span class="gl">Farbe</span>
+      </div>
+      <div class="grp"><span class="gl">Hören</span>
+      </div>
+      <div class="grp"><span class="gl">Anzeige</span>
+      </div>
+      <div class="row">
+        <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
+      </div>
+      <div class="note" id="autoInfo"></div>
+      <div class="row">
+        <span class="stat">FPS <em id="fps">–</em></span>
+        <span class="stat">RES <em id="res">–</em></span>
+        <span class="stat">HZ <em id="hz">–</em></span>
+        <button id="beepA" type="button">Testton 1</button>
+        <button id="beepB" type="button">Testton 2</button>
+      </div>
+    </div>
+  </div>
+  <div id="msg"></div>
+</div>
 
-    <audio id="audio" crossorigin="anonymous"></audio>
+<audio id="audio" playsinline preload="auto"></audio>
 
-    <script src="https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
-    <script src="./audio-reactive-controller.js"></script>
-    <script src="./adaptive-preset-blender.js"></script>
-    <script src="./app.js"></script>
-  </body>
+<!-- Bibliotheken (vendor/, keine CDN mehr) und Programm in Teilen (Ordner js/), Liste in app-files.js. Reihenfolge ist wichtig: jeder Teil baut auf den vorherigen auf.
+     B = Build-Nummer: bei jeder Änderung hochzählen, damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Nur hier ändern.
+     new-milkdrop- zählt ab Build 100 (Acid endet bei 54/55), damit Protokolle nicht verwechselt werden. -->
+<script>
+AM_LIBS.concat(AM_FILES).forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?b="+B).catch(()=>{}));
+</script>
+
+</body>
 </html>
