@@ -1,0 +1,17 @@
+{
+  "name": "Acid Milkdrop",
+  "short_name": "Acid",
+  "description": "Musik-Visualizer: eigene Tracks, Milkdrop und eigene Shader reagieren auf Kick, Mitten und Hi-Hats.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "de",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
