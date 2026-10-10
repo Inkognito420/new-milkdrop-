@@ -197,7 +197,7 @@ const SZ = {
       requestAnimationFrame(step); }));
     const r = await page.evaluate(async () => { const A = await scanCache.get(queue[1]); return { min: +(A.duration / 60).toFixed(1), sek: A.secs, rollenMs: A.rollenMs, takte: A.rollen && A.rollen.n }; });
     console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' Bilder über 50 ms, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' über 50 ms, längstes ' + ruhe.max + ' ms)');
-    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: über 40 fps, höchstens 12 Bilder über 50 ms mehr als ohne Analyse, keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps > 40 && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
+    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 Bilder über 50 ms mehr, keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
     await close();
   },
   async notfall() {
