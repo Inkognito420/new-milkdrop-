@@ -56,14 +56,16 @@ function applyColor() {
   filterBase = mode === 'p3oled' ? 'contrast(1.12) saturate(1.08)' : '';
   applyFilter(true);
 }
+let lastBright = 1;
 function applyFilter(force) {
-  const tot = hue + barHue;
-  if (!force && Math.abs(tot - lastHue) < 0.7 && Math.abs(sat - lastSat) < 0.02) return;
-  lastHue = tot; lastSat = sat;
+  const tot = hue + barHue + (window.szHueAdd ? window.szHueAdd() : 0), br = window.szBright ? window.szBright() : 1;   // Build 106: Pads-Farbe der Schaltzentrale
+  if (!force && Math.abs(tot - lastHue) < 0.7 && Math.abs(sat - lastSat) < 0.02 && Math.abs(br - lastBright) < 0.01) return;
+  lastHue = tot; lastSat = sat; lastBright = br;
   const a = ((tot % 360) + 360) % 360, hh = a > 180 ? a - 360 : a;
   const h = Math.abs(hh) >= 0.7 ? ' hue-rotate(' + hh.toFixed(1) + 'deg)' : '';
   const sv = Math.abs(sat - 1) >= 0.02 ? ' saturate(' + sat.toFixed(2) + ')' : '';
-  canvas.style.filter = (filterBase + h + sv).trim();
+  const bv = Math.abs(br - 1) >= 0.01 ? ' brightness(' + br.toFixed(3) + ')' : '';
+  canvas.style.filter = (filterBase + h + sv + bv).trim();
   shEl.style.filter = canvas.style.filter;          // Takt-Farbe, Acid-Farbe und Drop-Entsättigung gelten auch für eigene Shader
 }
 colorEl.addEventListener('change', () => { store.set('am-color', colorEl.value); applyColor(); });

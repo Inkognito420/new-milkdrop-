@@ -205,7 +205,11 @@ function scanFrame(t) {
   if (!A._drops) A._drops = A.sections.filter(x => x.type === 'drop').map(x => x.t0);
   let nd = -1; for (const d of A._drops) if (d > ts) { nd = d; break; }
   const lead = PRE_BARS * 4 * A.beatS;
-  if (type !== 'drop' && nd > 0 && nd - ts < lead && !audio.paused) {
+  const szB = window.szBuild ? window.szBuild() : -1;   // Build 106 Dirigent: gemessener Aufbau statt fester 8 Takte (-1 = alte Regel)
+  if (szB >= 0) {
+    dropPre = type !== 'drop' && !audio.paused ? szB : 0;
+    if (dropPre > 0.05 && preLogT !== nd) { preLogT = nd; rea('Aufbau (gemessen): Stärke ' + dropPre.toFixed(2) + ', nächster Drop bei ' + (nd > 0 ? nd.toFixed(1) + ' s' : 'unbekannt')); }
+  } else if (type !== 'drop' && nd > 0 && nd - ts < lead && !audio.paused) {
     dropPre = clamp(1 - (nd - ts) / lead);
     if (preLogT !== nd) { preLogT = nd; rea('Drop-Aufbau: Drop in ' + Math.round((nd - ts) / (4 * A.beatS)) + ' Takten (bei ' + nd.toFixed(1) + ' s)'); }
   } else dropPre = 0;
