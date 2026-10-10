@@ -189,18 +189,21 @@ const SZ = {
       const og = window.getDuration; window.getDuration = f => { ev.push(['dauer', Math.round(performance.now() - t0)]); return og(f).then(x => { ev.push(['dauer Ende', Math.round(performance.now() - t0)]); return x; }); };
       const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (n - t0 < 6000) requestAnimationFrame(step); else res({ gaps, ev }); }; requestAnimationFrame(step); })); console.log('DIAG0', JSON.stringify(dg)); }
     await page.waitForFunction(() => !audio.paused && scanJob && scanJob.file === queue[1], null, { timeout: 180000, polling: 100 });
-    const f = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;
-      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000 && scanJob) requestAnimationFrame(step); else res({ n: d.length, fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
-      requestAnimationFrame(step); }));
+    const frames = (stopWhenIdle) => page.evaluate(stop => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;   // Bilddauern in ms, 4 s lang
+      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000 && (!stop || scanJob)) requestAnimationFrame(step); else res(d); };
+      requestAnimationFrame(step); }), stopWhenIdle);
+    const dA = await frames(true);
     if (process.env.HG_DIAG) { const dg = await page.evaluate(() => new Promise(res => { const ph = []; const t0 = performance.now(); for (const n of ['analyzeEnvelopes', 'klangSplit', 'klangBars', 'kmBars', 'partiturRollen', 'getDuration']) { const o = window[n]; window[n] = function () { ph.push([n, Math.round(performance.now() - t0)]); const r = o.apply(this, arguments); if (r && r.then) r.then(() => ph.push([n + ' Ende', Math.round(performance.now() - t0)])); else ph.push([n + ' Ende', Math.round(performance.now() - t0)]); return r; }; }
       const gaps = []; let last = performance.now(); const step = () => { const n = performance.now(); if (n - last > 50) gaps.push([Math.round(n - t0), Math.round(n - last)]); last = n; if (scanJob) requestAnimationFrame(step); else res({ gaps, ph }); }; requestAnimationFrame(step); })); console.log('DIAG', JSON.stringify(dg)); }
     await page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 400000, polling: 500 });
-    const ruhe = await page.evaluate(() => new Promise(res => { const d = []; let last = performance.now(); const t0 = last;   // Vergleich: dieselbe Messung ohne Analyse
-      const step = () => { const n = performance.now(); d.push(n - last); last = n; if (n - t0 < 4000) requestAnimationFrame(step); else res({ fps: +(1000 * d.length / (n - t0)).toFixed(1), langsam: d.filter(x => x > 50).length, max: Math.round(Math.max(...d)) }); };
-      requestAnimationFrame(step); }));
+    const dR = await frames(false);                                         // Vergleich: dieselbe Messung ohne Analyse
+    // „Langsames Bild“: über 50 ms UND über dem 2,5-fachen eines normalen Bildes ohne Analyse (auf langsamen Rechnern liegen normale Bilder schon bei 35-50 ms)
+    const med = a => a.slice().sort((x, y) => x - y)[a.length >> 1], thr = Math.max(50, 2.5 * med(dR));
+    const stat = d => ({ n: d.length, fps: +(1000 * d.length / d.reduce((x, y) => x + y, 0)).toFixed(1), langsam: d.filter(x => x > thr).length, max: Math.round(Math.max(...d)) });
+    const f = stat(dA), ruhe = stat(dR);
     const r = await page.evaluate(async () => { const A = await scanCache.get(queue[1]); return { min: +(A.duration / 60).toFixed(1), sek: A.secs, rollenMs: A.rollenMs, takte: A.rollen && A.rollen.n }; });
-    console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' Bilder über 50 ms, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' über 50 ms, längstes ' + ruhe.max + ' ms)');
-    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 Bilder über 50 ms mehr, keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
+    console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' langsame Bilder, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' langsame, längstes ' + ruhe.max + ' ms; langsam = über ' + Math.round(thr) + ' ms)');
+    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 langsame Bilder mehr (über 50 ms und über 2,5 normalen Bildern), keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
     await close();
   },
   async notfall() {
