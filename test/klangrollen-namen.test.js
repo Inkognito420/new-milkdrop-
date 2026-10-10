@@ -11,8 +11,8 @@ const P = Object.assign({}, get(require(V + 'butterchurnPresets.min.js')), get(r
 const names = Object.keys(P);
 assert.strictEqual(names.length, 245, 'erwartet 245 Standard-Presets, gefunden ' + names.length);
 
-// Regeln: 38 Namen (Build 104: +acid_reso, hats_density, pads_pitch, ak_build_strength, ak_drop_strength), klein geschrieben, keine doppelt, Rollen kick_/acid_/hats_/pads_, alles andere mit ak_
-assert.strictEqual(AK_NAMES.length, 38, 'Anzahl Namen ' + AK_NAMES.length);
+// Regeln: 41 Namen (Build 104: +acid_reso, hats_density, pads_pitch, ak_build_strength, ak_drop_strength; Build 105: +ak_pan, ak_pan_speed, ak_width), klein geschrieben, keine doppelt, Rollen kick_/acid_/hats_/pads_, alles andere mit ak_
+assert.strictEqual(AK_NAMES.length, 41, 'Anzahl Namen ' + AK_NAMES.length);
 assert.strictEqual(new Set(AK_NAMES).size, AK_NAMES.length, 'doppelte Namen');
 for (const n of AK_NAMES) {
   assert.ok(/^[a-z][a-z0-9_]*$/.test(n), 'nicht klein/gültig: ' + n);

@@ -149,7 +149,7 @@ async function probe(browser) {
   check('Comp-Shader: kick_env, acid_cutoff, ak_section kommen als Farbe an', near(r.comp[0], 0.25) && near(r.comp[1], 0.75) && near(r.comp[2], 0.5), JSON.stringify(r.comp));
   check('Warp-Shader: kick_hit, acid_age, ak_bar kommen als Farbe an', near(r.warp[0], 0.5) && near(r.warp[1], 0.125) && near(r.warp[2], 0.625), JSON.stringify(r.warp));
   check('Überblenden: altes und neues Preset sehen dieselben (neuen) Werte', r.blend.blending && r.blend.alt[0] === 0.6 && r.blend.neu[0] === 0.6 && r.blend.alt[1] === 0.2 && r.blend.neu[1] === 10.2 && r.blend.alt[2] === 1 && r.blend.neu[2] === 11, JSON.stringify(r.blend));
-  check('AK_VAR_NAMES: 38 Namen, für die App sichtbar', r.namen === 38 && p.errs.length === 0, r.namen + ' ' + p.errs.join(' | '));
+  check('AK_VAR_NAMES: 41 Namen, für die App sichtbar', r.namen === 41 && p.errs.length === 0, r.namen + ' ' + p.errs.join(' | '));
 
   console.log('\nAlte Presets unverändert (Original 2.6.7 gegen Kopie mit Werten ≠ 0)');
   const pg = await browser.newPage(); await pg.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=orig`);

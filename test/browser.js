@@ -57,7 +57,8 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
   const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
   src.connect(g); g.connect(an); an.connect(oc.destination);
   const S = akCreate(sr, AKCFG.fftSize); S.events = []; S.hits = [];
-  const XK = ['acid_reso', 'hats_density', 'pads_pitch'], xv = {};
+  const ch0 = ab.getChannelData(0), ch1 = ab.numberOfChannels > 1 ? ab.getChannelData(1) : ch0, stL = new Float32Array(1024), stR = new Float32Array(1024);
+  const XK = ['acid_reso', 'hats_density', 'pads_pitch', 'ak_pan', 'ak_pan_speed', 'ak_width'], xv = {};
   const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, rel = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
   let ms = 0, msMax = 0, n = 0, lastT = 0;
   const N = Math.floor((ab.duration - 0.05) * 60);
@@ -65,7 +66,8 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
     const ts = Math.floor(i / 60 * sr / 128) * 128 / sr;
     oc.suspend(ts).then(() => {
       an.getFloatFrequencyData(spec);
-      const t = ts * 1000, a = performance.now(); S.step(spec, t, lastT ? t - lastT : 16.7, G ? { bpm: 60 / G.beatS, pos: (ts - G.bar0) / G.beatS, sec: -1, secStart: 0 } : null); const d = performance.now() - a; lastT = t;
+      const t = ts * 1000, a = performance.now(); const e1 = Math.floor(ts * sr), w1 = Math.max(0, e1 - 1024); stL.fill(0); stR.fill(0); stL.set(ch0.subarray(w1, e1), 1024 - (e1 - w1)); stR.set(ch1.subarray(w1, e1), 1024 - (e1 - w1));
+      S.step(spec, t, lastT ? t - lastT : 16.7, G ? { bpm: 60 / G.beatS, pos: (ts - G.bar0) / G.beatS, sec: -1, secStart: 0 } : null, akStereoStats(stL, stR, 1024, sr)); const d = performance.now() - a; lastT = t;
       ms += d; if (d > msMax) msMax = d; n++;
       for (const r in env) { env[r].push(+S.out[r + '_env'].toFixed(4)); rel[r].push(S.totRef > 0 ? S.R[r].x / S.totRef : 0); } sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
       for (const k of XK) if (k in S.out) (xv[k] = xv[k] || []).push(+S.out[k].toFixed(4));
@@ -557,6 +559,15 @@ const SZ = {
     const hd = await krRun(page, 'hatsDicht', 1, PT.hatsDicht), dOff = perBar(hd, PT.hatsDicht, 'hats_density', 3, 8, 'x'), d16 = perBar(hd, PT.hatsDicht, 'hats_density', 11, 16, 'x');
     console.log('       (Info) hats_density: Offbeat-Hats ' + dOff + ', Sechzehntel-Hats ' + d16);
     check('hats_density: Hats nur auf dem Offbeat 0,2-0,45, auf jeder Sechzehntel über 0,7', dOff >= 0.2 && dOff <= 0.45 && d16 > 0.7, 'Offbeat ' + dOff + ' · 16tel ' + d16);
+    // 6) Stereo: Hats mittig (Takt 2-7), dann Ping-Pong links/rechts 1, 2, 4 pro Schlag. ak_pan wechselt mit, ak_pan_speed steigt mit dem Tempo, ak_width hoch
+    const pg = await krRun(page, 'pingPong', 1, PT.pingPong), G = PT.pingPong, xs = (k, a, b) => perBar(pg, G, k, a, b, 'x');
+    const seg = (a, b) => { const i0 = Math.round((G.bar0 + a * G.barS) * 60), i1 = Math.round((G.bar0 + b * G.barS) * 60), v = pg.xv.ak_pan.slice(i0, i1); return { min: Math.min(...v), max: Math.max(...v) }; };
+    const mi = { pan: xs('ak_pan_speed', 3, 8), w: xs('ak_width', 3, 8) }, p1 = xs('ak_pan_speed', 11, 16), p2 = xs('ak_pan_speed', 19, 24), p4 = xs('ak_pan_speed', 27, 32), wP = xs('ak_width', 11, 32), sg = seg(11, 32), sm = seg(3, 8);
+    console.log('       (Info) Stereo: Wechsel-Tempo mittig ' + mi.pan + ', Ping-Pong 1/Schlag ' + p1 + ', 2/Schlag ' + p2 + ', 4/Schlag ' + p4 + ' (Soll 0 / 0,25 / 0,5 / 1) · Breite mittig ' + mi.w + ', Ping-Pong ' + wP + ' · Position mittig ' + sm.min.toFixed(2) + '..' + sm.max.toFixed(2) + ', Ping-Pong ' + sg.min.toFixed(2) + '..' + sg.max.toFixed(2));
+    if (process.env.KR_DIAG) { const i0 = Math.round((G.bar0 + 11 * G.barS) * 60); console.log('       DIAG Wechsel in Takt 11-15 (Soll 4 pro Takt): ' + pg.events.length); console.log('       DIAG pan Takt 11-12 (jedes 4. Bild): ' + pg.xv.ak_pan.slice(i0, i0 + 200).filter((_, i) => i % 4 === 0).map(v => v.toFixed(2)).join(' ')); console.log('       DIAG width: ' + pg.xv.ak_width.slice(i0, i0 + 200).filter((_, i) => i % 8 === 0).map(v => v.toFixed(2)).join(' ')); }
+    check('Stereo: Hats in der Mitte: ak_pan bleibt nahe 0 (zwischen -0,2 und 0,2), Breite unter 0,2, kein Wechsel-Tempo (unter 0,05)', sm.min > -0.2 && sm.max < 0.2 && mi.w < 0.2 && mi.pan < 0.05, JSON.stringify({ sm, mi }));
+    check('Stereo: Ping-Pong hart links/rechts: ak_pan schlägt auf beide Seiten aus (unter -0,6 und über +0,6), Breite über 0,7', sg.min < -0.6 && sg.max > 0.6 && wP > 0.7, JSON.stringify({ sg, wP }));
+    check('Stereo: ak_pan_speed steigt mit dem Tempo des Ping-Pong und liegt nahe am Soll (0,25 / 0,5 / 1, jeweils ±0,15)', Math.abs(p1 - 0.25) <= 0.15 && Math.abs(p2 - 0.5) <= 0.15 && p4 >= 0.85 && p1 < p2 && p2 < p4, JSON.stringify({ p1, p2, p4 }));
     // 5) acid_reso: 303 mit hoher Resonanz (Standard-Track, Groove/Drop, Q 4) schärfer als die weichen Töne im Break (Q 1,5); ohne Acid 0
     const t1 = await krRun(page, 't1', 1), T1 = { bar0: 0.35, barS: 4 * 60 / 140 };
     const rIntro = perBar(t1, T1, 'acid_reso', 1, 7, 'x'), rBreak = perBar(t1, T1, 'acid_reso', 25, 31, 'x'), rDrop = perBar(t1, T1, 'acid_reso', 33, 47, 'x');
@@ -566,7 +577,7 @@ const SZ = {
     await close();
   },
   async klangrollenLive() {
-    // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 38 Werte an viz.setExtraVars
+    // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 41 Werte an viz.setExtraVars
     const { page, errs, close } = await open();
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
@@ -574,7 +585,7 @@ const SZ = {
     await page.waitForTimeout(9000);
     const r = await page.evaluate(() => ({ calls: window.__akSet || 0, keys: window.__akLast ? Object.keys(window.__akLast).length : 0, bpm: AKV.ak_bpm, kick: AK.R.kick.nEntry, env: AKV.kick_env, maxRef: AK.R.kick.ref > 0,
       ms: akN ? akMs / akN : null, fehler: LOG.filter(l => l.k === 'x').map(l => l.x), dbg: !!$('akDbgBtn') }));
-    check('Klangrollen live: setExtraVars bekommt jedes Bild alle 38 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 38 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    check('Klangrollen live: setExtraVars bekommt jedes Bild alle 41 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 41 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     const d = await page.evaluate(async () => { $('fineBtn').click(); $('werkBtn').click(); $('akDbgBtn').click(); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', schalter: document.querySelectorAll('#werk button[id^="t-"]').length }; });
     // Mit Scan kommt der Abschnitt aus dem Scan: in einen Break und an einen Drop-Anfang springen
     await page.waitForFunction(() => curAnalysis && curAnalysis.beatS && scanActive(), null, { timeout: 120000, polling: 200 });
@@ -592,6 +603,29 @@ const SZ = {
     check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
     await close();
   },
+  async stereoLive() {
+    // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
+    const { page, errs, close } = await open();
+    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [] }; const t0 = performance.now(); const iv = setInterval(() => { v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); res(v); } }, 40); }), ms);
+    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2) });
+    await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
+    await page.evaluate(() => { audio.currentTime = 12; }); await page.waitForTimeout(2500);    // Ping-Pong 1/Schlag
+    const a = sum(await sample(5000));
+    await page.evaluate(() => { audio.currentTime = 22; }); await page.waitForTimeout(2500);   // Ping-Pong 2/Schlag
+    const b2 = sum(await sample(5000));
+    console.log('       (Info) Stereo live: Ping-Pong 1/Schlag ' + JSON.stringify(a) + ' · 2/Schlag ' + JSON.stringify(b2));
+    check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,5 und über +0,5), Wechsel-Tempo über 0,1 und mit 2/Schlag höher als mit 1/Schlag', a.min < -0.5 && a.max > 0.5 && a.sp > 0.1 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
+    await close();
+    const m = await open();
+    await m.page.setInputFiles('#fileIn', [T[0]]);
+    await m.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
+    await m.page.evaluate(() => { audio.currentTime = 20; }); await m.page.waitForTimeout(2500);
+    const c = await m.page.evaluate(ms => new Promise(res => { const v = []; const t0 = performance.now(); const iv = setInterval(() => { v.push(Math.abs(AKV.ak_pan)); if (performance.now() - t0 > ms) { clearInterval(iv); res({ max: +Math.max(...v).toFixed(2), w: +AKV.ak_width.toFixed(2) }); } }, 40); }), 4000);
+    check('Stereo live: Mono-Track (Test-Track): Position bleibt in der Mitte (unter 0,25), Breite unter 0,25', c.max < 0.25 && c.w < 0.25, JSON.stringify(c));
+    check('Stereo live: keine Seitenfehler', errs.length === 0 && m.errs.length === 0, errs.concat(m.errs).join(' | '));
+    await m.close();
+  },
   async echtbutterchurn() {
     // Mit der echten Butterchurn-Kopie (vendor/) statt Attrappe: Start, Presets, die neuen Werte kommen im Renderer an
     const { page, errs, close } = await open({ real: true });
@@ -601,7 +635,7 @@ const SZ = {
     await page.waitForTimeout(6000);
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
       bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
-    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 38 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     await close();
   },
   async manifest() {
@@ -617,7 +651,7 @@ const SZ = {
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
   if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
-  if (want.some(w => /^klangrollen2?$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
+  if (want.some(w => /^(klangrollen2?|stereoLive)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

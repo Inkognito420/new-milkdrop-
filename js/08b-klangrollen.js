@@ -45,6 +45,17 @@ const AKCFG = {
     pads: { relMs: 1000, onThr: 0.40, offThr: 0.18, onMs: 400, holdMs: 800, onsetK: 2.0, onsetTau: 1500, minGap: 300, hitMin: 0.30, hitDecay: 250, relFloor: 0.02 }
   },
   padsSmoothMs: 1000,       // pads: über etwa 1 s geglättet (nur die langsamen Anteile)
+  stHpHz: 500,              // Stereo (Build 105): nur Mitten und Höhen zählen. Zwei Hochpass-Stufen (12 dB pro Oktave): Kick und Bass liegen fast immer mittig und
+                            // übertönen mit einem sanften Hochpass (6 dB) die leiseren Hi-Hats, dann stand ak_pan im Test immer auf 0
+  panTau: 35,               // ak_pan folgt so schnell (ms): Ping-Pong im Sechzehntel bei 150 BPM wechselt alle 100 ms
+  panGate: 0.2,             // ak_pan ändert sich nur, solange der Pegel mindestens so viel vom Maximum der letzten 30 s hat (zwischen den Anschlägen bleibt er stehen)
+  panPeakMs: 150,           // ak_pan und ak_width werden nur an der lautesten Stelle der letzten so vielen ms nachgeführt (sonst ziehen Nachhall und Kick-Reste den Wert zur Mitte)
+  panPeak: 0.6,             // ... und zwar ab diesem Anteil dieses lokalen Maximums
+  panSide: 0.3,             // ein Seitenwechsel zählt, wenn ak_pan von unter -0,3 nach über +0,3 (oder zurück) geht
+  panSpeedFull: 16,         // ak_pan_speed = Seitenwechsel im letzten Takt / 16 (16 = jede Sechzehntel wechselt = 1, jeder Schlag = 0,25)
+  panSpeedMs: 300,          // Glättung von ak_pan_speed
+  widthMs: 500,             // Glättung von ak_width
+  widthGate: 0.1,           // ak_width wird nur bei Pegel über diesem Anteil des Maximums nachgeführt
   padHeld: [0.006, 0.025],  // Build 104: Gehaltenheit (Anteil der Band-Energie, der über padHoldFrames durchgehend stehen bleibt). Darunter keine Pads, darüber
                             // volle Pads (logarithmisch dazwischen). Test: dichter Teppich/303/Kick ohne Pad 0,002-0,007, mit Pad 0,03, gehaltene Töne im Break 0,046.
                             // Vorher maß pads_env nur gegen das eigene 30-s-Maximum: ein gleichmäßiger Teppich ergab immer ca. 0,8 (iPhone: 0,78-0,86 ohne Pads)
@@ -121,6 +132,19 @@ function akBuckets(n, ms) {
 const akEma = (avg, x, dt, tau) => tau > 0 ? avg + (x - avg) * (1 - Math.exp(-dt / tau)) : x;
 const akClamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 
+// Stereo-Kennwerte aus je n Abtastwerten links und rechts (Build 105): Hochpass wie AKCFG.stHpHz, dann Pegel (Effektivwert) links, rechts, Mitte (L+R)/2
+// und Seite (L-R)/2. Live aus zwei AnalyserNodes (getFloatTimeDomainData), offline aus dem dekodierten Ton: dieselbe Funktion, damit beide gleich messen.
+function akStereoStats(l, r, n, sr) {
+  const a = Math.exp(-2 * Math.PI * AKCFG.stHpHz / sr);
+  let al = 0, ar = 0, bl = 0, br = 0, xl = l[0], xr = r[0], zl = 0, zr = 0, sl = 0, sr_ = 0, sm = 0, ss = 0;
+  for (let i = 0; i < n; i++) {
+    al = a * (al + l[i] - xl); ar = a * (ar + r[i] - xr); xl = l[i]; xr = r[i];       // Stufe 1
+    const yl = a * (bl + al - zl), yr = a * (br + ar - zr); bl = yl; br = yr; zl = al; zr = ar;   // Stufe 2
+    sl += yl * yl; sr_ += yr * yr; const m = 0.5 * (yl + yr), s = 0.5 * (yl - yr); sm += m * m; ss += s * s;
+  }
+  return { l: Math.sqrt(sl / n), r: Math.sqrt(sr_ / n), m: Math.sqrt(sm / n), s: Math.sqrt(ss / n) };
+}
+
 // Die Analyse selbst: rechnet nur mit dem Spektrum, das sie bekommt (live: eigener Analyser; im Test: aus einer Datei). Alles vorab angelegt.
 function akCreate(sampleRate, fftSize) {
   const C = AKCFG, binHz = sampleRate / fftSize, nBins = fftSize / 2;
@@ -151,13 +175,13 @@ function akCreate(sampleRate, fftSize) {
     bpm: 0, nIoi: 0, iIoi: 0, pendBpm: 0, pendSince: 0, lastIoiHit: 0,
     beatT: 0, beatTotal: 0, barBeat: 0, barno: 0, phase: 0, gridScan: false, scanSec: false,
     sec: 0, secStartBeat: 0, kickEver: false, dropEnd: 0, buildupMs: 0, silentMs: 0, total: 0,
-    nov: 0, novInit: false, reso: 0, hatsD: 0, padPitch: 0.5, cut: 0.5, cutRaw: 0, cutPrev: -1, cutS: 0.5, sq: 0, sqRate: 0,
+    nov: 0, novInit: false, reso: 0, hatsD: 0, padPitch: 0.5, pan: 0, panHeld: 0, widthHeld: 0, stLoc: 0, panSide: 0, panSpeed: 0, width: 0, stMx: akBuckets(C.maxBuckets, bucketMs), swings: new Float64Array(32).fill(-1e9), swI: 0, cut: 0.5, cutRaw: 0, cutPrev: -1, cutS: 0.5, sq: 0, sqRate: 0,
     hits: null,                                      // nur für Test: Kick-Treffer [t, Anstieg, Stärke]
     events: null,                                    // nur für Test und Anzeige: [{t, kind, role}] (wird nur gefüllt, wenn gesetzt)
     onEntry: null, onSection: null
   };
   for (const n of AK_ROLES) for (const s of ['env', 'hit', 'entry', 'age', 'build', 'release']) S.out[n + '_' + s] = 0;
-  Object.assign(S.out, { acid_cutoff: 0, acid_squelch: 0, acid_reso: 0, hats_density: 0, pads_pitch: 0.5, ak_build_strength: 0, ak_drop_strength: 0, ak_bpm: C.bpmDefault, ak_beatphase: 0, ak_bar: 0, ak_barno: 0, ak_phrase: 0, ak_novelty: 0, ak_section: 0 });
+  Object.assign(S.out, { acid_cutoff: 0, acid_squelch: 0, acid_reso: 0, hats_density: 0, pads_pitch: 0.5, ak_build_strength: 0, ak_drop_strength: 0, ak_pan: 0, ak_pan_speed: 0, ak_width: 0, ak_bpm: C.bpmDefault, ak_beatphase: 0, ak_bar: 0, ak_barno: 0, ak_phrase: 0, ak_novelty: 0, ak_section: 0 });
 
   const P = () => 60000 / (S.bpm || C.bpmDefault);
   const fold = ms => { const lo = 60000 / C.bpmMax, hi = 60000 / C.bpmMin; while (ms < lo) ms *= 2; while (ms > hi) ms /= 2; return ms; };
@@ -186,7 +210,7 @@ function akCreate(sampleRate, fftSize) {
   }
 
   // Ein Bild: spec = Spektrum in dB (Float32Array, wie getFloatFrequencyData), t und dt in ms; grid (optional) = {bpm, pos} aus dem Scan, pos = Schläge ab der ersten Takt-Eins
-  S.step = function (spec, t, dt, grid) {
+  S.step = function (spec, t, dt, grid, st) {
     S.t = t;
     if (!(dt > 0)) dt = 16.7; if (dt > 100) dt = 100;
     let total = 0;
@@ -330,6 +354,25 @@ function akCreate(sampleRate, fftSize) {
     } else S.nov = akEma(S.nov, 0, dt, C.novTau);
     S.out.ak_novelty = S.nov;
 
+    // Stereo (Build 105): st = akStereoStats(...) oder weglassen (Mono-Quelle, Mikrofon, Stille: alles geht weich auf 0)
+    { const lvl = st ? st.l + st.r : 0;
+      if (st && !silent) S.stMx.push(lvl, t);
+      const ref = S.stMx.max();
+      if (st && !silent && lvl > 0 && ref > 0) {
+        const rel = lvl / ref;
+        S.stLoc = Math.max(lvl, S.stLoc * Math.exp(-dt / C.panPeakMs));
+        const atPeak = lvl >= C.panPeak * S.stLoc;
+        if (rel >= C.panGate && atPeak) S.panHeld = (st.r - st.l) / (st.l + st.r + 1e-9);               // -1 links ... +1 rechts, nur bei genug Pegel (sonst Nachhall und Rauschen)
+        if (rel >= C.widthGate && atPeak) S.widthHeld = akClamp(2 * st.s / (st.m + st.s + 1e-9));   // 0 = Mono, 1 = unabhängig links/rechts oder breiter; zwischen Anschlägen gehalten
+        S.width = akEma(S.width, S.widthHeld, dt, C.widthMs);
+        S.pan = akEma(S.pan, S.panHeld, dt, C.panTau);
+      } else { S.pan = akEma(S.pan, 0, dt, C.widthMs); S.width = akEma(S.width, 0, dt, C.widthMs); S.panHeld = 0; S.widthHeld = 0; }
+      const sd = S.pan > C.panSide ? 1 : S.pan < -C.panSide ? -1 : 0;
+      if (sd !== 0 && sd !== S.panSide) { if (S.panSide !== 0) { S.swings[S.swI] = t; S.swI = (S.swI + 1) % S.swings.length; } S.panSide = sd; }
+      let c = 0; for (let i = 0; i < S.swings.length; i++) if (t - S.swings[i] < barMs) c++;
+      S.panSpeed = akEma(S.panSpeed, akClamp(c / C.panSpeedFull), dt, C.panSpeedMs);
+      S.out.ak_pan = S.pan; S.out.ak_pan_speed = S.panSpeed; S.out.ak_width = S.width; }
+
     // Raster: Schlag, Takt, Phrase
     if (grid && grid.bpm > 0) {
       S.gridScan = true; S.bpm = foldBpm(grid.bpm);
@@ -411,6 +454,12 @@ const akAn = ctx.createAnalyser();
 akAn.fftSize = AKCFG.fftSize; akAn.smoothingTimeConstant = 0;
 delayNode.connect(akAn);
 const akSpec = new Float32Array(akAn.frequencyBinCount);
+// Stereo (Build 105): Mono-Quellen werden auf zwei Kanäle verdoppelt (Mitte), Stereo bleibt Stereo; je Kanal ein Analyser für die Zeitsignale
+const akUp = ctx.createGain(); akUp.channelCount = 2; akUp.channelCountMode = 'explicit'; akUp.channelInterpretation = 'speakers';
+const akSp = ctx.createChannelSplitter(2), akAnL = ctx.createAnalyser(), akAnR = ctx.createAnalyser();
+akAnL.fftSize = 1024; akAnR.fftSize = 1024;
+delayNode.connect(akUp); akUp.connect(akSp); akSp.connect(akAnL, 0); akSp.connect(akAnR, 1);
+const akTL = new Float32Array(1024), akTR = new Float32Array(1024);
 const AK = akCreate(ctx.sampleRate, AKCFG.fftSize);
 const AKV = AK.out;                                  // diese Werte gehen jedes Bild an viz.setExtraVars
 let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
@@ -419,11 +468,11 @@ let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
   if (want) { const miss = want.filter(n => !(n in AKV)), extra = have.filter(n => want.indexOf(n) < 0);
     if (miss.length || extra.length) err('Klangrollen: Namen passen nicht zu AK_VAR_NAMES (fehlt: ' + miss.join(',') + ' · zu viel: ' + extra.join(',') + ')'); } }
 // Messung fürs Protokoll (jede Minute mit Musik): hilft, AKCFG mit echten Tracks einzustellen
-const akM = { n: 0, held: 0, reso: 0, hd: 0, pp: 0, env: { kick: 0, acid: 0, hats: 0, pads: 0 }, mx: { kick: 0, acid: 0, hats: 0, pads: 0 }, ent: { kick: 0, acid: 0, hats: 0, pads: 0 }, kick: 0, sec: [0, 0, 0, 0], t: 0 };
+const akM = { n: 0, pan: 0, psp: 0, wid: 0, held: 0, reso: 0, hd: 0, pp: 0, env: { kick: 0, acid: 0, hats: 0, pads: 0 }, mx: { kick: 0, acid: 0, hats: 0, pads: 0 }, ent: { kick: 0, acid: 0, hats: 0, pads: 0 }, kick: 0, sec: [0, 0, 0, 0], t: 0 };
 AK.onEntry = n => { akM.ent[n]++; if (akDbg.on) akDbgFlash(n); };
 function akMeasure(t) {
   if (akSilent) return;
-  akM.n++; akM.held += AK.R.pads.held || 0; akM.reso += AKV.acid_reso; akM.hd += AKV.hats_density; akM.pp += AKV.pads_pitch; for (const r of AK_ROLES) { const v = AKV[r + '_env']; akM.env[r] += v; if (v > akM.mx[r]) akM.mx[r] = v; }
+  akM.n++; akM.pan += Math.abs(AKV.ak_pan); akM.psp += AKV.ak_pan_speed; akM.wid += AKV.ak_width; akM.held += AK.R.pads.held || 0; akM.reso += AKV.acid_reso; akM.hd += AKV.hats_density; akM.pp += AKV.pads_pitch; for (const r of AK_ROLES) { const v = AKV[r + '_env']; akM.env[r] += v; if (v > akM.mx[r]) akM.mx[r] = v; }
   if (AK.R.kick.lastSeen === t) akM.kick++; akM.sec[AKV.ak_section]++;
   if (!akM.t) akM.t = t;
   if (t - akM.t < 60000 || akM.n < 1800) return;
@@ -432,8 +481,8 @@ function akMeasure(t) {
     + ' · Hats ' + f(akM.env.hats / akM.n) + '/' + f(akM.mx.hats) + ' · Pads ' + f(akM.env.pads / akM.n) + '/' + f(akM.mx.pads)
     + ' · Kick-Schläge ' + Math.round(akM.kick / min) + '/min · NEU: Kick ' + akM.ent.kick + ', Acid ' + akM.ent.acid + ', Hats ' + akM.ent.hats + ', Pads ' + akM.ent.pads
     + ' · Abschnitt % G/B/U/D ' + akM.sec.map(x => Math.round(100 * x / akM.n)).join('/') + ' · ' + Math.round(AKV.ak_bpm) + ' BPM' + (AK.scanSec ? ' (Scan)' : ' (live)')
-    + ' · Pads-Gehaltenheit Ø ' + (akM.held / akM.n).toFixed(4).replace('.', ',') + ' (unter 0,006 keine Pads, über 0,025 volle) · Resonanz Ø ' + f(akM.reso / akM.n) + ' · Hats-Dichte Ø ' + f(akM.hd / akM.n) + ' · Pads-Tonhöhe Ø ' + f(akM.pp / akM.n));
-  akM.held = 0; akM.reso = 0; akM.hd = 0; akM.pp = 0;
+    + ' · Pads-Gehaltenheit Ø ' + (akM.held / akM.n).toFixed(4).replace('.', ',') + ' (unter 0,006 keine Pads, über 0,025 volle) · Resonanz Ø ' + f(akM.reso / akM.n) + ' · Hats-Dichte Ø ' + f(akM.hd / akM.n) + ' · Pads-Tonhöhe Ø ' + f(akM.pp / akM.n) + ' · Stereo: |Position| Ø ' + f(akM.pan / akM.n) + ', Wechsel-Tempo Ø ' + f(akM.psp / akM.n) + ', Breite Ø ' + f(akM.wid / akM.n));
+  akM.pan = 0; akM.psp = 0; akM.wid = 0; akM.held = 0; akM.reso = 0; akM.hd = 0; akM.pp = 0;
   akM.n = 0; akM.kick = 0; akM.t = t; akM.sec.fill(0); for (const r of AK_ROLES) { akM.env[r] = 0; akM.mx[r] = 0; akM.ent[r] = 0; }
 }
 AK.onSection = s => { rea('Klangrollen: Abschnitt ' + AK_SECTION[s] + ' (ak_section ' + s + ')'); };
@@ -467,7 +516,9 @@ function rollenFrame(t) {
       const sc = A.sections && A.sections.length && typeof sectionAt === 'function' ? sectionAt(A, ts) : null;
       if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     }
-    AK.step(akSpec, t, dt, grid);
+    let st = null;
+    if (!akSilent) { akAnL.getFloatTimeDomainData(akTL); akAnR.getFloatTimeDomainData(akTR); st = akStereoStats(akTL, akTR, 1024, ctx.sampleRate); }
+    AK.step(akSpec, t, dt, grid, st);
     akDirigent(grid ? audio.currentTime - (+latEl.value) / 1000 : null);
     akMeasure(t);
     if (akDbg.on) akDbgFrame();
