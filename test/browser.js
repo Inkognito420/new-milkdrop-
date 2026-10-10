@@ -301,8 +301,12 @@ const SZ = {
       reactive.update = () => { throw new Error('Test-Fehler A'); }; await wait(800);
       for (let i = 0; i < 20; i++) viz.renderer.audioLevels.updateAudioLevels.call({}, 60, i); await wait(200);
       out.meldungen = LOG.filter(l => l.k === 'x').map(l => l.x);
+      curAnalysis = null;   // Live-Prüfung: ohne Scan (ab Build 102 ist der Scan hier schon fertig, vorher lief die Prüfung zufällig davor)
       audio.pause(); bpm = 200; const P = 60000 / bpm; beat.state = 'break'; beat.breakStart = performance.now() - 20 * P; beat.lastKick = 0; beat.kickStreak = 9;
-      onKick(performance.now(), 1); out.drop = beat.state; resetBeat(); beat.state = 'drop'; await wait(16 * P + 400); out.nachAltemTimer = beat.state; return out;
+      onKick(performance.now(), 1); out.drop = beat.state; resetBeat(); beat.state = 'drop';
+      // Während des Wartens nur der alte Drop-Zeitgeber: die Live-Erkennung (echte Kicks, Stille nach der Pause) ruht, sonst misst die Prüfung Zufall
+      const lf = window.liveFrame, ok = window.onKick; window.liveFrame = () => {}; window.onKick = () => {};
+      await wait(16 * P + 400); out.nachAltemTimer = beat.state; window.liveFrame = lf; window.onKick = ok; return out;
     });
     check('Fehler pro Bild werden gemeldet, aber nur einmal (2 Meldungen trotz 20+ Aufrufen)', r.meldungen.length === 2, JSON.stringify(r.meldungen));
     check('Live-Drop: Timer des vorigen Tracks schaltet den neuen Track nicht um', r.drop === 'drop' && r.nachAltemTimer === 'drop', JSON.stringify(r));
