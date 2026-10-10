@@ -604,7 +604,9 @@ const SZ = {
       return out;
     });
     check('Klangrollen mit Scan: ak_section folgt dem Scan (break 1, drop 3, groove 0), Phrase zählt ab Abschnittsbeginn', ['break', 'drop', 'groove'].every(k => sc[k] && sc[k].ak_section === sc[k].erwartet && sc[k].phrase < 0.1), JSON.stringify(sc));
-    check('ak_drop_strength: im Drop die Stärke aus dem Aufbau-Detektor (über 0), im Break davor 0', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop === 0, JSON.stringify(sc));
+    check('ak_drop_strength: schon im Break vor dem Drop die Stärke des kommenden Drops (über 0), im Drop dieselbe (gleicher Wert ±0,02)', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop > 0 && Math.abs(sc.break.drop - sc.drop.drop) < 0.02, JSON.stringify(sc));
+    const ml = await page.evaluate(() => { akM.n = 1800; akM.t = 1; akMeasure(1e6); return LOG.map(l => l.x).filter(x => /Klangrollen-Messung/.test(x)).pop() || ''; });
+    check('Klangrollen-Messzeile: enthält Pads-Gehaltenheit, Stereo und die Lage der Kick-Treffer am Raster', /Gehaltenheit/.test(ml) && /Stereo: \|Position\|/.test(ml) && /Kick-Treffer am Raster: \d+ von \d+/.test(ml), ml.slice(-260));
     check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
     await close();
   },
@@ -651,6 +653,15 @@ const SZ = {
     check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
     check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
     await m.close();
+    // Breit, aber mittig (wie der iPhone-Track mit Breite 0,75 und Wechsel-Tempo 0): Breite hoch, aber die Raum-Ebene bleibt aus
+    const w = await open();
+    await w.page.setInputFiles('#fileIn', [path.join(tmp, 'breitMitte.wav')]);
+    await w.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
+    await w.page.evaluate(() => { audio.currentTime = 8; }); await w.page.waitForTimeout(3500);
+    const wb = await w.page.evaluate(ms => new Promise(res => { const o = { act: 0, wid: 0, tr: 0 }; const t0 = performance.now(); const step = () => { o.act = Math.max(o.act, window.__SZ.act); o.wid = Math.max(o.wid, AKV.ak_width); if (/skewX/.test(canvas.style.transform)) o.tr++; if (performance.now() - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), 4000);
+    console.log('       (Info) breit, aber mittig: Breite bis ' + wb.wid.toFixed(2) + ', Raum-Aktivität bis ' + wb.act.toFixed(2));
+    check('Schaltzentrale Raum: breites, aber mittiges Stereobild (Breite über 0,5) löst keine Raum-Bewegung aus (Aktivität unter 0,2, kaum skewX)', wb.wid > 0.5 && wb.act < 0.2 && wb.tr < 20, JSON.stringify(wb));
+    await w.close();
   },
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
@@ -700,7 +711,7 @@ const SZ = {
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
   if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
-  if (want.some(w => /^(klangrollen2?|stereoLive|schaltzentrale)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
+  if (want.some(w => /^(klangrollen2?|stereoLive|schaltzentrale|klangrollenLive)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
