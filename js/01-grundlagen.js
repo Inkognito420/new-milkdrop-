@@ -101,8 +101,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 100 · new-milkdrop-: Acid Build 54 + eigene Butterchurn-Kopie + Klangrollen (Kick, Acid, Hats, Pads)';
-const BUILD_NO = 100;
+const BUILD = 'Build 101 · Klangrollen: Pads nur gehaltene Töne, Kick nur echte Schläge, Abschnitt aus dem Scan';
+const BUILD_NO = 101;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -207,12 +207,12 @@ function lastLogSave(force) {
 setInterval(() => lastLogSave(false), 10000);
 $('logPrev').addEventListener('click', () => {
   if (!prevLog) { say('Vom letzten Lauf ist kein Protokoll gespeichert.'); return; }
-  const txt = 'Acid Milkdrop Protokoll des LETZTEN Laufs (Build ' + prevLog.b + ', ' + new Date(prevLog.at * 1000).toLocaleString('de-DE') + ', letzte Zeilen)\n' + prevLog.text;
+  const txt = 'New Milkdrop Protokoll des LETZTEN Laufs (Build ' + prevLog.b + ', ' + new Date(prevLog.at * 1000).toLocaleString('de-DE') + ', letzte Zeilen)\n' + prevLog.text;
   const show = () => { logHold = true; $('logpre').textContent = txt; const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll des letzten Laufs steht oben. Markiert, von Hand kopieren.'); };
   try { navigator.clipboard.writeText(txt).then(() => { $('logPrev').textContent = 'Kopiert'; setTimeout(() => { $('logPrev').textContent = 'Letzter Lauf'; }, 2000); }, show); } catch (e) { show(); }
 });
 $('logCopy').addEventListener('click', () => {
-  const txt = 'Acid Milkdrop Protokoll · ' + BUILD + ' · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + '\n' + logText();
+  const txt = 'New Milkdrop Protokoll · ' + BUILD + ' · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + '\n' + logText();
   const ok = () => { $('logCopy').textContent = 'Kopiert'; setTimeout(() => { $('logCopy').textContent = 'Kopieren'; }, 2000); };
   const sel = () => { const r = document.createRange(); r.selectNodeContents($('logpre')); const se = getSelection(); se.removeAllRanges(); se.addRange(r); say('Protokoll markiert. Tippe „Kopieren“ im Menü.'); };
   try { navigator.clipboard.writeText(txt).then(ok, sel); } catch (e) { sel(); }
