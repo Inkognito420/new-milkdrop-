@@ -651,6 +651,17 @@ const SZ = {
     });
     console.log('       (Info) Dirigent: ' + JSON.stringify(D));
     check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
+    { const k = await m.page.evaluate(() => { // Kick-Ebene: Drehen im Takt wechselt die Richtung mit jeder Takt-Eins, Regler 0 = aus, Break leiser, Acid dreht weniger
+        const g0 = SZ.gain.kick, on0 = SZ.on, out = {}; SZ.on = true; toggles.mix = true;
+        const mk = () => ({ v: 0 }); const a = mk(), b = mk(), c = mk(), wR = 3;
+        SZ.gain.kick = 1; szKickRot(a, 1, wR, true); const d1 = a.v; szKickRot(a, 1, wR, false); szKickRot(b, 1, wR, true); const d2 = b.v - 0;   // zweiter Takt: andere Richtung
+        out.richtung = d1 * (a.v - d1 > 0 ? 1 : -1) > 0 && Math.sign(d1) === Math.sign(a.v - d1) && Math.sign(d1) !== Math.sign(d2);
+        out.groesse = Math.abs(d1) <= SZCFG.kickRot * wR * 1.001;
+        SZ.gain.kick = 0; szKickRot(c, 1, wR, false); out.aus = c.v === 0 && szAcidRot() === 1;
+        SZ.gain.kick = 1; out.acid = Math.abs(szAcidRot() - (1 - SZCFG.acidRotShare)) < 1e-9;
+        SZ.kickS = SZCFG.kickBreak; out.break = Math.abs(szKickAmp() - SZCFG.kickBreak) < 1e-9; SZ.kickS = 1; out.normal = szKickAmp() === 1;
+        SZ.gain.kick = g0; SZ.on = on0; return out; });
+      check('Schaltzentrale Kick-Ebene: Drehen im Takt (Richtung wechselt je Takt, begrenzt), Regler 0 = aus, Acid dreht weniger, Break leiser', k.richtung && k.groesse && k.aus && k.acid && k.break && k.normal, JSON.stringify(k)); }
     check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
     await m.close();
     // Breit, aber mittig (wie der iPhone-Track mit Breite 0,75 und Wechsel-Tempo 0): Breite hoch, aber die Raum-Ebene bleibt aus
@@ -703,6 +714,19 @@ const SZ = {
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
       bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
     check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    { const q = await page.evaluate(async () => { // AK-PATCH 10: Endstufe. Werte kommen im Comp-Shader an, Shader übersetzt ohne Fehler, Stärke 0 ändert das Bild nicht
+        const R = viz.renderer, gl = R.gl, cs = R.compShader, out = {}; if (!viz.setAkStage || !cs || !cs.akStageLocs) return { fehlt: true };
+        const px = () => { viz.render(); const u = new Uint8Array(4 * 16 * 16); gl.readPixels(0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };
+        const err0 = gl.getError(); viz.setAkStage([0.8, 0.3, 0.5, 0, 0.7, 0.8, -0.5, 5]); viz.render(); const got = gl.getUniform(cs.shaderProgram, cs.akStageLocs[0]), got2 = gl.getUniform(cs.shaderProgram, cs.akStageLocs[1]);
+        out.a = Array.from(got).map(x => +x.toFixed(2)); out.b = Array.from(got2).map(x => +x.toFixed(2)); out.glFehler = gl.getError() - 0 + err0;
+        const df = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); return d / a.length; }, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, rd = () => { const u = new Uint8Array(4 * W * H); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };
+        const Z = [0, 0, 0, 0, 0, 0, 0, 0]; viz.setOutputAA(true); viz.setAkStage(Z); viz.render(); const tex = R.compTexture, again = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); R.outputShader.renderQuadTexture(tex); return rd(); };
+        const z1 = again(), z2 = again(); viz.setAkStage([0.9, 0.3, 0.8, 0, 0, 0, 0, 5]); const s1 = again(); viz.setAkStage(Z); viz.setOutputAA(false);
+        out.diffNull = +df(z1, z2).toFixed(3); out.diffAcid = +df(z2, s1).toFixed(3); out.diffHats = 0;
+        viz.setAkStage([0, 0, 0, 0, 0, 0, 0, 0]); viz.render(); out.null = Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[0])).every(x => x === 0) && Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[1])).every(x => x === 0);
+        return out; });
+      console.log('       (Info) Endstufe: ' + JSON.stringify(q));
+      check('Echte Butterchurn-Kopie, Endstufe (AK-PATCH 10): setAkStage kommt im Comp-Shader an (akfx_a/akfx_b), kein GL-Fehler, mit 0 sind alle Blöcke aus, derselbe Bildinhalt zweimal ausgegeben ist bit-gleich, die Acid-Verzerrung im Ausgabe-Durchgang verändert ihn sichtbar', !q.fehlt && q.a && q.a[0] === 0.8 && q.a[1] === 0.3 && q.b[0] === 0.7 && q.b[2] === -0.5 && q.glFehler === 0 && q.null && q.diffNull === 0 && q.diffAcid > 0.3, JSON.stringify(q)); }
     await close();
   },
   async manifest() {
