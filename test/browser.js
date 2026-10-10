@@ -145,6 +145,9 @@ const SZ = {
       const A = curAnalysis, P = A.rollen, mean = (ty, name) => { let s = 0, n = 0; for (const sc of A.sections.filter(x => x.type === ty)) for (let b = Math.ceil((sc.t0 - P.bar0) / P.barS); (b + 1) * P.barS + P.bar0 <= sc.t1 + 0.01; b++) { const v = ptRolle(A, b, name); if (v !== null) { s += v; n++; } } return n ? +(s / n).toFixed(3) : null; };
       return { n: P.n, takte: Math.round(A.duration / (4 * A.beatS)), kickDrop: mean('drop', 'kick'), kickBreak: mean('break', 'kick'), hatsDrop: mean('drop', 'hats'), sek: A.secs, typen: A.sections.map(s => s.type).join(' ') };
     });
+    const au = await page.evaluate(() => { const A = curAnalysis, P = A.aufbau, sd = A.sections.filter(s => s.type === 'drop').map(s => +s.t0.toFixed(2)); return { drops: P ? P.drops.map(d => ({ t: d.t, takt: d.bar, pause: d.pause, aufbau: d.buildBars, staerke: d.strength })) : null, scanDrops: sd, barS: A.km.barS, log: LOG.some(l => /Aufbau-Detektor: Drop/.test(l.x)) }; });
+    check('Aufbau-Detektor in der Partitur: findet den Drop nach dem 8-Takt-Break (±1 Takt zum Scan), mit Aufbau davor, Stärke 0..1, steht im Protokoll',
+      au.drops && au.log && au.drops.some(d => au.scanDrops.some(t => Math.abs(d.t - t) <= au.barS * 1.05) && d.aufbau >= 2 && d.staerke > 0 && d.staerke <= 1), JSON.stringify(au));
     check('Partitur: ein Wert pro Takt; Kick im Drop deutlich (> 0,4), im Break kaum (< 0,15)', Math.abs(p.n - p.takte) <= 2 && p.kickDrop > 0.4 && p.kickBreak !== null && p.kickBreak < 0.15, JSON.stringify(p));
     console.log('       (Info) Analyse (Scan + Partitur) im Sandbox-Rechner: ' + p.sek + ' s für ' + p.takte + ' Takte');
     check('Start-Sperre: keine Seitenfehler, keine Fehler im Protokoll', errs.length === 0 && (await page.evaluate(() => LOG.filter(l => l.k === 'x').length)) === 0, errs.join(' | '));

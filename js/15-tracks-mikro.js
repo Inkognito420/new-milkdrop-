@@ -96,6 +96,8 @@ function applyScanFor(f) {
       else if (A.kmErr) err('Klangmesser fehlgeschlagen: ' + A.kmErr);
       if (A.rollen && typeof ptSummary === 'function') erg('Partitur Klangrollen (' + A.rollenMs + ' ms): ' + ptSummary(A));
       else if (A.rollenErr) err('Partitur Klangrollen fehlgeschlagen: ' + A.rollenErr);
+      if (A.aufbau) erg('Aufbau-Detektor: ' + aufbauSummary(A.aufbau));
+      else if (A.aufbauErr) err('Aufbau-Detektor fehlgeschlagen: ' + A.aufbauErr);
       setTrackInfo(A.grid ? A.drops + (A.drops === 1 ? ' Drop' : ' Drops') : 'kein festes Raster, läuft live');
       $('mood').textContent = 'Stimmung: ' + moodText(A.mood) + ' · ' + (A.grid ? A.bpm.toFixed(1) + ' BPM' : 'ohne festes Tempo') + (A.km ? ' · Puls ' + A.km.puls16 + 'tel' + (A.km.keyShare >= 0.25 ? ' · Grundton ' + KM_NOTES[A.km.key] : '') : '');
       drawTimeline(A);

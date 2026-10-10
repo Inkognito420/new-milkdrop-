@@ -532,3 +532,76 @@ function kmSummary(A) {
   const p = x => Math.round(100 * x);
   return 'Druck ' + p(K.avg.druck) + ' · Hektik ' + p(K.avg.hektik) + ' · Schärfe ' + p(K.avg.schaerfe) + ' · Spannung ' + p(K.avg.spann) + ' · Filter ' + p(K.avg.beweg) + ' · Puls ' + K.puls16 + 'tel (' + p(K.pulsShare) + ' %) · Grundton ' + KM_NOTES[K.key] + ' (' + p(K.keyShare) + ' %)';
 }
+
+// ===== Aufbau-Detektor (Build 103) =====
+// Findet in den Klangmesser-Werten pro Takt (A.km: druck, hektik, schaerfe) die Drops, den Aufbau davor und die Stärke jedes Drops.
+// KEINE festen Längen: Pausen von 2 bis beliebig vielen Takten, Aufbau beliebig lang, auch über durchlaufendem Kick.
+// Maßstab sind echte Tracks: pruefdaten/ (Klangmesser-Werte von „Spell“ und „Dream Escape“), Prüfung test/aufbau.test.js.
+//   Drop      = erster Takt mit vollem Druck nach einer Pause (Druck unter pauseFrac des vollen Drucks, irgendwo darin unter pauseDeep).
+//               War der Takt davor schon halb da (Übergang), gewinnt der Takt mit dem größeren Sprung.
+//   Aufbau    = drei Arten von Anstieg, jede für sich gesucht: Hektik (Rolls), Schärfe (Riser, Rauschen), beides zusammen.
+//               Je Art vom Gipfel der letzten peakBars Takte vor dem Drop rückwärts, solange der Wert davor nicht um mehr als tol höher war;
+//               Beginn = letzter Tiefpunkt. (Kurz vor dem Drop wird es oft still: darum der Gipfel, nicht der letzte Takt.)
+//               build pro Takt 0..1 = gemessener Anstieg seit dem Beginn, nur steigend (kein Zurückfallen mitten im Aufbau).
+//   drop_strength 0..1 = base + pause * Pausenlänge (2 Takte = 0, 32 = 1, logarithmisch) + rise * Höhe des Aufbaus + jump * Druck-Sprung.
+// Hektik und Schärfe werden auf ihren eigenen Bereich im Track bezogen (Perzentile relLo..relHi): Lautstärke und Mix des Tracks sind egal.
+const AUFBAU = {
+  fullPct: 0.8,        // „voller Druck“ = dieses Perzentil des Drucks im Track
+  pauseFrac: 0.8,      // Pause: Druck unter diesem Anteil des vollen Drucks ...
+  pauseDeep: 0.6,      // ... und irgendwo in der Pause unter diesem Anteil (echte Pause, kein kleiner Durchhänger)
+  pauseMin: 2,         // so viele Takte Pause braucht ein Drop mindestens
+  dropFrac: 0.6,       // der Drop-Takt selbst hat mindestens diesen Anteil des vollen Drucks
+  relLo: 0.2, relHi: 0.95,
+  tol: 0.06,           // Aufbau rückwärts: so viel darf der Takt davor höher sein (Messrauschen)
+  riseMin: 0.15,       // so viel Anstieg (0..1) braucht ein Aufbau mindestens
+  peakBars: 4,         // Gipfel des Aufbaus: in den letzten so vielen Takten vor dem Drop
+  pauseRef: [2, 32],   // Pausenlänge in Takten für drop_strength: 2 = 0, 32 = 1
+  w: { base: 0.25, pause: 0.45, rise: 0.15, jump: 0.15 }
+};
+function aufbauDetektor(K, C = AUFBAU) {
+  const n = K && K.druck ? K.druck.length : 0, dr = n ? K.druck : [], cl = x => x < 0 ? 0 : x > 1 ? 1 : x;
+  const build = new Float32Array(n), T = new Float32Array(n), H = new Float32Array(n), S = new Float32Array(n), drops = [];
+  if (n < 4) return { n, build, drops };
+  const pct = (a, q) => { const s = Array.from(a).sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * q))] || 0; };
+  const full = pct(dr, C.fullPct) || 1;
+  const rel = (a, out) => { const lo = pct(a, C.relLo), hi = pct(a, C.relHi), w = Math.max(1e-6, hi - lo); for (let i = 0; i < n; i++) out[i] = cl((a[i] - lo) / w); };
+  rel(K.hektik, H); rel(K.schaerfe, S);
+  for (let i = 0; i < n; i++) T[i] = 0.5 * (H[i] + S[i]);
+  const isPause = i => dr[i] < C.pauseFrac * full;
+  for (let i = 1; i < n; i++) {
+    if (isPause(i) || !isPause(i - 1)) continue;                 // i = erster Takt mit vollem Druck nach einer Pause
+    let p0 = i - 1, deep = Infinity; while (p0 >= 0 && isPause(p0)) { deep = Math.min(deep, dr[p0]); p0--; } p0++;
+    const pause = i - p0;
+    if (p0 === 0 || pause < C.pauseMin || deep >= C.pauseDeep * full) continue;   // Track-Anfang ist kein Drop, kleiner Durchhänger auch nicht
+    let d = i;
+    if (i >= 2 && dr[i - 1] >= C.dropFrac * full && dr[i - 1] - dr[i - 2] > dr[i] - dr[i - 1]) d = i - 1;   // Übergangstakt mit dem größeren Sprung
+    const stop = drops.length ? drops[drops.length - 1].bar : -1;
+    let rise = 0, from = -1;
+    for (const X of [T, H, S]) {
+      let top = d - 1; for (let b = d - 1; b >= Math.max(stop + 1, d - C.peakBars); b--) if (X[b] > X[top] + 1e-6) top = b;
+      let st = top; for (let b = top - 1; b > stop; b--) { if (X[b] > X[b + 1] + C.tol) break; if (X[b] < X[st] - 1e-6) st = b; }
+      let pk = 0; for (let b = st; b < d; b++) if (X[b] > pk) pk = X[b];
+      const r = pk - X[st];
+      if (r < C.riseMin) continue;
+      let m = 0; for (let b = st; b < d; b++) { m = Math.max(m, cl((X[b] - X[st]) / r)); if (m > build[b]) build[b] = m; }
+      if (r > rise) rise = r;
+      if (from < 0 || st < from) from = st;
+    }
+    const sp = cl(Math.log(pause / C.pauseRef[0]) / Math.log(C.pauseRef[1] / C.pauseRef[0]));
+    const jump = cl((Math.max(dr[d], dr[Math.min(n - 1, d + 1)]) - deep) / full);
+    const strength = cl(C.w.base + C.w.pause * sp + C.w.rise * cl(rise / 0.6) + C.w.jump * jump);
+    drops.push({ bar: d, pause, pauseFrom: p0, buildFrom: from, buildBars: from < 0 ? 0 : d - from, rise: Math.round(rise * 1000) / 1000, strength: Math.round(strength * 1000) / 1000 });
+  }
+  return { n, build, drops };
+}
+// Für die Partitur: Aufbau und Drops auf das Takt-Raster des Klangmessers (A.km.t0, A.km.barS)
+function aufbauFor(A) {
+  const K = A && A.km; if (!K || !K.druck || !K.n) return null;
+  const R = aufbauDetektor(K);
+  return { n: R.n, t0: K.t0, barS: K.barS, build: R.build, drops: R.drops.map(d => Object.assign({ t: +(K.t0 + d.bar * K.barS).toFixed(3) }, d)) };
+}
+function aufbauSummary(P) {
+  if (!P) return '';
+  const f = x => x.toFixed(2).replace('.', ',');
+  return P.drops.length ? P.drops.map(d => 'Drop Takt ' + d.bar + ' (' + Math.round(d.t) + ' s): Pause ' + d.pause + ' T, Aufbau ' + d.buildBars + ' T, Stärke ' + f(d.strength)).join(' · ') : 'keine Drops';
+}

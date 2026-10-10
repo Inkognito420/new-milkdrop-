@@ -14,6 +14,8 @@ jobs:
         run: node test/files.test.js
       - name: Track-Analyse mit künstlichem Track
         run: node test/analyse.test.js
+      - name: Aufbau-Detektor mit den Prüfdaten (echte Tracks, pruefdaten/)
+        run: node test/aufbau.test.js
       - name: Klangrollen-Namen kollidieren mit keinem der 245 Standard-Presets
         run: node test/klangrollen-namen.test.js
   browser:
