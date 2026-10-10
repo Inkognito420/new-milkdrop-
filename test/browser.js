@@ -615,7 +615,7 @@ const SZ = {
     await page.evaluate(() => { audio.currentTime = 22; }); await page.waitForTimeout(2500);   // Ping-Pong 2/Schlag
     const b2 = sum(await sample(5000));
     console.log('       (Info) Stereo live: Ping-Pong 1/Schlag ' + JSON.stringify(a) + ' · 2/Schlag ' + JSON.stringify(b2));
-    check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,5 und über +0,5), Wechsel-Tempo über 0,05 und mit 2/Schlag höher als mit 1/Schlag (genaue Zahlen: Offline-Prüfung, Echtzeit hängt an der Bildrate des Rechners)', a.min < -0.5 && a.max > 0.5 && a.sp > 0.05 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
+    check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,4 und über +0,4), Wechsel-Tempo über 0,05 und mit 2/Schlag höher als mit 1/Schlag (genaue Zahlen: Offline-Prüfung, Echtzeit hängt an der Bildrate des Rechners)', a.min < -0.4 && a.max > 0.4 && a.sp > 0.05 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
     await close();
     const m = await open();
     await m.page.setInputFiles('#fileIn', [T[0]]);

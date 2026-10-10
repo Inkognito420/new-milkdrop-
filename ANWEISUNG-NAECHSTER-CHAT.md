@@ -30,6 +30,8 @@ Statische Web-App ohne Build-Schritt.
 ## STAND (alles in main, Build 105 nach Merge von PR „Stereo“)
 Erledigt und geprüft (Sandbox): Start-Sperre, Partitur, Speicher, Aufbau-Detektor (7 Drops in `pruefdaten/` ±1 Takt, Aufbau über dem Kick, Drop-Stärke 0,56–0,97), Klangrollen-Korrekturen (Pads, Kick), 8 neue Werte, Stereo-Messung. **Die Bild-Effekte nutzen die neuen Werte noch NICHT.**
 
+Bekannte offene Auffälligkeit (Build 105): `ak_pan` erreicht LIVE bei einem Seitenwechsel pro Schlag nur etwa ±0,5, in der Offline-Messung (Partitur und Test) ±0,9, obwohl dieselbe Funktion (`akStereoStats`, Fenster `AKCFG.stN`) und dieselben Schwellen laufen. Das Wechsel-Tempo `ak_pan_speed` stimmt live trotzdem (0,2 bei 1 Wechsel pro Schlag, 0,28 bei 2; offline 0,25/0,50). Ursache nicht geklärt (Verdacht: Zeitpunkt des Lesens der Analyser gegenüber dem Anschlag). Die Schaltzentrale sollte `ak_pan` darum auf sein gleitendes Maximum der letzten Sekunden normieren (wie die Rollen-Hüllkurven), statt auf ±1 zu vertrauen; oder die Ursache mit dem Test `stereoLive` klären.
+
 Offen und von Emmo am iPhone zu prüfen (Protokoll „Kopieren“ in „Mehr“ → Protokoll): Passen Pads-Gehaltenheit (`padHeld` 0,006–0,025) und Resonanz (`resoDb` 6–24 dB) zu echten Tracks? Die Minutenzeile „Klangrollen-Messung“ enthält dafür Gehaltenheit, Resonanz, Hats-Dichte, Pads-Tonhöhe, Stereo-Position/Tempo/Breite. Schwellen anhand dieser Protokolle nachziehen, nicht raten.
 
 ## AUFGABE: SCHALTZENTRALE (Presets NICHT umbauen)
