@@ -1,6 +1,6 @@
 {
-  "name": "Acid Milkdrop",
-  "short_name": "Acid",
+  "name": "New Milkdrop",
+  "short_name": "New Milkdrop",
   "description": "Musik-Visualizer: eigene Tracks, Milkdrop und eigene Shader reagieren auf Kick, Mitten und Hi-Hats.",
   "start_url": "./",
   "scope": "./",

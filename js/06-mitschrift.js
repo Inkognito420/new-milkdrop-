@@ -52,17 +52,17 @@ function jrSave(t, force) {
   if (!JR.dirty && !force) return;
   JR.dirty = false; JR.saved = t; jrTrim();
   const pack = () => JSON.stringify({ v: 1, dev: JR.dev, runs: JR.runs, tracks: JR.tracks, sess: JR.sess });
-  try { const s = pack(); localStorage.setItem(JR_KEY, s); JR.bytes = s.length; }
+  try { const s = pack(); localStorage.setItem(KEY_NS + JR_KEY, s); JR.bytes = s.length; }
   catch (e) {
     JR.runs.splice(0, Math.ceil(JR.runs.length * 0.3));             // Speicher voll: die ältesten Läufe gehen zuerst
-    try { const s = pack(); localStorage.setItem(JR_KEY, s); JR.bytes = s.length; }
+    try { const s = pack(); localStorage.setItem(KEY_NS + JR_KEY, s); JR.bytes = s.length; }
     catch (e2) { if (!JR.errLogged) { JR.errLogged = true; err('Mitschrift konnte nicht gespeichert werden: ' + (e2 && e2.message)); } }
   }
   jrInfo();
 }
 (function jrLoad() {
   let d = null, len = 0;
-  try { const s = localStorage.getItem(JR_KEY); if (s) { len = s.length; d = JSON.parse(s); } } catch (e) {}
+  try { const s = localStorage.getItem(KEY_NS + JR_KEY); if (s) { len = s.length; d = JSON.parse(s); } } catch (e) {}
   if (d && typeof d === 'object') {
     JR.dev = typeof d.dev === 'string' ? d.dev.slice(0, 16) : '';
     if (Array.isArray(d.runs)) for (const r of d.runs) { const c = jrClean(r); if (c) JR.runs.push(c); }

@@ -8,10 +8,20 @@ const canvas = $('stage'), fxc = $('fx'), audio = $('audio'), hud = $('hud'), ms
 const say = t => { msg.textContent = t || ''; };
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const ema = (avg, x, dt, tau) => avg + (x - avg) * (1 - Math.exp(-dt / tau));
+// new-milkdrop-: Acid und new-milkdrop- liegen auf derselben Adresse (inkognito420.github.io) und teilen sich darum den Browser-Speicher.
+// Alle Schlüssel bekommen hier den Vorsatz KEY_NS, damit new-milkdrop- nie Acids Sterne, Sperren, Einstellungen oder Protokolle überschreibt.
+const KEY_NS = 'nmd:';
 const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  get(k, d) { try { const v = localStorage.getItem(KEY_NS + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(KEY_NS + k, JSON.stringify(v)); } catch (e) {} }
 };
+// Beim allerersten Start einmal Acids Sterne und vermessene Presets übernehmen. Acids Speicher wird dabei nur GELESEN, nie verändert.
+try {
+  if (localStorage.getItem(KEY_NS + 'import-acid') === null) {
+    for (const k of ['am-favs', 'am-profiles-v1']) { const v = localStorage.getItem(k); if (v !== null && localStorage.getItem(KEY_NS + k) === null) localStorage.setItem(KEY_NS + k, v); }
+    localStorage.setItem(KEY_NS + 'import-acid', String(Date.now()));
+  }
+} catch (e) {}
 
 const BC = window.butterchurn && (window.butterchurn.default || window.butterchurn);
 if (!BC || !BC.createVisualizer) { say('Visualizer-Bibliothek konnte nicht laden. Prüf die Internetverbindung und lade neu.'); throw new Error('Acid Milkdrop: Start abgebrochen'); }
@@ -91,8 +101,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD = 'Build 54 · Takt-Farbe wartet 4 Takte auf neuen Ton, Lastbremse fängt bei 1080p frisch an';
-const BUILD_NO = 54;
+const BUILD = 'Build 100 · new-milkdrop-: Acid Build 54 + eigene Butterchurn-Kopie + Klangrollen (Kick, Acid, Hats, Pads)';
+const BUILD_NO = 100;
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

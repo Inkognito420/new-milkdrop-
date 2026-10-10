@@ -1,35 +1,38 @@
 // Browser-Prüfung ohne Internet: startet die App in Chromium (Playwright), ersetzt Butterchurn und die Schriften durch Attrappen,
 // lädt echte Audiodateien über das Dateifeld und prüft Start, Bedienung, Shader, Scan, Warteschlange, Grafik-Verlust, Mikrofon, Sicherung und Offline-Betrieb.
-// Die Seite wird wie auf GitHub Pages unter /Acid/ ausgeliefert.
+// Die Seite wird wie auf GitHub Pages unter /new-milkdrop-/ ausgeliefert. Die Bibliotheken (vendor/) werden durch Attrappen ersetzt, außer im Szenario echtbutterchurn.
+// Szenario klangrollen prüft die neue Klang-Analyse (js/08b-klangrollen.js) mit künstlichen Tracks (test/gen-track.js), ohne Echtzeit (OfflineAudioContext).
 //
 // Aufruf:   node test/browser.js [Szenario,Szenario,...]
 // Braucht:  npm i playwright && npx playwright install chromium      (läuft nicht in der GitHub-Aktion, nur von Hand)
 // Umgebung: PLAYWRIGHT_MODULE (Pfad zu playwright, falls nicht auffindbar), CHROMIUM_PATH (eigener Chromium), KEEP=1 (Testdateien behalten)
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';   // damit Playwright auch Anfragen des Service Workers abfangen kann
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path');
-const { makeTrack } = require('./gen-track');
+const { makeTrack, makePlanTrack, PLANS } = require('./gen-track');
 let pw; try { pw = require('playwright'); } catch (e) { try { pw = require(process.env.PLAYWRIGHT_MODULE); } catch (e2) { console.error('Playwright fehlt: npm i playwright && npx playwright install chromium (oder PLAYWRIGHT_MODULE setzen)'); process.exit(2); } }
 
-const ROOT = path.join(__dirname, '..'), PREFIX = '/Acid/', PORT = 8790 + Math.floor(Math.random() * 100);
+const ROOT = path.join(__dirname, '..'), PREFIX = '/new-milkdrop-/', PORT = 8790 + Math.floor(Math.random() * 100);
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.webmanifest': 'application/manifest+json' };
 const misses = [];                     // Pfade, die der Server nicht kannte (für die Fehlersuche)
 const server = http.createServer((req, res) => {
   const u = decodeURIComponent(req.url.split('?')[0]);
   if (!u.startsWith(PREFIX)) { misses.push(u); res.writeHead(404); return res.end(); }
+  if (u.startsWith(PREFIX + '__tmp/') && tmp) { const tf = path.join(tmp, path.basename(u)); if (fs.existsSync(tf)) { res.writeHead(200, { 'content-type': 'audio/wav' }); return fs.createReadStream(tf).pipe(res); } }
   const f = path.join(ROOT, u.slice(PREFIX.length) || 'index.html');
   if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store' }); fs.createReadStream(f).pipe(res);
 });
 const URL0 = `http://127.0.0.1:${PORT}${PREFIX}index.html`;
-const STUB_VIZ = 'window.butterchurn={createVisualizer:()=>({connectAudio(){},loadPreset(){},render(){},setRendererSize(){},loadExtraImages(){},launchSongTitleAnim(){},renderer:{audioLevels:{val:[1,1,1],att:[1,1,1],updateAudioLevels(){}}}})};';
+const STUB_VIZ = 'window.butterchurn={createVisualizer:()=>({connectAudio(){},loadPreset(){},render(){},setRendererSize(){},loadExtraImages(){},launchSongTitleAnim(){},setExtraVars(v){window.__akSet=(window.__akSet||0)+1;window.__akLast=v},renderer:{audioLevels:{val:[1,1,1],att:[1,1,1],updateAudioLevels(){}}}})};';
 const STUB_PRE = 'window.butterchurnPresets={getPresets:()=>{const o={};for(let i=0;i<40;i++)o["Test · Preset "+i]={baseVals:{},frame_eqs_str:"",init_eqs_str:"",shapes:[],waves:[]};return o}};window.butterchurnPresetsExtra={getPresets:()=>({})};';
 
-const results = []; let browser, tmp, T;      // T: Pfade der Test-Tracks
+const results = []; let browser, tmp, T; const PT = {};      // T: Pfade der Test-Tracks, PT: Plan-Tracks für die Klangrollen (Takt-Zeiten)
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok, detail }); console.log((ok ? '  ok   ' : '  FEHL ') + name + (ok ? '' : '  → ' + detail)); };
 
 async function open(opts = {}) {
   const ctx = await browser.newContext({ serviceWorkers: opts.sw ? 'allow' : 'block', viewport: { width: 390, height: 844 } });
   await ctx.grantPermissions(['microphone']);
+  if (!opts.real) await ctx.route(/\/vendor\/butterchurn(-presets)?\/[^/?]+\.js/, r => r.fulfill({ contentType: 'application/javascript', body: /Presets/.test(r.request().url()) ? STUB_PRE : STUB_VIZ }));
   await ctx.route(/cdn\.jsdelivr\.net|fonts\.(googleapis|gstatic)\.com/, r => {
     const u = r.request().url(), h = { 'access-control-allow-origin': '*' };
     if (u.includes('fonts.')) return r.fulfill({ contentType: 'text/css', body: '', headers: h });
@@ -206,7 +209,7 @@ const SZ = {
     const { page, ctx, errs, close } = await open({ sw: true });
     await page.evaluate(() => navigator.serviceWorker.ready); await page.waitForTimeout(1500);
     const on = await page.evaluate(async () => { const k = await caches.keys(), c = await caches.open(k[0]); return { caches: k, n: (await c.keys()).length, scope: (await navigator.serviceWorker.ready).scope, files: AM_FILES.length }; });
-    check('Offline: Service Worker aktiv unter /Acid/, Speicher mit allen Dateien und den 3 Bibliotheken', on.scope.endsWith(PREFIX) && on.caches.length === 1 && on.n >= on.files + 3 + 10, JSON.stringify(on));
+    check('Offline: Service Worker aktiv unter ' + PREFIX + ', Speicher mit allen Dateien und den 3 Bibliotheken', on.scope.endsWith(PREFIX) && on.caches.length === 1 && on.n >= on.files + 3 + 10, JSON.stringify(on));
     await ctx.setOffline(true); await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(1500);
     const off = await page.evaluate(() => ({ step: window.__AM_STEP, sw: !!navigator.serviceWorker.controller }));
     check('Offline: Neuladen ohne Netz startet die App bis Teil 16', off.step === 16 && off.sw && errs.length === 0, JSON.stringify(off) + errs.join(' | '));
@@ -289,7 +292,7 @@ const SZ = {
     await page.waitForTimeout(2500);
     await page.evaluate(() => { const t = performance.now(); while (performance.now() - t < 11000) {} });     // Seite steht 11 s
     await page.waitForTimeout(3000);
-    const rec = await page.evaluate(() => new Promise(res => { const r = indexedDB.open('acid-wd', 1); r.onsuccess = () => { const g = r.result.transaction('k').objectStore('k').get('hang'); g.onsuccess = () => res(g.result || null); }; r.onerror = () => res(null); }));
+    const rec = await page.evaluate(() => new Promise(res => { const r = indexedDB.open('nmd-wd', 1); r.onsuccess = () => { const g = r.result.transaction('k').objectStore('k').get('hang'); g.onsuccess = () => res(g.result || null); }; r.onerror = () => res(null); }));
     check('Hänger-Wächter: 11 s Stillstand aufgeschrieben, mit dem Bild, das lief', rec && rec.recovered && rec.ms >= 9000 && rec.crumb && rec.crumb.n && /Lastbremse/.test(rec.crumb.txt), JSON.stringify(rec));
     await page.reload({ waitUntil: 'load' }); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 15000 }); await page.waitForTimeout(1500);
     const n = await page.evaluate(() => ({ meldung: LOG.some(l => /Letzter Lauf hing/.test(l.x)), gesperrt: [...suspect], gespeichert: store.get('am-suspect-v1', []).length }));
@@ -331,6 +334,94 @@ const SZ = {
     check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10; Lastbremse-Speicher v2', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10 && q.bk === 'am-brake-v2', JSON.stringify(q));
     await close();
   },
+  async klangrollen() {
+    // Klang-Analyse ohne Echtzeit: die Datei läuft durch einen OfflineAudioContext, alle 1/60 s wird angehalten, das Spektrum
+    // genau wie live (Analyser 4096, ohne Glättung) an akCreate().step gegeben. So prüfen 4 Tracks in Sekunden statt Minuten.
+    const { page, errs, close } = await open();
+    const run = (name, gain) => page.evaluate(async ([url, gain]) => {
+      const ab0 = await (await fetch(url)).arrayBuffer();
+      const ab = await new OfflineAudioContext(2, 44100, 44100).decodeAudioData(ab0);
+      const oc = new OfflineAudioContext(2, ab.length, ab.sampleRate), sr = ab.sampleRate;
+      const src = oc.createBufferSource(); src.buffer = ab; const g = oc.createGain(); g.gain.value = gain;
+      const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
+      src.connect(g); g.connect(an); an.connect(oc.destination);
+      const S = akCreate(sr, AKCFG.fftSize); S.events = [];
+      const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
+      let ms = 0, msMax = 0, n = 0, lastT = 0;
+      const N = Math.floor((ab.duration - 0.05) * 60);
+      for (let i = 1; i <= N; i++) {
+        const ts = Math.floor(i / 60 * sr / 128) * 128 / sr;
+        oc.suspend(ts).then(() => {
+          an.getFloatFrequencyData(spec);
+          const t = ts * 1000, a = performance.now(); S.step(spec, t, lastT ? t - lastT : 16.7, null); const d = performance.now() - a; lastT = t;
+          ms += d; if (d > msMax) msMax = d; n++;
+          for (const r in env) env[r].push(+S.out[r + '_env'].toFixed(4)); sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
+          oc.resume();
+        });
+      }
+      src.start(0); await oc.startRendering();
+      return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, sec, bpm, ms: ms / n, msMax, n };
+    }, [PREFIX + '__tmp/' + name + '.wav', gain]);
+    const barT = (P, b) => P.bar0 + b * P.barS, beatS = PT.kickDurch.barS / 4;
+
+    // 1) Durchgehender Kick: kick_entry nur einmal am Anfang
+    const a = await run('kickDurch', 1), ke = a.events.filter(e => e.k === 'entry' && e.r === 'kick');
+    check('Klangrollen 1: durchgehender Kick (32 Takte): kick_entry genau einmal, am Anfang', ke.length === 1 && ke[0].t < barT(PT.kickDurch, 1), JSON.stringify(ke));
+    const bpmEnd = a.bpm[a.bpm.length - 1];
+    check('Klangrollen: Tempo erkannt (140 BPM ± 1), Abschnitt bleibt groove', Math.abs(bpmEnd - 140) <= 1 && a.sec.slice(120).every(x => x === 0), 'BPM ' + bpmEnd + ' · Abschnitte ' + JSON.stringify(a.events.filter(e => e.k === 'section')));
+    // 2) Kick fehlt einen Takt (Takt 8): break spätestens am Ende des Takts + 1 Schlag, danach wieder groove (kurze Lücke, kein drop)
+    const b = await run('kickLuecke', 1), bs = b.events.filter(e => e.k === 'section');
+    const B8 = barT(PT.kickLuecke, 8), brk = bs.find(e => e.r === 'break'), back = brk && bs.find(e => e.t > brk.t);
+    check('Klangrollen 2: Kick fehlt 1 Takt: ak_section wird 1 (break) bis Ende des Takts + 1 Schlag, danach wieder 0 (kein drop)',
+      brk && brk.t >= B8 && brk.t <= B8 + 5 * beatS && back && back.r === 'groove' && back.t <= B8 + 6 * beatS && b.sec[b.sec.length - 1] === 0 && !bs.some(e => e.r === 'drop'),
+      'Takt 8 beginnt bei ' + B8.toFixed(2) + ' s, Abschnitte: ' + JSON.stringify(bs));
+    // 3) Acid fehlt Takt 8-9 und kommt in Takt 10 wieder: acid_entry innerhalb 1 Takt
+    const c = await run('acidNeu', 1), ae = c.events.filter(e => e.k === 'entry' && e.r === 'acid'), B10 = barT(PT.acidNeu, 10);
+    check('Klangrollen 3: neue 303 nach 2 Takten Pause: acid_entry innerhalb 1 Takt', ae.some(e => e.t >= B10 && e.t <= B10 + PT.acidNeu.barS), 'Takt 10 bei ' + B10.toFixed(2) + ' s, acid_entry: ' + JSON.stringify(ae));
+    check('Klangrollen 3: kein falsches acid_entry, solange die 303 durchläuft', ae.filter(e => e.t > barT(PT.acidNeu, 1) && e.t < B10).length === 0, JSON.stringify(ae));
+    const pe = c.events.filter(e => e.k === 'entry' && e.r === 'pads'), B14 = barT(PT.acidNeu, 14);
+    console.log('       (Info) Pad-Akkord ab Takt 14 (' + B14.toFixed(2) + ' s): pads_entry ' + JSON.stringify(pe) + ' · alle Einsätze: ' + JSON.stringify(c.events.filter(e => e.k === 'entry')));
+    // 4) Lautstärke: derselbe Track voll und halb so laut: nach den ersten 30 s höchstens 10 % Unterschied in den env-Werten
+    await page.evaluate(() => 0);
+    const full = await run('t1', 1), half = await run('t1', 0.5), from = 30 * 60, diffs = {};
+    for (const r of ['kick', 'acid', 'hats', 'pads']) { let d = 0, s = 0, mx = 0; for (let i = from; i < Math.min(full.env[r].length, half.env[r].length); i++) { const x = Math.abs(full.env[r][i] - half.env[r][i]); d += x; s += full.env[r][i]; if (x > mx) mx = x; } diffs[r] = { relativ: +(s ? d / s : 0).toFixed(4), maxAbs: +mx.toFixed(3) }; }
+    check('Klangrollen 4: voll gegen halb so laut: env-Werte nach 30 s im Mittel höchstens 10 % verschieden (jede Rolle)', Object.values(diffs).every(x => x.relativ <= 0.10), JSON.stringify(diffs));
+    const fs_ = full.events.filter(e => e.k === 'section').map(e => e.r + '@' + e.t.toFixed(1));
+    console.log('       (Info) Standard-Track (Intro 8, Groove 16, Break 8 mit Aufbau, Drop 16, Outro 8 Takte; Takt 0 bei 0,35 s, 1,71 s pro Takt): ' + fs_.join(' '));
+    check('Klangrollen (Zusatz): im Standard-Track wird der Drop nach dem 8-Takt-Break erkannt', fs_.some(x => /^drop@/.test(x)), fs_.join(' '));
+    // Rechenzeit (Sandbox-Rechner, Software ohne Grafikkarte; das Handy ist anders schnell)
+    const ms = Math.max(a.ms, b.ms, c.ms, full.ms);
+    console.log('       (Info) Rechenzeit pro Bild: im Schnitt ' + ms.toFixed(3) + ' ms, Spitze ' + Math.max(a.msMax, full.msMax).toFixed(2) + ' ms (' + full.n + ' Bilder)');
+    check('Klangrollen: Rechenzeit unter 1 ms pro Bild im Schnitt (Sandbox)', ms < 1, ms.toFixed(3) + ' ms');
+    check('Klangrollen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+  },
+  async klangrollenLive() {
+    // Live-Weg: echter Track läuft in Echtzeit, rollenFrame() in der Schleife gibt jedes Bild alle 33 Werte an viz.setExtraVars
+    const { page, errs, close } = await open();
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 20000 });
+    await page.evaluate(() => { audio.currentTime = 20; });              // mitten in den Groove (ab Takt 8 läuft der Kick)
+    await page.waitForTimeout(9000);
+    const r = await page.evaluate(() => ({ calls: window.__akSet || 0, keys: window.__akLast ? Object.keys(window.__akLast).length : 0, bpm: AKV.ak_bpm, kick: AK.R.kick.nEntry, env: AKV.kick_env, maxRef: AK.R.kick.ref > 0,
+      ms: akN ? akMs / akN : null, fehler: LOG.filter(l => l.k === 'x').map(l => l.x), dbg: !!$('akDbgBtn') }));
+    check('Klangrollen live: setExtraVars bekommt jedes Bild alle 33 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 33 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    const d = await page.evaluate(async () => { $('fineBtn').click(); $('werkBtn').click(); $('akDbgBtn').click(); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', schalter: document.querySelectorAll('#werk button[id^="t-"]').length }; });
+    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
+    await close();
+  },
+  async echtbutterchurn() {
+    // Mit der echten Butterchurn-Kopie (vendor/) statt Attrappe: Start, Presets, die neuen Werte kommen im Renderer an
+    const { page, errs, close } = await open({ real: true });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 30000 });
+    await page.evaluate(() => { audio.currentTime = 20; });
+    await page.waitForTimeout(6000);
+    const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
+      bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
+    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 33 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    await close();
+  },
   async manifest() {
     const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
     const miss = m.icons.map(i => i.src).concat(['icon-180.png']).filter(f => !fs.existsSync(path.join(ROOT, f)));
@@ -343,6 +434,7 @@ const SZ = {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'acid-test-'));
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
+  if (want.includes('klangrollen')) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

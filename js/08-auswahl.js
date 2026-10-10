@@ -9,7 +9,7 @@ if (window.__AM_STEP !== 7) throw new Error('Acid Milkdrop: Teil 8 (auswahl) nic
 // (das Handy kann warm gewesen sein, danach wird neu geprüft). Reicht auch 50 % nicht, sperrt der Wächter wie bisher.
 const BRAKE_KEY = 'am-brake-v2', BRAKE_TTL = 3 * 86400;
 const brake = {};
-try { localStorage.removeItem('am-brake-v1'); } catch (e) {}      // Build 54: die Stufen aus der 2K-Zeit waren bei 1080p zu streng, v2 fängt frisch an
+try { localStorage.removeItem(KEY_NS + 'am-brake-v1'); } catch (e) {}      // Build 54: die Stufen aus der 2K-Zeit waren bei 1080p zu streng, v2 fängt frisch an
 { const b = store.get(BRAKE_KEY, {}), now = Date.now() / 1000;
   if (b && typeof b === 'object') for (const k in b) { const e = b[k]; if (e && e.s >= 1 && e.s < BRAKE_STEPS.length && e.t > now - BRAKE_TTL) brake[k] = { s: e.s | 0, t: e.t | 0 }; } }
 let brakeUntil = 0, liveTicks = 0;                     // liveTicks: nur für den Test (zählt Schläge im Live-Raster)
@@ -266,7 +266,14 @@ function saveProfiles(t) {
   store.set('am-profiles-v1', slimProfiles(false));
 }
 
+// new-milkdrop-: Butterchurn braucht WebGL2 (iPhone ab iOS 15, Chrome seit Jahren). Einmal prüfen, sonst klare Meldung statt schwarzem Bild.
+let webgl2 = null;
+function webgl2Ok() {
+  if (webgl2 === null) { try { const c = document.createElement('canvas'), g = c.getContext('webgl2'); webgl2 = !!g; const x = g && g.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } catch (e) { webgl2 = false; } }
+  return webgl2;
+}
 function createViz() {
+  if (!webgl2Ok()) { viz = null; say('Dieser Browser kann kein WebGL2. Bitte Safari (iOS 15 oder neuer) oder Chrome nehmen.'); err('WebGL2 nicht verfügbar, Visualizer startet nicht'); return false; }
   try { viz = BC.createVisualizer(ctx, canvas, { width: W, height: H, pixelRatio: 1, textureRatio: 1 }); }
   catch (e) { viz = null; say('WebGL startet nicht. Schließ andere Tabs und lade die Seite neu.'); return false; }
   try { viz.connectAudio(delayNode); } catch (e) { err('Milkdrop-Audio-Anschluss fehlgeschlagen: ' + (e && e.message || e)); }

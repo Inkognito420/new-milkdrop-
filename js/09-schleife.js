@@ -17,6 +17,7 @@ function loop() {
   const t = performance.now();
   if (t - lastDraw < FRAME_MIN) return;
   lastDraw = t;
+  rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV);   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen
   if (!frozen) {
     const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
     if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); } }

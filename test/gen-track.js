@@ -33,7 +33,44 @@ function makeTrack(out, reps = 1) {
   fs.writeFileSync(out, buf);
   return { bytes: buf.length, seconds: N / SR, bars: nBars };
 }
-module.exports = { makeTrack };
+// new-milkdrop-: Track nach Plan für die Klangrollen-Prüfung. plan = ein Eintrag pro Takt: { k: Kick, h: Hi-Hats, a: Acid-303, p: Pad-Akkord } (je true/false).
+// Gleiche Klangerzeuger wie oben (Kick 42 Hz mit Pitch-Abfall, gefiltertes Rauschen, Säge mit resonantem Filter), dazu ein gleichmäßiger Pad-Akkord.
+// gain: Lautstärke (1 = auf 0,8 normiert, 0,5 = halb so laut). Rückgabe wie makeTrack, dazu bar0 (Start von Takt 0 in s) und barS (Taktlänge in s).
+function makePlanTrack(out, plan, opts = {}) {
+  const SR = 44100, BPM = opts.bpm || 140, beat = 60 / BPM, bar = 4 * beat, LEAD = 0.35, gain = opts.gain || 1;
+  const N = Math.ceil((LEAD + plan.length * bar + 1) * SR), L = new Float32Array(N), R = new Float32Array(N);
+  let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 * 2 - 1;
+  const kick = (t0, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let ph = 0; for (let i = 0; i < 0.3 * SR && s0 + i < N; i++) { const t = i / SR; ph += 2 * Math.PI * (42 + 120 * Math.exp(-t * 30)) / SR; const v = Math.sin(ph) * Math.exp(-t * 7) * amp; L[s0 + i] += v; R[s0 + i] += v; } };
+  const noise = (t0, dur, amp, hp, pan) => { const s0 = Math.floor((LEAD + t0) * SR); let lp = 0; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const x = rnd(); lp += hp * (x - lp); const y = x - lp, e = Math.exp(-i / SR / (dur / 4)), v = y * e * amp; L[s0 + i] += v * (1 - pan); R[s0 + i] += v * (1 + pan); } };
+  const acid = (t0, dur, f, cutoff, res, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let lo = 0, bp = 0; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, saw = 2 * ((t * f) % 1) - 1, g = 2 * Math.sin(Math.PI * Math.min(0.45, cutoff(t0 + t) / SR)), q = 1 / res; lo += g * bp; const hi = saw - lo - q * bp; bp += g * hi; const v = lo * Math.min(1, t * 200) * Math.exp(-t * 3.5) * amp; L[s0 + i] += v; R[s0 + i] += v * 0.9; } };
+  const pad = (t0, dur, amp) => { const s0 = Math.floor((LEAD + t0) * SR), fr = [220, 261.6, 329.6, 392]; for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, tt = t0 + t, e = Math.min(1, t / 0.05, (dur - t) / 0.05); let v = 0; for (const f of fr) v += Math.sin(2 * Math.PI * f * tt) + 0.3 * Math.sin(4 * Math.PI * f * tt); v *= e * amp / fr.length; L[s0 + i] += v; R[s0 + i] += v; } };
+  const pat = [55, 55, 110, 55, 82.4, 55, 110, 98, 55, 55, 110, 55, 123.5, 82.4, 110, 65.4];
+  for (let b = 0; b < plan.length; b++) {
+    const x = plan[b], tb = b * bar;
+    for (let q = 0; q < 4; q++) {
+      const t = tb + q * beat;
+      if (x.k) kick(t, 0.85);
+      if (x.h) noise(t + beat / 2, 0.07, 0.28, 0.35, 0.15);
+      if (x.a) for (let s = 0; s < 4; s++) { const idx = (q * 4 + s) % 16; if (idx % 5 !== 3) acid(t + s * beat / 4, beat / 4 * 0.9, pat[idx], tm => 350 + 1800 * (0.5 + 0.5 * Math.sin(tm * 0.7)), 4, 0.33); }
+    }
+    if (x.p) pad(tb, bar, 0.12);
+  }
+  let mx = 0; for (let i = 0; i < N; i++) mx = Math.max(mx, Math.abs(L[i]), Math.abs(R[i]));
+  const g = 0.8 / mx * gain, buf = Buffer.alloc(44 + N * 4);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + N * 4, 4); buf.write('WAVEfmt ', 8); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(2, 22);
+  buf.writeUInt32LE(SR, 24); buf.writeUInt32LE(SR * 4, 28); buf.writeUInt16LE(4, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(N * 4, 40);
+  for (let i = 0; i < N; i++) { buf.writeInt16LE(Math.round(Math.max(-1, Math.min(1, L[i] * g)) * 32767), 44 + i * 4); buf.writeInt16LE(Math.round(Math.max(-1, Math.min(1, R[i] * g)) * 32767), 46 + i * 4); }
+  fs.writeFileSync(out, buf);
+  return { bytes: buf.length, seconds: N / SR, bars: plan.length, bar0: LEAD, barS: bar };
+}
+// Pläne für die Prüfkriterien (Takte)
+const bars = (n, x) => Array.from({ length: n }, () => Object.assign({}, x));
+const PLANS = {
+  kickDurch: () => bars(32, { k: 1, h: 1, a: 1 }),                                                   // 1) 32 Takte durchgehender Kick
+  kickLuecke: () => bars(8, { k: 1, h: 1, a: 1 }).concat(bars(1, { h: 1, a: 1 }), bars(8, { k: 1, h: 1, a: 1 })),   // 2) Kick fehlt Takt 8
+  acidNeu: () => bars(8, { k: 1, h: 1, a: 1 }).concat(bars(2, { k: 1, h: 1 }), bars(4, { k: 1, h: 1, a: 1 }), bars(6, { k: 1, h: 1, a: 1, p: 1 }))   // 3) Acid fehlt Takt 8-9, kommt in Takt 10; Pad ab Takt 14
+};
+module.exports = { makeTrack, makePlanTrack, PLANS };
 if (require.main === module) {
   const [out, reps] = process.argv.slice(2);
   if (!out) { console.error('Aufruf: node test/gen-track.js <ausgabe.wav> [Durchgänge]'); process.exit(2); }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Acid Milkdrop</title>
+<title>New Milkdrop</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.webmanifest">
@@ -11,14 +11,14 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
-<script>var B=54;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+<script>var B=100;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
 <canvas id="stage"></canvas>
 <canvas id="sh"></canvas>
 <canvas id="fx"></canvas>
-<div id="intro"><div><h1>ACID<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
+<div id="intro"><div><h1>NEW<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
 
 <div id="panicBox" hidden><div><h1>GESTOPPT</h1><p>Ton, Mikrofon, Bildschirmsperre und Grafik sind aus.</p><button id="panicReload" type="button" class="hot">Neu laden</button></div></div>
 <div id="flash"></div>
@@ -27,7 +27,7 @@
 
 <div id="hud">
   <div class="row">
-    <div class="brand">ACID <b>MILKDROP</b></div>
+    <div class="brand">NEW <b>MILKDROP</b></div>
     <span class="stat">BPM <em id="bpm">–</em></span>
     <span class="beats" aria-label="Beat-Anzeige"><i></i><i></i><i></i><i></i></span>
     <span class="stat"><em id="state">–</em></span>
@@ -137,13 +137,11 @@
 
 <audio id="audio" playsinline preload="auto"></audio>
 
-<script src="https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresetsExtra.min.js"></script>
-<!-- Programm in Teilen (Ordner js/). Reihenfolge ist wichtig: jeder Teil baut auf den vorherigen auf.
-     B = Build-Nummer: bei jeder Änderung hochzählen, damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Nur hier ändern. -->
+<!-- Bibliotheken (vendor/, keine CDN mehr) und Programm in Teilen (Ordner js/), Liste in app-files.js. Reihenfolge ist wichtig: jeder Teil baut auf den vorherigen auf.
+     B = Build-Nummer: bei jeder Änderung hochzählen, damit das Handy keine alten Teile aus dem Zwischenspeicher nimmt. Nur hier ändern.
+     new-milkdrop- zählt ab Build 100 (Acid endet bei 54/55), damit Protokolle nicht verwechselt werden. -->
 <script>
-AM_FILES.forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
+AM_LIBS.concat(AM_FILES).forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?b="+B).catch(()=>{}));
 </script>
 

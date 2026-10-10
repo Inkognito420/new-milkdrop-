@@ -84,7 +84,7 @@ window.addEventListener('touchstart', e => { if (e.touches && e.touches.length >
 const WD_SRC = `
 let last = Date.now(), vis = true, crumb = null, hung = 0, since = 0, hungCrumb = null, db = null;
 const put = (k, v) => { try { db && db.transaction('k', 'readwrite').objectStore('k').put(v, k); } catch (e) {} };
-try { const r = indexedDB.open('acid-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onsuccess = () => { db = r.result; }; } catch (e) {}
+try { const r = indexedDB.open('nmd-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onsuccess = () => { db = r.result; }; } catch (e) {}
 onmessage = e => {
   const m = e.data; last = Date.now(); vis = m.vis; if (m.crumb) crumb = m.crumb;
   if (hung) { put('hang', { at: since, ms: last - since, crumb: hungCrumb, recovered: true }); hung = 0; }
@@ -99,7 +99,7 @@ const SUSPECT_KEY = 'am-suspect-v1', SUSPECT_TTL = 7 * 86400;
 function wdRead() {                                                   // liest und löscht den Eintrag des Wächters vom letzten Lauf
   return new Promise(res => {
     try {
-      const r = indexedDB.open('acid-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onerror = () => res(null);
+      const r = indexedDB.open('nmd-wd', 1); r.onupgradeneeded = () => r.result.createObjectStore('k'); r.onerror = () => res(null);
       r.onsuccess = () => { const st = r.result.transaction('k', 'readwrite').objectStore('k'), g = st.get('hang'); g.onsuccess = () => { if (g.result) st.delete('hang'); res(g.result || null); }; g.onerror = () => res(null); };
     } catch (e) { res(null); }
   });
