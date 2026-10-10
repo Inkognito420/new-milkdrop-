@@ -14,11 +14,11 @@ if (window.__AM_STEP !== 14) throw new Error('new-milkdrop-: Teil 14b (partitur)
 //
 // Analyse-Version: steigt, sobald sich an Scan oder Partitur etwas ändert, das andere Ergebnisse gibt. Ältere Einträge gelten dann
 // nicht mehr (werden neu gerechnet und beim Aufräumen entfernt).
-const PARTITUR_V = 3;                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103); 3 = Pads mit Gehaltenheit, Kick am Raster, reso/hd/pp (Build 104)
+const PARTITUR_V = 4;                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103); 3 = Pads mit Gehaltenheit, Kick am Raster, reso/hd/pp (Build 104)
 const PT_DB = 'nmd-partitur';                        // eigene Datenbank (Vorsatz nmd-, Acid benutzt sie nie)
 const PT_MAX_N = 200, PT_MAX_MB = 50;                // Aufräumen: höchstens so viele Tracks und so viele MB, die am längsten unbenutzten fliegen zuerst
 const PT_FPS = 60;                                   // Bilder pro Sekunde wie live (AKCFG.padHoldFrames und kickRiseFrames zählen Bilder)
-const PT_ROLLEN = ['kick', 'acid', 'hats', 'pads', 'cut', 'sq', 'nov', 'reso', 'hd', 'pp'];   // Felder pro Takt (je 0..255): Hüllkurven, acid_cutoff, acid_squelch, ak_novelty, acid_reso, hats_density, pads_pitch
+const PT_ROLLEN = ['kick', 'acid', 'hats', 'pads', 'cut', 'sq', 'nov', 'reso', 'hd', 'pp', 'psp', 'wid'];   // Felder pro Takt (je 0..255): Hüllkurven, acid_cutoff, acid_squelch, ak_novelty, acid_reso, hats_density, pads_pitch
 const ptKey = f => f.name + '|' + f.size + '|' + (f.lastModified || 0) + '|v' + PARTITUR_V;
 
 // ===== Klangrollen offline über den ganzen Track =====
@@ -30,7 +30,7 @@ async function partiturRollen(buf, A, alive, report) {
   const sr = buf.sampleRate, N = sr >= 32000 ? 4096 : 2048;   // ca. 11 Hz pro Stufe wie live
   const F = kmFFT(N), win = new Float32Array(N), spec = new Float32Array(N / 2);
   for (let i = 0; i < N; i++) win[i] = 0.42 - 0.5 * Math.cos(2 * Math.PI * i / N) + 0.08 * Math.cos(4 * Math.PI * i / N);
-  const S = akCreate(sr, N);
+  const S = akCreate(sr, N), stW = { l: new Float32Array(AKCFG.stN), r: new Float32Array(AKCFG.stN) };
   const L = buf.getChannelData(0), Rc = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
   const barS = 4 * A.beatS, bar0 = A.beat0 + (A.barPhase || 0) * A.beatS;
   const nBars = Math.max(0, Math.floor((buf.duration - bar0) / barS));
@@ -56,11 +56,13 @@ async function partiturRollen(buf, A, alive, report) {
     if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     const b = Math.floor((t - bar0) / barS);
     curBar = b >= 0 && b < nBars ? b : -1;
-    S.step(spec, t * 1000, 1000 / PT_FPS, grid);
+    const SN = AKCFG.stN, w0 = Math.max(0, end - SN);   // Stereo: dieselben Abtastwerte wie live (akStereoStats)
+    stW.l.fill(0); stW.r.fill(0); stW.l.set(L.subarray(w0, end), SN - (end - w0)); stW.r.set(Rc ? Rc.subarray(w0, end) : L.subarray(w0, end), SN - (end - w0));
+    S.step(spec, t * 1000, 1000 / PT_FPS, grid, akStereoStats(stW.l, stW.r, SN, sr));
     if (curBar >= 0) {
       const o = S.out, q = curBar * K;
       sum[q] += o.kick_env; sum[q + 1] += o.acid_env; sum[q + 2] += o.hats_env; sum[q + 3] += o.pads_env;
-      sum[q + 4] += o.acid_cutoff; sum[q + 5] += o.acid_squelch; sum[q + 6] += o.ak_novelty; sum[q + 7] += o.acid_reso; sum[q + 8] += o.hats_density; sum[q + 9] += o.pads_pitch; cnt[curBar]++;
+      sum[q + 4] += o.acid_cutoff; sum[q + 5] += o.acid_squelch; sum[q + 6] += o.ak_novelty; sum[q + 7] += o.acid_reso; sum[q + 8] += o.hats_density; sum[q + 9] += o.pads_pitch; sum[q + 10] += o.ak_pan_speed; sum[q + 11] += o.ak_width; cnt[curBar]++;
     }
     if ((i & 7) === 0) {
       if (!alive()) return SCAN_STOP;
@@ -81,7 +83,7 @@ function ptSummary(A) {
   const P = A && A.rollen; if (!P) return '';
   const K = P.f.length, m = k => { let s = 0; for (let b = 0; b < P.n; b++) s += P.v[b * K + k]; return (s / P.n / 255).toFixed(2).replace('.', ','); };
   const e = { kick: 0, acid: 0, hats: 0, pads: 0 }; for (let b = 0; b < P.n; b++) { if (P.ent[b] & 1) e.kick++; if (P.ent[b] & 2) e.acid++; if (P.ent[b] & 4) e.hats++; if (P.ent[b] & 8) e.pads++; }
-  return P.n + ' Takte · env Ø Kick ' + m(0) + ' · Acid ' + m(1) + ' · Hats ' + m(2) + ' · Pads ' + m(3) + ' · Resonanz ' + m(7) + ' · Hats-Dichte ' + m(8) + ' · Pads-Tonhöhe ' + m(9) + ' · NEU Kick ' + e.kick + ', Acid ' + e.acid + ', Hats ' + e.hats + ', Pads ' + e.pads
+  return P.n + ' Takte · env Ø Kick ' + m(0) + ' · Acid ' + m(1) + ' · Hats ' + m(2) + ' · Pads ' + m(3) + ' · Resonanz ' + m(7) + ' · Hats-Dichte ' + m(8) + ' · Pads-Tonhöhe ' + m(9) + ' · Stereo-Wechsel ' + m(10) + ', Breite ' + m(11) + ' · NEU Kick ' + e.kick + ', Acid ' + e.acid + ', Hats ' + e.hats + ', Pads ' + e.pads
     + (P.sr < 32000 ? ' · (' + P.sr + ' Hz: Hats nicht messbar)' : '');
 }
 

@@ -36,6 +36,7 @@ function makeTrack(out, reps = 1) {
 // new-milkdrop-: Track nach Plan für die Klangrollen-Prüfung. plan = ein Eintrag pro Takt: { k: Kick, h: Hi-Hats, a: Acid-303, p: Pad-Akkord } (je true/false).
 // Ab Build 104 außerdem: b = rollende Bassline (drei Sechzehntel zwischen den Kicks, 50-60 Hz, wie in Peak-Time-Techno),
 // m = dichter Klangteppich ohne gehaltene Töne (viele kurze Synth-Tupfer mit wechselnder Tonhöhe, 150-1500 Hz, nie ganz still),
+// pp = Ping-Pong: so viele Hi-Hat-Anschläge pro Schlag, abwechselnd hart links und rechts (1, 2 oder 4), statt h; w = Synth-Tupfer breit (links/rechts verschieden).
 // q = hoher Pad (gleicher Akkord zwei Oktaven höher, 880-1568 Hz), s = Hi-Hats auf jeder Sechzehntel statt nur auf dem Offbeat.
 // Gleiche Klangerzeuger wie oben (Kick 42 Hz mit Pitch-Abfall, gefiltertes Rauschen, Säge mit resonantem Filter), dazu ein gleichmäßiger Pad-Akkord.
 // gain: Lautstärke (1 = auf 0,8 normiert, 0,5 = halb so laut). Rückgabe wie makeTrack, dazu bar0 (Start von Takt 0 in s) und barS (Taktlänge in s).
@@ -51,6 +52,7 @@ function makePlanTrack(out, plan, opts = {}) {
   const bass = (t0, f, amp) => { const s0 = Math.floor((LEAD + t0) * SR); let ph = 0; for (let i = 0; i < 0.12 * SR && s0 + i < N; i++) { const t = i / SR; ph += 2 * Math.PI * (f + 60 * Math.exp(-t * 40)) / SR; const v = Math.sin(ph) * Math.min(1, t / 0.002) * Math.exp(-t * 16) * amp; L[s0 + i] += v; R[s0 + i] += v; } };
   const blip = (t0, f, dur, amp) => { const s0 = Math.floor((LEAD + t0) * SR); for (let i = 0; i < dur * SR && s0 + i < N; i++) { const t = i / SR, e = Math.min(1, t / 0.005) * Math.exp(-t * 14), v = (Math.sin(2 * Math.PI * f * t) + 0.4 * Math.sin(4 * Math.PI * f * t)) * e * amp; L[s0 + i] += v; R[s0 + i] += v * 0.95; } };
   const pat = [55, 55, 110, 55, 82.4, 55, 110, 98, 55, 55, 110, 55, 123.5, 82.4, 110, 65.4];
+  let pingN = 0;
   for (let b = 0; b < plan.length; b++) {
     const x = plan[b], tb = b * bar;
     if (x.b) for (let q = 0; q < 4; q++) for (let s = 1; s < 4; s++) bass(tb + q * beat + s * beat / 4, s === 2 ? 55 : 49, 0.7);
@@ -58,6 +60,7 @@ function makePlanTrack(out, plan, opts = {}) {
     for (let q = 0; q < 4; q++) {
       const t = tb + q * beat;
       if (x.k) kick(t, 0.85);
+      if (x.pp) for (let u = 0; u < x.pp; u++) { pingN = (pingN || 0) + 1; noise(t + u * beat / x.pp, 0.05, 0.28, 0.35, pingN % 2 ? 0.95 : -0.95); }
       if (x.h && !x.s) noise(t + beat / 2, 0.07, 0.28, 0.35, 0.15);
       if (x.s) for (let u = 0; u < 4; u++) noise(t + u * beat / 4, 0.05, u === 2 ? 0.28 : 0.2, 0.35, 0.15);
       if (x.a) for (let s = 0; s < 4; s++) { const idx = (q * 4 + s) % 16; if (idx % 5 !== 3) acid(t + s * beat / 4, beat / 4 * 0.9, pat[idx], tm => 350 + 1800 * (0.5 + 0.5 * Math.sin(tm * 0.7)), 4, 0.33); }
@@ -81,6 +84,7 @@ const PLANS = {
   rollBass: () => bars(16, { k: 1, h: 1, b: 1 }),                                                     // 6) rollende Bassline zwischen den Kicks: nur die 4 Kicks pro Takt zählen
   padTeppich: () => bars(10, { k: 1, h: 1, a: 1, m: 1 }).concat(bars(8, { k: 1, h: 1, a: 1, m: 1, p: 1 })),   // 7) dichter Teppich ohne Pad (Takt 0-9), dann mit Pad (10-17)
   padHoch: () => bars(8, { k: 1, h: 1, p: 1 }).concat(bars(8, { k: 1, h: 1, q: 1 }), bars(10, { k: 1, h: 1 })),   // 8) tiefer Pad, hoher Pad, dann keiner
+  pingPong: () => bars(8, { k: 1, h: 1 }).concat(bars(8, { k: 1, pp: 1 }), bars(8, { k: 1, pp: 2 }), bars(8, { k: 1, pp: 4 })),   // 10) Hats mittig, dann Ping-Pong 1, 2, 4 pro Schlag (wird immer schneller)
   hatsDicht: () => bars(8, { k: 1, h: 1 }).concat(bars(8, { k: 1, h: 1, s: 1 })),                   // 9) Hats nur Offbeat (4 pro Takt), dann jede Sechzehntel (16)
   acidNeu: () => bars(8, { k: 1, h: 1, a: 1 }).concat(bars(2, { k: 1, h: 1 }), bars(4, { k: 1, h: 1, a: 1 }), bars(6, { k: 1, h: 1, a: 1, p: 1 }))   // 3) Acid fehlt Takt 8-9, kommt in Takt 10; Pad ab Takt 14
 };

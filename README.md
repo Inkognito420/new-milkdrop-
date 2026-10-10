@@ -9,7 +9,7 @@ Acid ist die Version für Auftritte und bleibt unverändert. Hier wird weiterent
 1. **Eigene Butterchurn-Kopie** (`vendor/butterchurn/`, lesbar, MIT) statt Laden aus dem Internet (CDN). Die Kopie ist um neue
    Variablen erweitert, die alten 245 Presets laufen nachweislich bit-gleich wie vorher.
 2. **Klangrollen-Analyse** (`js/08b-klangrollen.js`): erkennt Kick, Acid-Linie (303), Hi-Hats und Pads getrennt und gibt jedem Preset
-   38 neue Werte (Einsatz, Anschlag, Aufbau, Ausklingen, Filter, Resonanz, Hats-Dichte, Pads-Tonhöhe, Tempo, Takt, Abschnitt, Aufbau- und Drop-Stärke).
+   41 neue Werte (Einsatz, Anschlag, Aufbau, Ausklingen, Filter, Resonanz, Hats-Dichte, Pads-Tonhöhe, Tempo, Takt, Abschnitt, Aufbau- und Drop-Stärke, Stereo-Position, -Tempo und -Breite).
    Die Presets nutzen diese Werte noch nicht. Das kommt im nächsten Schritt.
 
 Build-Nummern: new-milkdrop- zählt ab **Build 100** (steht im Protokoll), damit es nicht mit Acid verwechselt wird.
@@ -39,6 +39,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
+- `ANWEISUNG-NAECHSTER-CHAT.md`: vollständige Anweisung für den nächsten Chat (Grundregel, Stand mit Datei-, Funktions- und Variablennamen, Plan der Schaltzentrale, Tests).
 - `pruefdaten/`: echte Messwerte von zwei Tracks (Klangmesser, Takt für Takt), Maßstab für den Aufbau-Detektor (siehe `pruefdaten/LIESMICH.md`).
 
 ## Partitur: Tracks werden vorher ganz analysiert (ab Build 102)
@@ -74,7 +75,8 @@ Bisher läuft das an Butterchurn vorbei: `bass`, `mid`, `treb` und „Instrument
 Rollen und Frequenzbereiche: **kick** 40–120 Hz · **acid** 300–3000 Hz (nur, wo sich der Klang bewegt, wie bei einer 303) ·
 **hats** 6–16 kHz · **pads** 150–1500 Hz (je Frequenz nur, was mindestens 0,5 s durchgehend klingt, also gehaltene Akkorde und Flächen, nicht die 303; über etwa 1 s geglättet, Kick-Schläge ausgeblendet).
 Der Kick zählt nur bei echten Schlägen (steiler Anstieg), nicht bei tiefem Bass im selben Band. Ab Build 104 zählt er mit Scan außerdem nur
-auf den Schlägen des Rasters (rollende Basslines zwischen den Kicks zählten vorher mit). Pads zählen ab Build 104 nur, soweit der Klang im
+auf den Schlägen des Rasters (rollende Basslines zwischen den Kicks zählten vorher mit). Ab Build 105 wird auch Stereo gemessen (`akStereoStats`: Links und Rechts getrennt, ab 500 Hz; Mono-Quellen und das Mikrofon geben Position 0).
+Pads zählen ab Build 104 nur, soweit der Klang im
 Pads-Bereich wirklich gehalten ist („Gehaltenheit“, `AKCFG.padHeld`); vorher ergab jeder gleichmäßige Klangteppich etwa 0,8.
 
 | Variable (R = kick, acid, hats, pads) | Bedeutung | Bereich |
@@ -97,6 +99,9 @@ Pads-Bereich wirklich gehalten ist („Gehaltenheit“, `AKCFG.padHeld`); vorher
 | `acid_reso` | wie scharf die 303-Resonanz ist (Spitze im Acid-Band; ohne Acid 0) | 0–1 |
 | `hats_density` | wie dicht die Hats kommen: nur Offbeats ca. 0,33, jede Sechzehntel ca. 0,8–1 | 0–1 |
 | `pads_pitch` | Tonhöhe der gehaltenen Töne: 0 = tief/düster (150 Hz), 1 = hoch/hell (1500 Hz); ohne Pads bleibt der letzte Wert und gleitet langsam zu 0,5 | 0–1 |
+| `ak_pan` | Stereo-Position der Mitten und Höhen (ab 500 Hz): −1 links … 0 Mitte … +1 rechts. Folgt Ping-Pong-Effekten (Hats, Synth-Töne, die von links nach rechts wandern) | −1…+1 |
+| `ak_pan_speed` | wie schnell die Position die Seite wechselt: 0 = steht, 0,25 = ein Wechsel pro Schlag, 0,5 = zwei, 1 = jede Sechzehntel | 0–1 |
+| `ak_width` | Breite des Stereobilds in den Mitten und Höhen: 0 = Mono, 1 = sehr breit | 0–1 |
 | `ak_build_strength` | gemessener Aufbau vor dem nächsten Drop (Aufbau-Detektor, nur mit Scan) | 0–1 |
 | `ak_drop_strength` | Stärke des laufenden Drops (lange Pause und großer Aufbau = stark), 0 sobald die nächste Pause beginnt; nur mit Scan | 0–1 |
 
@@ -119,7 +124,7 @@ sind die Werte darum etwa 30 Sekunden lang kleiner, danach wieder normal.
 Läuft bei jedem Push als GitHub-Aktion (`.github/workflows/pruefen.yml`). Von Hand:
 
 - Schnell (nur Node): `node test/files.test.js`, `node test/analyse.test.js`, `node test/aufbau.test.js` (Prüfdaten), `node test/klangrollen-namen.test.js`
-  (die 38 Namen kommen in keinem der 245 Standard-Presets vor).
+  (die 41 Namen kommen in keinem der 245 Standard-Presets vor).
 - Im Browser (Chromium über Playwright, ohne Internet):
   `PLAYWRIGHT_MODULE=… CHROMIUM_PATH=… node test/browser.js [Szenario,...]`: alle Acid-Prüfungen (Start, Bedienung, Shader, Scan, Offline,
   Notaus, Hänger-Wächter, Lastbremse …) und neu `klangrollen` (künstliche Tracks aus `test/gen-track.js`: Kick durchgehend, Kick-Lücke,
