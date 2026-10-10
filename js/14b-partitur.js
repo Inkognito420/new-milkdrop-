@@ -30,7 +30,7 @@ async function partiturRollen(buf, A, alive, report) {
   const sr = buf.sampleRate, N = sr >= 32000 ? 4096 : 2048;   // ca. 11 Hz pro Stufe wie live
   const F = kmFFT(N), win = new Float32Array(N), spec = new Float32Array(N / 2);
   for (let i = 0; i < N; i++) win[i] = 0.42 - 0.5 * Math.cos(2 * Math.PI * i / N) + 0.08 * Math.cos(4 * Math.PI * i / N);
-  const S = akCreate(sr, N), stW = { l: new Float32Array(1024), r: new Float32Array(1024) };
+  const S = akCreate(sr, N), stW = { l: new Float32Array(AKCFG.stN), r: new Float32Array(AKCFG.stN) };
   const L = buf.getChannelData(0), Rc = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
   const barS = 4 * A.beatS, bar0 = A.beat0 + (A.barPhase || 0) * A.beatS;
   const nBars = Math.max(0, Math.floor((buf.duration - bar0) / barS));
@@ -56,9 +56,9 @@ async function partiturRollen(buf, A, alive, report) {
     if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     const b = Math.floor((t - bar0) / barS);
     curBar = b >= 0 && b < nBars ? b : -1;
-    const w0 = Math.max(0, end - 1024);   // Stereo: dieselben 1024 Abtastwerte wie live (akStereoStats)
-    stW.l.set(L.subarray(w0, end), 1024 - (end - w0)); stW.r.set(Rc ? Rc.subarray(w0, end) : L.subarray(w0, end), 1024 - (end - w0));
-    S.step(spec, t * 1000, 1000 / PT_FPS, grid, akStereoStats(stW.l, stW.r, 1024, sr));
+    const SN = AKCFG.stN, w0 = Math.max(0, end - SN);   // Stereo: dieselben Abtastwerte wie live (akStereoStats)
+    stW.l.fill(0); stW.r.fill(0); stW.l.set(L.subarray(w0, end), SN - (end - w0)); stW.r.set(Rc ? Rc.subarray(w0, end) : L.subarray(w0, end), SN - (end - w0));
+    S.step(spec, t * 1000, 1000 / PT_FPS, grid, akStereoStats(stW.l, stW.r, SN, sr));
     if (curBar >= 0) {
       const o = S.out, q = curBar * K;
       sum[q] += o.kick_env; sum[q + 1] += o.acid_env; sum[q + 2] += o.hats_env; sum[q + 3] += o.pads_env;

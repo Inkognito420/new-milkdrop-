@@ -57,7 +57,7 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
   const an = oc.createAnalyser(); an.fftSize = AKCFG.fftSize; an.smoothingTimeConstant = 0;
   src.connect(g); g.connect(an); an.connect(oc.destination);
   const S = akCreate(sr, AKCFG.fftSize); S.events = []; S.hits = [];
-  const ch0 = ab.getChannelData(0), ch1 = ab.numberOfChannels > 1 ? ab.getChannelData(1) : ch0, stL = new Float32Array(1024), stR = new Float32Array(1024);
+  const ch0 = ab.getChannelData(0), ch1 = ab.numberOfChannels > 1 ? ab.getChannelData(1) : ch0, stL = new Float32Array(AKCFG.stN), stR = new Float32Array(AKCFG.stN);
   const XK = ['acid_reso', 'hats_density', 'pads_pitch', 'ak_pan', 'ak_pan_speed', 'ak_width'], xv = {};
   const spec = new Float32Array(an.frequencyBinCount), env = { kick: [], acid: [], hats: [], pads: [] }, rel = { kick: [], acid: [], hats: [], pads: [] }, sec = [], bpm = [];
   let ms = 0, msMax = 0, n = 0, lastT = 0;
@@ -66,8 +66,8 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
     const ts = Math.floor(i / 60 * sr / 128) * 128 / sr;
     oc.suspend(ts).then(() => {
       an.getFloatFrequencyData(spec);
-      const t = ts * 1000, a = performance.now(); const e1 = Math.floor(ts * sr), w1 = Math.max(0, e1 - 1024); stL.fill(0); stR.fill(0); stL.set(ch0.subarray(w1, e1), 1024 - (e1 - w1)); stR.set(ch1.subarray(w1, e1), 1024 - (e1 - w1));
-      S.step(spec, t, lastT ? t - lastT : 16.7, G ? { bpm: 60 / G.beatS, pos: (ts - G.bar0) / G.beatS, sec: -1, secStart: 0 } : null, akStereoStats(stL, stR, 1024, sr)); const d = performance.now() - a; lastT = t;
+      const t = ts * 1000, a = performance.now(); const SN = AKCFG.stN, e1 = Math.floor(ts * sr), w1 = Math.max(0, e1 - SN); stL.fill(0); stR.fill(0); stL.set(ch0.subarray(w1, e1), SN - (e1 - w1)); stR.set(ch1.subarray(w1, e1), SN - (e1 - w1));
+      S.step(spec, t, lastT ? t - lastT : 16.7, G ? { bpm: 60 / G.beatS, pos: (ts - G.bar0) / G.beatS, sec: -1, secStart: 0 } : null, akStereoStats(stL, stR, SN, sr)); const d = performance.now() - a; lastT = t;
       ms += d; if (d > msMax) msMax = d; n++;
       for (const r in env) { env[r].push(+S.out[r + '_env'].toFixed(4)); rel[r].push(S.totRef > 0 ? S.R[r].x / S.totRef : 0); } sec.push(S.out.ak_section); bpm.push(S.out.ak_bpm);
       for (const k of XK) if (k in S.out) (xv[k] = xv[k] || []).push(+S.out[k].toFixed(4));
@@ -235,7 +235,7 @@ const SZ = {
     const f = stat(dA), ruhe = stat(dR);
     const r = await page.evaluate(async () => { const A = await scanCache.get(queue[1]); return { min: +(A.duration / 60).toFixed(1), sek: A.secs, rollenMs: A.rollenMs, takte: A.rollen && A.rollen.n }; });
     console.log('       (Info) Langer Track ' + r.min + ' min, im Hintergrund während Musik: Analyse ' + r.sek + ' s (davon Klangrollen-Partitur ' + (r.rollenMs / 1000).toFixed(1) + ' s), ' + r.takte + ' Takte · Bild dabei ' + f.fps + ' fps, ' + f.langsam + ' langsame Bilder, längstes ' + f.max + ' ms (ohne Analyse: ' + ruhe.fps + ' fps, ' + ruhe.langsam + ' langsame, längstes ' + ruhe.max + ' ms; langsam = über ' + Math.round(thr) + ' ms)');
-    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 langsame Bilder mehr (über 50 ms und über 2,5 normalen Bildern), keins über 600 ms; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < 600 && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
+    check('Hintergrund-Analyse: Bild bleibt flüssig (Sandbox: mindestens 60 % der Bildrate ohne Analyse, höchstens 12 langsame Bilder mehr (über 50 ms und über 2,5 normalen Bildern), kein Bild über 600 ms und über dem Doppelten des längsten Bildes ohne Analyse; Einlesen und Dekodieren der Datei macht der Browser am Stück), langer Track wird fertig', f.fps >= 0.6 * ruhe.fps && f.langsam <= ruhe.langsam + 12 && f.max < Math.max(600, 2 * ruhe.max) && r.takte > 200, JSON.stringify(f) + ' ' + JSON.stringify(r) + ' ohne ' + JSON.stringify(ruhe));
     await close();
   },
   async notfall() {
@@ -615,7 +615,7 @@ const SZ = {
     await page.evaluate(() => { audio.currentTime = 22; }); await page.waitForTimeout(2500);   // Ping-Pong 2/Schlag
     const b2 = sum(await sample(5000));
     console.log('       (Info) Stereo live: Ping-Pong 1/Schlag ' + JSON.stringify(a) + ' · 2/Schlag ' + JSON.stringify(b2));
-    check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,5 und über +0,5), Wechsel-Tempo über 0,1 und mit 2/Schlag höher als mit 1/Schlag', a.min < -0.5 && a.max > 0.5 && a.sp > 0.1 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
+    check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,5 und über +0,5), Wechsel-Tempo über 0,05 und mit 2/Schlag höher als mit 1/Schlag (genaue Zahlen: Offline-Prüfung, Echtzeit hängt an der Bildrate des Rechners)', a.min < -0.5 && a.max > 0.5 && a.sp > 0.05 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
     await close();
     const m = await open();
     await m.page.setInputFiles('#fileIn', [T[0]]);

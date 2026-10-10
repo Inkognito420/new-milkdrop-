@@ -45,6 +45,7 @@ const AKCFG = {
     pads: { relMs: 1000, onThr: 0.40, offThr: 0.18, onMs: 400, holdMs: 800, onsetK: 2.0, onsetTau: 1500, minGap: 300, hitMin: 0.30, hitDecay: 250, relFloor: 0.02 }
   },
   padsSmoothMs: 1000,       // pads: über etwa 1 s geglättet (nur die langsamen Anteile)
+  stN: 2048,                // Stereo: so viele Abtastwerte pro Bild (46 ms bei 44,1 kHz). Bei 30-37 fps (langsames Handy) liegen die Bilder 27-33 ms auseinander: ein Fenster von nur 23 ms ließ kurze Hi-Hats dazwischenrutschen
   stHpHz: 500,              // Stereo (Build 105): nur Mitten und Höhen zählen. Zwei Hochpass-Stufen (12 dB pro Oktave): Kick und Bass liegen fast immer mittig und
                             // übertönen mit einem sanften Hochpass (6 dB) die leiseren Hi-Hats, dann stand ak_pan im Test immer auf 0
   panTau: 35,               // ak_pan folgt so schnell (ms): Ping-Pong im Sechzehntel bei 150 BPM wechselt alle 100 ms
@@ -457,9 +458,9 @@ const akSpec = new Float32Array(akAn.frequencyBinCount);
 // Stereo (Build 105): Mono-Quellen werden auf zwei Kanäle verdoppelt (Mitte), Stereo bleibt Stereo; je Kanal ein Analyser für die Zeitsignale
 const akUp = ctx.createGain(); akUp.channelCount = 2; akUp.channelCountMode = 'explicit'; akUp.channelInterpretation = 'speakers';
 const akSp = ctx.createChannelSplitter(2), akAnL = ctx.createAnalyser(), akAnR = ctx.createAnalyser();
-akAnL.fftSize = 1024; akAnR.fftSize = 1024;
+akAnL.fftSize = AKCFG.stN; akAnR.fftSize = AKCFG.stN;
 delayNode.connect(akUp); akUp.connect(akSp); akSp.connect(akAnL, 0); akSp.connect(akAnR, 1);
-const akTL = new Float32Array(1024), akTR = new Float32Array(1024);
+const akTL = new Float32Array(AKCFG.stN), akTR = new Float32Array(AKCFG.stN);
 const AK = akCreate(ctx.sampleRate, AKCFG.fftSize);
 const AKV = AK.out;                                  // diese Werte gehen jedes Bild an viz.setExtraVars
 let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
@@ -517,7 +518,7 @@ function rollenFrame(t) {
       if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     }
     let st = null;
-    if (!akSilent) { akAnL.getFloatTimeDomainData(akTL); akAnR.getFloatTimeDomainData(akTR); st = akStereoStats(akTL, akTR, 1024, ctx.sampleRate); }
+    if (!akSilent) { akAnL.getFloatTimeDomainData(akTL); akAnR.getFloatTimeDomainData(akTR); st = akStereoStats(akTL, akTR, AKCFG.stN, ctx.sampleRate); }
     AK.step(akSpec, t, dt, grid, st);
     akDirigent(grid ? audio.currentTime - (+latEl.value) / 1000 : null);
     akMeasure(t);
