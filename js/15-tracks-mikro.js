@@ -22,10 +22,12 @@ function setTrackInfo(extra) {
 // trackGate = { f, auto, state: 'wait' | 'ok' | 'fail', why }. auto: nach der Analyse von selbst starten (wie bisher „startet sofort“,
 // Trackende, ⏭). Bis dahin ist Play gesperrt, die Leiste zeigt „Analyse xx %“, das Bild läuft ohne Musik weiter.
 // Scheitert die Analyse (Datei kaputt, über 15 Minuten, zu wenig Speicher), gibt es eine Meldung und Play wird zu „Ohne Analyse spielen“.
+// Ausnahme (Build 102, Wunsch: keine Stille im Club): kam der Wechsel vom Trackende (how = 'ende'), spielt der Track sofort ohne Analyse
+// weiter, mit Hinweis. Selbst angetippte Tracks (⏭, Liste, neu geladen) warten wie oben auf den Tipp.
 let trackGate = null;
 const gateWaiting = () => !!(trackGate && trackGate.f === curFile && trackGate.state === 'wait');
 const gateFailed = () => !!(trackGate && trackGate.f === curFile && trackGate.state === 'fail');
-async function playAt(i) {
+async function playAt(i, how) {
   if (i < 0 || i >= queue.length) return;
   if (micOn) stopMic();
   qi = i; const f = queue[i]; jrEnd('k'); curFile = f;
@@ -41,7 +43,7 @@ async function playAt(i) {
   if (!fileNode) { fileNode = ctx.createMediaElementSource(audio); fileNode.connect(ctx.destination); }
   connect(fileNode);
   $('intro').hidden = true;
-  trackGate = { f, auto: true, state: 'wait', t0: performance.now() };
+  trackGate = { f, auto: true, state: 'wait', t0: performance.now(), ende: how === 'ende' };
   setPlayLabel();
   setTrackInfo('Analyse …');
   say('');
@@ -56,7 +58,13 @@ async function gateOpen(f, ok) {
   if (!g || g.f !== f || g.state !== 'wait') return;
   g.state = ok ? 'ok' : 'fail';
   setPlayLabel();
-  if (!ok) return;
+  if (!ok) {
+    if (!g.ende || !g.auto || micOn || panicked) return;
+    rea('Trackende: nächster Track ohne Analyse, spielt trotzdem weiter (keine Stille)');
+    say('Hinweis: „' + f.name.replace(/\.[^.]+$/, '') + '“ läuft ohne Analyse (' + (g.why || 'Analyse nicht möglich') + '). Das Bild reagiert nur live.');
+    try { await ctx.resume(); await audio.play(); } catch (e) { if (curFile === f) say('Analyse nicht möglich. Tippe auf „Ohne Analyse spielen“.'); }
+    return;
+  }
   const w = Math.round(performance.now() - g.t0);
   rea('Start-Sperre frei nach ' + (w / 1000).toFixed(1).replace('.', ',') + ' s' + (g.auto ? ', Track startet' : ''));
   if (!g.auto || micOn || panicked) return;
@@ -75,7 +83,7 @@ function applyScanFor(f) {
       jrScan(f, A);
       if (gateWaiting()) {
         trackGate.why = why;
-        say('Analyse nicht möglich (' + why + '). Tippe auf „Ohne Analyse spielen“: dann reagiert das Bild nur live, ohne Vorahnung.');
+        if (!trackGate.ende) say('Analyse nicht möglich (' + why + '). Tippe auf „Ohne Analyse spielen“: dann reagiert das Bild nur live, ohne Vorahnung.');
       }
       gateOpen(f, false);
     } else {
@@ -104,7 +112,7 @@ function setPlayLabel() {
 }
 audio.addEventListener('play', setPlayLabel);
 audio.addEventListener('pause', setPlayLabel);
-audio.addEventListener('ended', () => { setPlayLabel(); if (qi < queue.length - 1) playAt(qi + 1); });
+audio.addEventListener('ended', () => { setPlayLabel(); if (qi < queue.length - 1) playAt(qi + 1, 'ende'); });
 audio.addEventListener('error', () => say('Diese Datei kann das iPhone nicht abspielen. Nimm MP3, AAC/M4A oder WAV.'));
 audio.addEventListener('loadedmetadata', () => { if (curAnalysis) drawTimeline(curAnalysis); });
 $('play').addEventListener('click', async () => {

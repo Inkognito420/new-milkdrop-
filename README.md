@@ -39,6 +39,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
+- `pruefdaten/`: echte Messwerte von zwei Tracks (Klangmesser, Takt für Takt), Maßstab für den Aufbau-Detektor (siehe `pruefdaten/LIESMICH.md`).
 
 ## Partitur: Tracks werden vorher ganz analysiert (ab Build 102)
 

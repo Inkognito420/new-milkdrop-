@@ -211,6 +211,17 @@ const SZ = {
     const b = await page.evaluate(() => ({ spielt: !audio.paused, live: !curAnalysis, knopf: $('play').textContent }));
     check('Notfall: Analyse scheitert → Meldung, Track wartet, Knopf „Ohne Analyse spielen“ startet ihn live', a.pausiert && a.frei && /Analyse nicht möglich/.test(a.meldung || '') && b.spielt && b.live && b.knopf === 'Pause', JSON.stringify(a) + ' → ' + JSON.stringify(b));
     await close();
+    // Trackende: der nächste Track lässt sich nicht analysieren → keine Stille, er spielt sofort ohne Analyse (mit Hinweis)
+    const c = await open();
+    await c.page.evaluate(() => { const orig = analyzeFile; window.analyzeFile = async (f, alive) => { if (/t2/.test(f.name)) throw new Error('Test: kaputt'); return orig(f, alive); }; });
+    await c.page.setInputFiles('#fileIn', T.slice(0, 2));
+    await c.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.2, null, { timeout: 180000 });
+    await c.page.waitForFunction(() => !scanJob && !scanQueue.length, null, { timeout: 180000, polling: 200 });
+    await c.page.evaluate(() => { audio.currentTime = audio.duration - 0.4; });
+    await c.page.waitForFunction(() => qi === 1, null, { timeout: 20000 }); await c.page.waitForTimeout(1000);
+    const e = await c.page.evaluate(() => ({ qi, spielt: !audio.paused, live: !curAnalysis, hinweis: $('msg').textContent, log: LOG.some(l => /keine Stille/.test(l.x)) }));
+    check('Notfall am Trackende: nächster Track ohne Analyse spielt sofort weiter (keine Stille), mit Hinweis', e.qi === 1 && e.spielt && e.live && /ohne Analyse/.test(e.hinweis) && e.log, JSON.stringify(e));
+    await c.close();
   },
   async zurueckspringen() {
     const { page, close } = await open();
