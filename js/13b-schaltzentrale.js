@@ -8,6 +8,8 @@ if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzen
 // in Anschlüsse, die der Rest des Programms kennt. Die Presets und die Butterchurn-Kopie bleiben unverändert.
 //   RAUM   (Stereo)  ak_pan, ak_pan_speed, ak_width  → Bild nach links/rechts schieben und verziehen (skewX). Ersetzt das Schwanken im Takt,
 //                    solange Stereo-Bewegung da ist; ohne Stereo-Bewegung bleibt das alte Schwanken (Rückfall).
+//   SEITEN (Build 108) hats_side, ak_side (nur in AK.side, nicht in AKV) → Funken entstehen auf der Bildseite, auf der der Hats-Treffer klingt;
+//                    Breite (ak_width) + Seiten-Puls lassen das Bild leicht atmen (Zoom). Gehört zum Regler „Raum“ (0 = Funken wie vorher zufällig).
 //   PADS   (Farbe)   pads_env, pads_pitch, pads_entry → Farbton gleitet (Tempo = Lautstärke der Pads), Helligkeit und Sättigung folgen der Tonhöhe
 //                    (tief = düster und satt, hoch = hell und leuchtend), pads_entry = weicher Farbwechsel. Takt-Farbe: kleiner Schritt, mit Pads halb,
 //                    ohne Pads größer (mit Obergrenze), damit die Farbe nicht stehen bleibt.
@@ -22,8 +24,10 @@ const SZCFG = {
   panSmoothMs: 120,         // Glättung der Position für das Bild (flackerfrei)
   panSlew: 5,               // größte Änderung der (normierten) Position pro Sekunde, unabhängig von der Bildrate: ein voller Seitenwechsel dauert mindestens 0,4 s,
                             // darum werden sehr schnelle Wechsel (Sechzehntel) zu einem sanften Schimmern statt Flackern (1,3 % × 5 = 6,5 % pro Sekunde)
-  moveMin: 0.2, moveFull: 0.5,   // größter |ak_pan| der letzten Sekunden: darunter keine Raum-Bewegung, ab moveFull volle
+  moveMin: 0.12, moveFull: 0.5,   // größter |ak_pan| der letzten Sekunden: darunter keine Raum-Bewegung, ab moveFull volle
   widthDead: 0.12,          // Breite unter diesem Wert zählt als Mono (Test-Track mit leicht gepanntem Rauschen: Breite 0,07-0,1)
+  breathMax: 0.012,         // Breite lässt das Bild atmen: Zoom höchstens +1,2 % (Build 108), mal Breite und Seiten-Puls, geglättet
+  breathMs: 700,            // Glättung des Atmens (Anstieg und Abfall: höchstens ca. 1,5 Wechsel pro Sekunde)
   actMs: 900,               // so langsam geht die Ebene „Raum“ an und aus
   xMaxPct: 1.3,             // größte Verschiebung (Prozent der Bildbreite)
   skewMaxDeg: 1.0,          // größte Verzerrung (Grad)
@@ -39,7 +43,7 @@ const SZCFG = {
 };
 const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, speedS: 0, widthS: 0,
   pe: 0, pp: 0.5, hueT: 0, hue: 0, entryPrev: 0, bright: 1, satMul: 1, x: 0, skew: 0, lastT: 0,
-  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0 } };
+  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 } };
 { const g = store.get('sz-gain', null); if (g) for (const k in SZ.gain) if (typeof g[k] === 'number' && g[k] >= 0 && g[k] <= 1.5) SZ.gain[k] = g[k]; }
 const szActive = () => SZ.on && toggles.mix && !reduceMotion;
 const szScan = () => scanActive() && curAnalysis && curAnalysis.aufbau;
@@ -61,6 +65,7 @@ function szFrame(dt) {
   SZ.act = ems(SZ.act, szActive() ? want : 0, SZCFG.actMs);
   const g = SZ.gain.raum * SZ.act;
   SZ.x = SZ.panS * SZCFG.xMaxPct * g; SZ.skew = SZ.panS * SZCFG.skewMaxDeg * g;
+  SZ.breath = ems(SZ.breath || 0, szActive() ? SZCFG.breathMax * SZ.gain.raum * wd * (0.5 + 0.5 * AKSIDE.ak_side) : 0, SZCFG.breathMs);
   // PADS
   SZ.pe = ems(SZ.pe, V.pads_env, SZCFG.padSmoothMs); SZ.pp = ems(SZ.pp, V.pads_pitch, SZCFG.padSmoothMs);
   const gp = szActive() ? SZ.gain.pads : 0;
@@ -86,6 +91,11 @@ window.szHats = () => {                                                         
   if (!szActive()) return 1;
   const base = SZCFG.hatsMin + (SZCFG.hatsMax - SZCFG.hatsMin) * AKV.hats_density;
   return 1 + (base - 1) * Math.min(1.5, SZ.gain.hats);
+};
+window.szSide = () => {                                                              // js/13 onHat: Seite des letzten Hats-Treffers, Stärke 0..1 (0 = Mitte oder Regler aus)
+  const a = szActive() ? Math.min(1, SZ.gain.raum) : 0, v = AKSIDE.hats_side * a;
+  SZ.st.sp++; if (v < 0) SZ.st.spL++; else if (v > 0) SZ.st.spR++;
+  return v;
 };
 window.szDropWucht = () => {                                                        // js/12b mxDrop: Wucht des Drops
   if (!szActive() || SZ.gain.dirigent <= 0 || !szScan()) return 1;
@@ -117,7 +127,7 @@ window.__SZ = SZ;
 setInterval(() => {
   const S = SZ.st; if (S.n < 600 || !szActive()) return;
   const f = x => x.toFixed(2).replace('.', ',');
-  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Drops mit Wucht ' + S.drops
+  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
     + ' · Regler Raum/Pads/Hats/Dirigent ' + ['raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
-  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0 };
+  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0 };
 }, 60000);

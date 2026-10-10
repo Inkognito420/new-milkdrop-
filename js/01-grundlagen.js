@@ -101,8 +101,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 107;
-const BUILD = 'Build ' + BUILD_NO + ' · Korrekturen nach dem iPhone-Test: Drop-Wucht, Raum nur bei echter Wanderung, Pads ab 300 Hz';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 108;
+const BUILD = 'Build ' + BUILD_NO + ' · Raum: Seiten-Funken (Funken entstehen auf der Seite des Hats-Treffers), Breite lässt das Bild atmen';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
