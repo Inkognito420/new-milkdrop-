@@ -87,7 +87,7 @@ Reihenfolge (jeder Abschnitt einzeln prüfen und pushen): (1) `js/13b-schaltzent
 ## TESTEN
 - `node test/files.test.js; node test/analyse.test.js; node test/aufbau.test.js; node test/klangrollen-namen.test.js` (alles grün, bevor etwas geändert wird)
 - `PLAYWRIGHT_MODULE=/opt/node22/lib/node_modules/playwright CHROMIUM_PATH=/opt/pw-browsers/chromium node test/browser.js [Szenario,...]` (Stand Build 105: 85 Prüfungen; Szenarien u. a. `klangrollen`, `klangrollen2` (rollende Bassline, Pad-Teppich, Pads-Tonhöhe, Hats-Dichte, Resonanz, Stereo-Ping-Pong), `stereoLive`, `klangrollenLive`, `startsperre`, `speicher`, `notfall`, `hintergrund`; `KR_DIAG=1` druckt Diagnose)
-- `node test/butterchurn-regression.js` (10 von 10, ca. 8 Minuten; Presets, die schon das Original nicht wiederholbar zeichnet, zählen als Hinweis, höchstens 3)
+- `node test/butterchurn-regression.js` (10 von 10, ca. 8 Minuten; Presets, die schon das Original nicht wiederholbar zeichnet, zählen als Hinweis, höchstens 2 % der Presets (mindestens 3))
 - Testtracks: `test/gen-track.js` (`makeTrack`, `makePlanTrack(out, plan, {gain, bpm})` mit Plan pro Takt `{k, h, a, p, b, m, q, s, pp}`; `PLANS`), Prüfdaten `pruefdaten/` (Klangmesser-Werte von „Spell“ und „Dream Escape“, Maßstab für den Aufbau-Detektor).
 - Auf GitHub läuft `.github/workflows/pruefen.yml` bei jedem Push (Browser ca. 8 Minuten, Butterchurn ca. 12 Minuten). Der GitHub-Rechner ist langsamer als die Sandbox: Zeitgrenzen in Tests relativ zu einem Vergleichslauf formulieren, nicht fest.
 

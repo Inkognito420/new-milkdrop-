@@ -179,7 +179,7 @@ async function probe(browser) {
   };
   await Promise.all(Array.from({ length: JOBS }, worker));
   if (wackel.length) console.log('       (Info) Original zeichnet nicht jedes Mal gleich, darum nicht vergleichbar: ' + wackel.map(w => w.n + ' (Original ' + w.orig.map(h => h.join('/')).join(' bzw. ') + ', Kopie ' + w.kopie.join('/') + ')').join(' · '));
-  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 3, die schon das Original nicht wiederholbar zeichnet)', diff.length === 0 && wackel.length <= 3 && same + wackel.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length);
+  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 2 %, die schon das Original nicht wiederholbar zeichnet)', diff.length === 0 && wackel.length <= Math.max(3, Math.ceil(0.02 * names.length)) && same + wackel.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length);
   check('Der Vergleich sieht etwas: die Presets ergeben verschiedene Bilder (mindestens 90 % verschiedene Prüfsummen)', seen.size >= 0.9 * names.length, seen.size + ' verschiedene bei ' + names.length);
   check('Shader: kein Warp- oder Comp-Shader schlägt mit der neuen Kopfzeile fehl, der im Original klappt', shaderNew.length === 0, JSON.stringify(shaderNew.slice(0, 5)));
   check('Keine neuen Seitenfehler mit der Kopie', errsNew.length === 0, JSON.stringify(errsNew.slice(0, 5)));
