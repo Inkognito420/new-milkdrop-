@@ -62,6 +62,8 @@ Gebaut und geprüft (Sandbox, Szenario `schaltzentrale`): Raum-Ebene (Stereo), P
 
 **BUILD 110 (Sandbox, nicht am iPhone):** Teil 3b (b)+(c) gebaut: `AK-PATCH 10` (Endstufe im Comp-Shader, `Visualizer.setAkStage`, NOTICE.md Zeile 10), in `js/13b` `SZ.stage` aus Acid (`acid_env`, `acid_cutoff`, `acid_squelch`, `acid_reso`, Aufbau/Drop verstärken) und Hats (Körnung `hats_env`/`hats_density`, Glitzern `hats_hit`, Seite `hats_side`); neue Körnungs-Muster höchstens 3 pro Sekunde; Regler „Acid“. Optisch noch nicht beurteilt (nur: Werte kommen im Shader an, kein GL-Fehler, Stärke 0 = Blöcke aus; Regression 10 von 10, Browser 99 von 99). Wichtig: die Verzerrung sitzt im Ausgabe-Durchgang und läuft nur mit `setOutputAA(true)` (`szOutputAA` in `js/13b`, Hysterese 0,02/0,004): das kostet einen Durchgang, auf dem iPhone messen! Körnung, Glitzern und Kantenkontrast sitzen im Comp-Shader NACH dem Preset-Code. Grund: ein Schreiben auf `uv` im Comp-Shader veränderte bei „steel spring“ das Bild 90. Offen: Bit-Salat-Filter, Regler-Feinheiten nach iPhone-Protokoll.
 
+**BUILD 111:** drittes Preset-Paket `butterchurnPresetsExtra2.min.js` (122 neue Presets, aus npm `butterchurn-presets@2.4.7`; die beiden anderen Pakete dort sind byte-gleich mit denen im Repo; das CDN war in der Sandbox gesperrt) eingebunden: jetzt 367 Standard-Presets + 5 eigene = 372. Regression über alle 367: 10 von 10 (mit `JOBS=2`; bei 4 parallelen Läufen lief die Testseite in ein 30-s-Zeitlimit), Browser 99 von 99. Neue Presets am iPhone nicht gesehen; schwere darunter fängt Lastbremse/Hänger-Wächter ab.
+
 ## AUFGABE: SCHALTZENTRALE (Presets NICHT umbauen)
 Plan (von Emmo bestätigt): Jede Klangrolle bekommt genau EINE Bildebene wie ein Kanal am Mischpult. Neue Datei `js/13b-schaltzentrale.js` (prüft Stufe 13, ändert sie nicht, in `app-files.js` eintragen) und eine Stufe in der Butterchurn-Kopie (neue Änderung `AK-PATCH 10`, in `NOTICE.md`).
 
@@ -85,7 +87,7 @@ Reihenfolge (jeder Abschnitt einzeln prüfen und pushen): (1) `js/13b-schaltzent
 ## TESTEN
 - `node test/files.test.js; node test/analyse.test.js; node test/aufbau.test.js; node test/klangrollen-namen.test.js` (alles grün, bevor etwas geändert wird)
 - `PLAYWRIGHT_MODULE=/opt/node22/lib/node_modules/playwright CHROMIUM_PATH=/opt/pw-browsers/chromium node test/browser.js [Szenario,...]` (Stand Build 105: 85 Prüfungen; Szenarien u. a. `klangrollen`, `klangrollen2` (rollende Bassline, Pad-Teppich, Pads-Tonhöhe, Hats-Dichte, Resonanz, Stereo-Ping-Pong), `stereoLive`, `klangrollenLive`, `startsperre`, `speicher`, `notfall`, `hintergrund`; `KR_DIAG=1` druckt Diagnose)
-- `node test/butterchurn-regression.js` (10 von 10, ca. 8 Minuten; Presets, die schon das Original nicht wiederholbar zeichnet, zählen als Hinweis, höchstens 3)
+- `node test/butterchurn-regression.js` (10 von 10, ca. 8 Minuten; Presets, die schon das Original nicht wiederholbar zeichnet, zählen als Hinweis, höchstens 2 % der Presets (mindestens 3))
 - Testtracks: `test/gen-track.js` (`makeTrack`, `makePlanTrack(out, plan, {gain, bpm})` mit Plan pro Takt `{k, h, a, p, b, m, q, s, pp}`; `PLANS`), Prüfdaten `pruefdaten/` (Klangmesser-Werte von „Spell“ und „Dream Escape“, Maßstab für den Aufbau-Detektor).
 - Auf GitHub läuft `.github/workflows/pruefen.yml` bei jedem Push (Browser ca. 8 Minuten, Butterchurn ca. 12 Minuten). Der GitHub-Rechner ist langsamer als die Sandbox: Zeitgrenzen in Tests relativ zu einem Vergleichslauf formulieren, nicht fest.
 

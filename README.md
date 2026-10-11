@@ -30,7 +30,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `index.html`: Gerüst (Leiste, Menü, Knöpfe) und Loader. Build-Nummer `var B=...` steht nur hier.
 - `app-files.js`: EINZIGE Liste der Bibliotheken (`AM_LIBS`) und Programmteile (`AM_FILES`) in Ladereihenfolge. Der Loader und `sw.js` lesen sie.
 - `vendor/butterchurn/`: eigene Butterchurn-Kopie (`butterchurn.js`), Lizenz, `NOTICE.md` mit allen Änderungen, `original/` mit dem unveränderten Original.
-- `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js` und `butterchurnPresetsExtra.min.js` (unverändert), Lizenz.
+- `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js`, `butterchurnPresetsExtra.min.js` und `butterchurnPresetsExtra2.min.js` (unverändert, 100 + 146 + 122 Presets, 367 verschiedene Namen), Lizenz.
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
 - `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale Teil 3a, siehe unten „Schaltzentrale“.

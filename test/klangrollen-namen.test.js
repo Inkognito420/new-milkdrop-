@@ -1,4 +1,4 @@
-// Kollisionstest: Die neuen Klangrollen-Variablen (AK_VAR_NAMES) dürfen in keinem der 245 Standard-Presets vorkommen
+// Kollisionstest: Die neuen Klangrollen-Variablen (AK_VAR_NAMES) dürfen in keinem der 367 Standard-Presets vorkommen
 // (Gleichungen von Preset, Formen und Wellen, Startwerte, Warp- und Comp-Shader; Groß/Klein egal). Sonst würde ein altes Preset
 // plötzlich unsere Werte statt seiner eigenen Variable sehen. Prüft auch die Regeln für die Namen.
 // Aufruf: node test/klangrollen-namen.test.js
@@ -7,9 +7,9 @@ const { AK_NAMES } = require('./klangrollen-namen.js');
 global.window = global;
 const V = path.join(__dirname, '..', 'vendor/butterchurn-presets/');
 const get = m => (m.getPresets ? m : m.default).getPresets();
-const P = Object.assign({}, get(require(V + 'butterchurnPresets.min.js')), get(require(V + 'butterchurnPresetsExtra.min.js')));
+const P = Object.assign({}, get(require(V + 'butterchurnPresets.min.js')), get(require(V + 'butterchurnPresetsExtra.min.js')), get(require(V + 'butterchurnPresetsExtra2.min.js')));
 const names = Object.keys(P);
-assert.strictEqual(names.length, 245, 'erwartet 245 Standard-Presets, gefunden ' + names.length);
+assert.strictEqual(names.length, 367, 'erwartet 367 Standard-Presets, gefunden ' + names.length);
 
 // Regeln: 41 Namen (Build 104: +acid_reso, hats_density, pads_pitch, ak_build_strength, ak_drop_strength; Build 105: +ak_pan, ak_pan_speed, ak_width), klein geschrieben, keine doppelt, Rollen kick_/acid_/hats_/pads_, alles andere mit ak_
 assert.strictEqual(AK_NAMES.length, 41, 'Anzahl Namen ' + AK_NAMES.length);
@@ -37,4 +37,4 @@ assert.deepStrictEqual(hits, {}, 'Namen kommen in Standard-Presets vor: ' + JSON
 // Begründung für das Präfix ak_: "bpm" und "hit" sind in Standard-Presets eigene Variablen
 const plain = { bpm: 0, hit: 0 };
 for (const n of names) { words.clear(); collect(P[n]); for (const k in plain) if (words.has(k)) plain[k]++; }
-console.log('klangrollen-namen.test.js: ok (' + AK_NAMES.length + ' Namen, 245 Presets ohne Treffer; zum Vergleich: "bpm" in ' + plain.bpm + ', "hit" in ' + plain.hit + ' Presets)');
+console.log('klangrollen-namen.test.js: ok (' + AK_NAMES.length + ' Namen, 367 Presets ohne Treffer; zum Vergleich: "bpm" in ' + plain.bpm + ', "hit" in ' + plain.hit + ' Presets)');

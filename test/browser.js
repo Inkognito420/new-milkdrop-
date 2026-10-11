@@ -713,7 +713,7 @@ const SZ = {
     await page.waitForTimeout(6000);
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
       bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
-    check('Echte Butterchurn-Kopie: startet bis Teil 16, 250 Presets (245 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 250 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    check('Echte Butterchurn-Kopie: startet bis Teil 16, 372 Presets (367 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 372 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     { const q = await page.evaluate(async () => { // AK-PATCH 10: Endstufe. Werte kommen im Comp-Shader an, Shader übersetzt ohne Fehler, Stärke 0 ändert das Bild nicht
         const R = viz.renderer, gl = R.gl, cs = R.compShader, out = {}; if (!viz.setAkStage || !cs || !cs.akStageLocs) return { fehlt: true };
         const px = () => { viz.render(); const u = new Uint8Array(4 * 16 * 16); gl.readPixels(0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };

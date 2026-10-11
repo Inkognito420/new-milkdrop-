@@ -32,6 +32,7 @@ try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } ca
 const presets = {};
 try { Object.assign(presets, window.butterchurnPresets.getPresets()); } catch (e) {}
 try { Object.assign(presets, window.butterchurnPresetsExtra.getPresets()); } catch (e) {}
+try { Object.assign(presets, window.butterchurnPresetsExtra2.getPresets()); } catch (e) {}   // Build 111: drittes Paket (122 weitere Presets)
 // Eigene Acid-Techno-Presets (acid-presets.js); fehlt die Datei, läuft alles ohne sie weiter
 const ACID = new Set();
 try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
@@ -101,8 +102,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 110;
-const BUILD = 'Build ' + BUILD_NO + ' · Acid-Verzerrung und Hats-Körnung/Glitzern (Endstufe AK-PATCH 10), Kick-Ebene, Seiten-Funken';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 111;
+const BUILD = 'Build ' + BUILD_NO + ' · 122 weitere Presets (Paket Extra2)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
