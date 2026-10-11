@@ -4,7 +4,8 @@
 self.AM_LIBS = [
   "vendor/butterchurn/butterchurn.js",
   "vendor/butterchurn-presets/butterchurnPresets.min.js",
-  "vendor/butterchurn-presets/butterchurnPresetsExtra.min.js"
+  "vendor/butterchurn-presets/butterchurnPresetsExtra.min.js",
+  "vendor/butterchurn-presets/butterchurnPresetsExtra2.min.js"
 ];
 self.AM_FILES = [
   "audio-reactive-controller.js",

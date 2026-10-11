@@ -1,5 +1,5 @@
 // Regressionstest für die eigene Butterchurn-Kopie (vendor/butterchurn/butterchurn.js):
-//   1) Alte Presets laufen unverändert: alle 245 Standard-Presets (butterchurn-presets 2.4.7, Grund- und Extra-Paket) werden mit der
+//   1) Alte Presets laufen unverändert: alle 367 Standard-Presets (butterchurn-presets 2.4.7, Grund-, Extra- und Extra2-Paket) werden mit der
 //      ORIGINAL-Butterchurn 2.6.7 (vendor/butterchurn/original/butterchurn-2.6.7.min.js, genau die Datei, die Acid vom CDN lädt) und mit der
 //      KOPIE (alle neuen Klangrollen-Werte ungleich 0) je 90 Bilder lang gezeichnet (160×90, fester Testton, elapsedTime = 1/60).
 //      Die Pixel-Prüfsummen nach Bild 45 und 90 müssen gleich sein.
@@ -19,12 +19,13 @@ const HARNESS = lib => `<!doctype html><meta charset="utf-8"><body>
 <script src="/${LIBS[lib]}"></script>
 <script src="/vendor/butterchurn-presets/butterchurnPresets.min.js"></script>
 <script src="/vendor/butterchurn-presets/butterchurnPresetsExtra.min.js"></script>
+<script src="/vendor/butterchurn-presets/butterchurnPresetsExtra2.min.js"></script>
 <script src="/__harness.js"></script></body>`;
 // Läuft in der Seite. Kein Zugriff auf Variablen von außen.
 const HARNESS_JS = `
 window.__seed = function (s) { let a = s >>> 0; Math.random = function () { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 const BC = window.butterchurn.default || window.butterchurn;
-const PRESETS = Object.assign({}, window.butterchurnPresets.getPresets(), window.butterchurnPresetsExtra.getPresets());
+const PRESETS = Object.assign({}, window.butterchurnPresets.getPresets(), window.butterchurnPresetsExtra.getPresets(), window.butterchurnPresetsExtra2.getPresets());
 window.__names = Object.keys(PRESETS);
 // fester Testton: Kick (55 Hz mit Hüllkurve) + 303-artige Säge (110 Hz) + Rauschen mit festem Startwert, links/rechts leicht verschieden
 function tone(frame, buf, pan) {
