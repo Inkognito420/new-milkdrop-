@@ -645,11 +645,18 @@ const SZ = {
       const g = window.__SZ.gain.dirigent, seek = () => { audio.currentTime = Math.max(0, mid); };
       window.__SZ.gain.dirigent = 0; seek(); await w(700); out.altDirigentAus = +dropPre.toFixed(2); window.__SZ.gain.dirigent = g;   // Regler auf 0: alte feste Regel
       seek(); await w(1000);
-      out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)) };
-      audio.currentTime = B.t0 + (dr.bar + 1) * B.barS; await w(1500); out.imDrop = +AKV.ak_drop_strength.toFixed(2); out.strength = dr.strength;
+      out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)), bit: +window.__SZ.bit.toFixed(3) };
+      audio.currentTime = B.t0 + (dr.bar + 1) * B.barS; await w(1500); out.imDrop = +AKV.ak_drop_strength.toFixed(2); out.strength = dr.strength; out.bitDrop = +window.__SZ.bitDrop.toFixed(3); out.bitImDrop = +window.__SZ.bit.toFixed(3);
+      { const sd = []; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = szStage()[7]; if (!sd.length || sd[sd.length - 1] !== v) sd.push(v); await w(30); } out.saatWechselIn2s = sd.length - 1; }
+      const gb = window.__SZ.gain.bit; window.__SZ.gain.bit = 0; await w(3000); out.bitAus = szStage()[3]; window.__SZ.gain.bit = gb;
       return out;
     });
     console.log('       (Info) Dirigent: ' + JSON.stringify(D));
+    check('Schaltzentrale Bit-Salat: im Aufbau an (über 0,05), am Drop ein Stoß (bitDrop über 0,2), neue Muster höchstens 3 pro Sekunde (in 2 s höchstens 7 Saat-Wechsel), Regler „Bit-Salat“ auf 0 = Stufe nach weichem Ausblenden (3 s) aus (genau 0)', !D.keinDrop && D.vorDrop.bit > 0.05 && D.bitDrop > 0.2 && D.bitImDrop > 0.05 && D.saatWechselIn2s <= 7 && D.bitAus === 0, JSON.stringify(D));
+    { const e = await m.page.evaluate(() => { // Einsatz-Akzente: szEntry meldet einen Einsatz genau einmal pro Anstieg über SZCFG.entry
+        const o = AKV.acid_entry, p = SZ.ePrev.acid; SZ.ePrev.acid = 0; AKV.acid_entry = 1; const a = szEntry('acid'), b = szEntry('acid'); AKV.acid_entry = 0; const c = szEntry('acid'); AKV.acid_entry = 1; const d = szEntry('acid');
+        AKV.acid_entry = o; SZ.ePrev.acid = p; return { a, b, c, d }; });
+      check('Schaltzentrale Akzente: ein Einsatz (R_entry über 0,8) zählt genau einmal pro Anstieg', e.a && !e.b && !e.c && e.d, JSON.stringify(e)); }
     check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
     { const k = await m.page.evaluate(() => { // Kick-Ebene: Drehen im Takt wechselt die Richtung mit jeder Takt-Eins, Regler 0 = aus, Break leiser, Acid dreht weniger
         const g0 = SZ.gain.kick, on0 = SZ.on, out = {}; SZ.on = true; toggles.mix = true;
@@ -721,12 +728,17 @@ const SZ = {
         out.a = Array.from(got).map(x => +x.toFixed(2)); out.b = Array.from(got2).map(x => +x.toFixed(2)); out.glFehler = gl.getError() - 0 + err0;
         const df = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); return d / a.length; }, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, rd = () => { const u = new Uint8Array(4 * W * H); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };
         const Z = [0, 0, 0, 0, 0, 0, 0, 0]; viz.setOutputAA(true); viz.setAkStage(Z); viz.render(); const tex = R.compTexture, again = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); R.outputShader.renderQuadTexture(tex); return rd(); };
-        const z1 = again(), z2 = again(); viz.setAkStage([0.9, 0.3, 0.8, 0, 0, 0, 0, 5]); const s1 = again(); viz.setAkStage(Z); viz.setOutputAA(false);
+        const z1 = again(), z2 = again(); viz.setAkStage([0.9, 0.3, 0.8, 0, 0, 0, 0, 5]); const s1 = again();
+        viz.setAkStage([0, 0, 0, 0, 0, 0, -0.6, 5]); const b0 = again(); viz.setAkStage([0, 0, 0, 0.8, 0, 0, -0.6, 5]); const b1 = again(), b2 = again(); viz.setAkStage([0, 0, 0, 0.8, 0, 0, -0.6, 6]); const b3 = again();
+        viz.setAkStage(Z); viz.setOutputAA(false);
+        const mean = u => { let m = 0; for (let i = 0; i < u.length; i += 4) m += (u[i] + u[i + 1] + u[i + 2]) / 3; return m / (u.length / 4); };
         out.diffNull = +df(z1, z2).toFixed(3); out.diffAcid = +df(z2, s1).toFixed(3); out.diffHats = 0;
+        out.bitNullSeite = +df(z2, b0).toFixed(3); out.diffBit = +df(z2, b1).toFixed(3); out.bitGleicheSaat = +df(b1, b2).toFixed(3); out.bitNeueSaat = +df(b1, b3).toFixed(3); out.bitHell = +(mean(b1) - mean(z2)).toFixed(2);
         viz.setAkStage([0, 0, 0, 0, 0, 0, 0, 0]); viz.render(); out.null = Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[0])).every(x => x === 0) && Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[1])).every(x => x === 0);
         return out; });
       console.log('       (Info) Endstufe: ' + JSON.stringify(q));
-      check('Echte Butterchurn-Kopie, Endstufe (AK-PATCH 10): setAkStage kommt im Comp-Shader an (akfx_a/akfx_b), kein GL-Fehler, mit 0 sind alle Blöcke aus, derselbe Bildinhalt zweimal ausgegeben ist bit-gleich, die Acid-Verzerrung im Ausgabe-Durchgang verändert ihn sichtbar', !q.fehlt && q.a && q.a[0] === 0.8 && q.a[1] === 0.3 && q.b[0] === 0.7 && q.b[2] === -0.5 && q.glFehler === 0 && q.null && q.diffNull === 0 && q.diffAcid > 0.3, JSON.stringify(q)); }
+      check('Echte Butterchurn-Kopie, Bit-Salat (AK-PATCH 11): Stärke 0 = Ausgabe bit-gleich (auch mit gesetzter Seite und Saat), Stärke 0,8 verändert das Bild sichtbar, gleiche Saat = gleiches Bild (kein Flackern ohne Saat-Wechsel), neue Saat = neues Muster, mittlere Helligkeit bleibt (höchstens ±6 von 255)', !q.fehlt && q.bitNullSeite === 0 && q.diffBit > 0.3 && q.bitGleicheSaat === 0 && q.bitNeueSaat > 0.1 && Math.abs(q.bitHell) <= 6, JSON.stringify(q));
+    check('Echte Butterchurn-Kopie, Endstufe (AK-PATCH 10): setAkStage kommt im Comp-Shader an (akfx_a/akfx_b), kein GL-Fehler, mit 0 sind alle Blöcke aus, derselbe Bildinhalt zweimal ausgegeben ist bit-gleich, die Acid-Verzerrung im Ausgabe-Durchgang verändert ihn sichtbar', !q.fehlt && q.a && q.a[0] === 0.8 && q.a[1] === 0.3 && q.b[0] === 0.7 && q.b[2] === -0.5 && q.glFehler === 0 && q.null && q.diffNull === 0 && q.diffAcid > 0.3, JSON.stringify(q)); }
     await close();
   },
   async manifest() {
