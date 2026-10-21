@@ -72,20 +72,20 @@ var AK_STAGE_POST = "\n if (akfx_a.x > 0.0 && akfx_a.z > 0.0) { ret = mix(ret, s
   " if (akfx_b.x > 0.0) { ret += (_akfh(floor(gl_FragCoord.xy * 0.5) + akfx_b.w) - 0.5) * 0.12 * akfx_b.x; }\n" +
   " if (akfx_b.y > 0.0) { float _akw = 1.0 + akfx_b.z * (uv_orig.x - 0.5) * 2.0; if (_akfh(floor(gl_FragCoord.xy / 3.0) + akfx_b.w * 1.7) > 1.0 - 0.012 * akfx_b.y * max(_akw, 0.0)) ret += vec3(0.35 * akfx_b.y); }\n";
 /* AK-PATCH 11: Bit-Salat-Filter (Glitch) im Ausgabe-Durchgang. Stärke = AK_STAGE[3] (akfx_a.w), Seite = AK_STAGE[6] (akfx_b.z), Saat = AK_STAGE[7] (akfx_b.w).
-   Blockversatz (Streifen der Bildzeilen, auf der Seite des Hats-Treffers häufiger, Richtung zur Seite), RGB-Versatz und Farbstufen (Posterize, auf den
+   Blockversatz (ab Build 113 mit Wurzel-Kurve: schon kleine Stärken sichtbar; Streifen der Bildzeilen, auf der Seite des Hats-Treffers häufiger, Richtung zur Seite), RGB-Versatz und Farbstufen (Posterize, auf den
    nächsten Wert gerundet: Helligkeit bleibt im Mittel gleich). Das Muster hängt NUR an der Saat (keine Zeit im Shader): neue Muster so oft, wie die App
    die Saat wechselt (höchstens 3 pro Sekunde). Bei Stärke 0 überspringt der Shader alles. */
 var AK_OUT_DECL = "\nuniform vec4 akfx_a;\nuniform vec4 akfx_b;\nfloat _akoh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\n" +
-  "vec2 _akbits(vec2 p) { float s = akfx_a.w, sd = akfx_b.z, sw = clamp(1.0 + sd * (p.x - 0.5) * 2.0, 0.0, 2.0);\n" +
+  "vec2 _akbits(vec2 p) { float s = sqrt(akfx_a.w), sd = akfx_b.z, sw = clamp(1.0 + sd * (p.x - 0.5) * 2.0, 0.0, 2.0);\n" +
   " float row = floor(p.y * 22.0), col = floor(p.x * 5.0), h = _akoh(vec2(row, col) + akfx_b.w * 3.1);\n" +
   " float dir = abs(sd) > 0.05 ? sign(sd) : (_akoh(vec2(row, akfx_b.w)) < 0.5 ? -1.0 : 1.0);\n" +
-  " float blk = step(1.0 - 0.2 * s * sw, h) * (0.008 + 0.032 * _akoh(vec2(col, row) + akfx_b.w)) * dir;\n" +
-  " float ln = step(1.0 - 0.06 * s, _akoh(vec2(floor(p.y * 160.0), akfx_b.w * 0.7))) * 0.006 * dir;\n" +
+  " float blk = step(1.0 - 0.3 * s * sw, h) * (0.015 + 0.05 * _akoh(vec2(col, row) + akfx_b.w)) * dir;\n" +
+  " float ln = step(1.0 - 0.06 * s, _akoh(vec2(floor(p.y * 160.0), akfx_b.w * 0.7))) * 0.01 * dir;\n" +
   " return vec2((blk + ln) * s, 0.0); }\n" +
   "vec2 _akoff(vec2 p) { vec2 o = vec2(0.0); if (akfx_a.x > 0.0) o = vec2(sin(p.y * 14.0 + akfx_a.y * 6.2831853) * 0.007, sin(p.x * 11.0 - akfx_a.y * 4.0) * 0.004) * akfx_a.x; if (akfx_a.w > 0.0) o += _akbits(p); return o; }\n";
 var AK_OUT_POST = "\n if (akfx_a.w > 0.0) { float _aks = akfx_a.w; vec2 _akr = vec2((0.0012 + 0.003 * abs(akfx_b.z)) * _aks * (akfx_b.z < 0.0 ? -1.0 : 1.0), 0.0);\n" +
   "  _akc.r = textureLod(uTexture, _akp + _akr, 0.0).r; _akc.b = textureLod(uTexture, _akp - _akr, 0.0).b;\n" +
-  "  float _akl = mix(40.0, 5.0, _aks); _akc = mix(_akc, floor(_akc * _akl + 0.5) / _akl, 0.75 * _aks); }\n";
+  "  float _akl = mix(40.0, 5.0, sqrt(_aks)); _akc = mix(_akc, floor(_akc * _akl + 0.5) / _akl, 0.75 * _aks); }\n";
 function akStageLocs(gl, program) { return [gl.getUniformLocation(program, 'akfx_a'), gl.getUniformLocation(program, 'akfx_b')]; }
 function akStageSet(gl, locs) {
   if (locs[0]) gl.uniform4f(locs[0], AK_STAGE[0], AK_STAGE[1], AK_STAGE[2], AK_STAGE[3]);

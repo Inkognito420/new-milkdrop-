@@ -647,12 +647,13 @@ const SZ = {
       seek(); await w(1000);
       out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)), bit: +window.__SZ.bit.toFixed(3) };
       audio.currentTime = B.t0 + (dr.bar + 1) * B.barS; await w(1500); out.imDrop = +AKV.ak_drop_strength.toFixed(2); out.strength = dr.strength; out.bitDrop = +window.__SZ.bitDrop.toFixed(3); out.bitImDrop = +window.__SZ.bit.toFixed(3);
-      { const sd = []; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = szStage()[7]; if (!sd.length || sd[sd.length - 1] !== v) sd.push(v); await w(30); } out.saatWechselIn2s = sd.length - 1; }
+      { const sd = []; let ohneSaat = 0, prev = null; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const st = szStage(), v = st[7]; if (!sd.length || sd[sd.length - 1] !== v) sd.push(v); else if (prev !== null && st[3] !== prev) ohneSaat++; prev = st[3]; await new Promise(r => requestAnimationFrame(r)); }
+        out.saatWechselIn2s = sd.length - 1; out.bitWechselOhneSaat = ohneSaat; }
       const gb = window.__SZ.gain.bit; window.__SZ.gain.bit = 0; await w(3000); out.bitAus = szStage()[3]; window.__SZ.gain.bit = gb;
       return out;
     });
     console.log('       (Info) Dirigent: ' + JSON.stringify(D));
-    check('Schaltzentrale Bit-Salat: im Aufbau an (über 0,05), am Drop ein Stoß (bitDrop über 0,2), neue Muster höchstens 3 pro Sekunde (in 2 s höchstens 7 Saat-Wechsel), Regler „Bit-Salat“ auf 0 = Stufe nach weichem Ausblenden (3 s) aus (genau 0)', !D.keinDrop && D.vorDrop.bit > 0.05 && D.bitDrop > 0.2 && D.bitImDrop > 0.05 && D.saatWechselIn2s <= 7 && D.bitAus === 0, JSON.stringify(D));
+    check('Schaltzentrale Bit-Salat: im Aufbau an (über 0,05), am Drop ein Stoß (bitDrop über 0,2), neue Muster höchstens 3 pro Sekunde (in 2 s höchstens 7 Saat-Wechsel, die Stärke ändert sich nur zusammen mit der Saat), Regler „Bit-Salat“ auf 0 = Stufe nach weichem Ausblenden (3 s) aus (genau 0)', !D.keinDrop && D.vorDrop.bit > 0.05 && D.bitDrop > 0.2 && D.bitImDrop > 0.05 && D.saatWechselIn2s <= 7 && D.bitWechselOhneSaat === 0 && D.bitAus === 0, JSON.stringify(D));
     { const e = await m.page.evaluate(() => { // Einsatz-Akzente: szEntry meldet einen Einsatz genau einmal pro Anstieg über SZCFG.entry
         const o = AKV.acid_entry, p = SZ.ePrev.acid; SZ.ePrev.acid = 0; AKV.acid_entry = 1; const a = szEntry('acid'), b = szEntry('acid'); AKV.acid_entry = 0; const c = szEntry('acid'); AKV.acid_entry = 1; const d = szEntry('acid');
         AKV.acid_entry = o; SZ.ePrev.acid = p; return { a, b, c, d }; });

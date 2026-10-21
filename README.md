@@ -82,8 +82,8 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
 - **Hats (Details):** `hats_density` skaliert die Menge der Funken (50–150 %); Körnung und Glitzern im Bild (ab Build 110), Funken auf der Seite, auf der der Hats-Treffer klingt (ab Build 108).
   Mitten (Claps, 303-Noten) lösen keine Funken aus (Claps machen Ringe).
 - **Bit-Salat (Glitch, ab Build 112, `AK-PATCH 11`):** Blockversatz in Streifen (häufiger auf der Seite des letzten Hats-Treffers, Richtung zu dieser Seite), leichter RGB-Versatz und Farbstufen.
-  Leise aus Hats-Dichte und Acid-Resonanz, stark im Aufbau (`ak_build_strength`², ohne Scan nicht), am Drop ein Stoß (`ak_drop_strength`), der über ca. 4 s abklingt.
-  Sicher fürs Live-Spielen: neue Muster höchstens 3 pro Sekunde, kein Blitzen (Farbstufen gerundet, mittlere Helligkeit bleibt), weich ein- und ausgeblendet, Stärke höchstens 85 %.
+  Im Groove zuckt er mit jedem Hats-Treffer und folgt der Acid-Resonanz (ab Build 113 deutlich sichtbar: bei Stärke 0,3 ändern sich ca. 19 % der Bildpunkte), im Break nur 35 %, stark im Aufbau (`ak_build_strength`², ohne Scan nicht), am Drop ein Stoß (`ak_drop_strength`), der über ca. 4 s abklingt.
+  Sicher fürs Live-Spielen: neue Muster und neue Stärke höchstens 3 pro Sekunde (die Stärke geht nur zusammen mit einem neuen Muster an den Shader), kein Blitzen (Farbstufen gerundet, mittlere Helligkeit bleibt), weich ein- und ausgeblendet, Stärke höchstens 85 %.
   Sitzt im selben Ausgabe-Durchgang wie die Acid-Verzerrung (kostet keinen weiteren Durchgang; der Durchgang läuft nur, solange einer der beiden sichtbar ist).
 - **Akzente (ab Build 112):** Einsatz einer Rolle nach mindestens einem Takt Pause (`R_entry`): Kick = Zoom-Stoß (nicht im Drop, der hat seinen eigenen), Acid = Verzerrungs-Ruck,
   Hats = Funkenregen, Pads = weicher Farbwechsel. Hats klingen aus (`hats_release`) = weniger neue Funken und Körnung. Im Protokoll: „Einsätze Kick/Acid/Hats“.

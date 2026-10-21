@@ -56,10 +56,11 @@ const SZCFG = {
   barStepWith: 0.5, barStepWithout: 1.4, barStepMax: 40,   // Takt-Farbschritt: mit Pads, ohne Pads, Obergrenze in Grad
   hatsMin: 0.5, hatsMax: 1.5,                              // Funken-Menge: 50 % bei keiner Hats-Dichte bis 150 % bei dichten Hats
   dropWuchtMin: 0.5, dropWuchtMax: 1.4,                    // Drop-Wucht (Blitz, Funken, Zoom-Stoß) aus ak_drop_strength 0..1
-  bitHats: 0.35, bitAcid: 0.25,      // Bit-Salat (Build 112) im Groove: so viel aus Hats (hats_env × hats_density) und Acid-Kanten (acid_env × acid_reso)
-  bitBuild: 0.7, bitDrop: 0.75,      // ... im Aufbau dazu (mal ak_build_strength²: steigt erst spät stark), am Drop als Stoß (mal ak_drop_strength)
+  bitHats: 0.5, bitHit: 0.35, bitAcid: 0.5,   // Bit-Salat im Groove (Build 113, vorher 0,35/0/0,25: im Groove nur 0,06-0,14 = unsichtbar): Hats-Pegel (hats_env × (0,4 + 0,6 × hats_density)),
+                                     // Zucken auf jedem Hats-Treffer (hats_hit), Acid-Kanten (acid_env × acid_reso)
+  bitBuild: 0.7, bitDrop: 1.0,       // ... im Aufbau dazu (mal ak_build_strength²: steigt erst spät stark), am Drop als Stoß (mal ak_drop_strength)
   bitDropMs: 4000, bitMax: 0.85,     // Drop-Stoß klingt so langsam ab; größte Stärke (Shader: Blöcke bis 4 % der Breite, Farbstufen bis 5)
-  bitUpMs: 150, bitDownMs: 700, bitMin: 0.03,   // Glättung (Anstieg/Abfall); darunter ist der Filter ganz aus (Durchgang übersprungen)
+  bitUpMs: 60, bitDownMs: 600, bitMin: 0.03, bitBreak: 0.35,   // ... im Break nur so viel (Bild weit und ruhig)   // Glättung (Anstieg/Abfall); darunter ist der Filter ganz aus (Durchgang übersprungen)
   entry: 0.8,                        // ab diesem R_entry gilt ein Einsatz (einmal pro Anstieg)
   kickEntryZoom: 0.018,              // Kick-Einsatz: Zoom-Stoß (Teil des 8-%-Deckels im Mischpult)
   acidJolt: 0.35, acidJoltMs: 400,   // Acid-Einsatz: Verzerrungs-Ruck, klingt so schnell ab
@@ -68,7 +69,7 @@ const SZCFG = {
 };
 const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, acA: 0, acPh: 0, gr: 0, gl: 0, stage: new Float32Array(8), kickS: 1, kickDir: 1, speedS: 0, widthS: 0,
   pe: 0, pp: 0.5, hueT: 0, hue: 0, entryPrev: 0, bright: 1, satMul: 1, x: 0, skew: 0, lastT: 0,
-  bit: 0, bitDrop: 0, secPrev: 0, acJolt: 0, ePrev: { kick: 0, acid: 0, hats: 0 },
+  bit: 0, bitDrop: 0, bitHold: 0, bitPub: 0, seedPrev: -1, secPrev: 0, acJolt: 0, ePrev: { kick: 0, acid: 0, hats: 0 },
   st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0, bit: 0, bitMax: 0, ek: 0, ea: 0, eh: 0 } };
 { const g = store.get('sz-gain', null); if (g) for (const k in SZ.gain) if (typeof g[k] === 'number' && g[k] >= 0 && g[k] <= 1.5) SZ.gain[k] = g[k]; }
 // Einsatz einer Rolle: einmal, wenn R_entry über SZCFG.entry steigt
@@ -118,10 +119,14 @@ function szFrame(dt) {
     const gb = on ? Math.min(1.5, SZ.gain.bit) : 0;
     if (V.ak_section === 3 && SZ.secPrev !== 3 && dg > 0) SZ.bitDrop = Math.max(SZ.bitDrop, V.ak_drop_strength > 0 ? V.ak_drop_strength : 0.6);
     SZ.secPrev = V.ak_section; SZ.bitDrop *= Math.exp(-dt * 1000 / SZCFG.bitDropMs);
-    const bb = V.ak_build_strength, tB = Math.min(SZCFG.bitMax, gb * (SZCFG.bitHats * V.hats_env * V.hats_density * (1 - SZCFG.hatsReleaseCut * V.hats_release) + SZCFG.bitAcid * V.acid_env * V.acid_reso
+    const bb = V.ak_build_strength, tB = Math.min(SZCFG.bitMax, gb * ((SZCFG.bitHats * V.hats_env * (0.4 + 0.6 * V.hats_density) + SZCFG.bitHit * V.hats_hit) * (1 - SZCFG.hatsReleaseCut * V.hats_release) + SZCFG.bitAcid * V.acid_env * V.acid_reso
       + dg * (SZCFG.bitBuild * bb * bb * (V.ak_section === 3 ? 0 : 1) + SZCFG.bitDrop * SZ.bitDrop)));
-    SZ.bit = ems(SZ.bit, tB, tB > SZ.bit ? SZCFG.bitUpMs : SZCFG.bitDownMs);
-    st[3] = SZ.bit < SZCFG.bitMin ? 0 : SZ.bit;
+    SZ.bit = ems(SZ.bit, tB * (V.ak_section === 1 ? SZCFG.bitBreak : 1), tB > SZ.bit ? SZCFG.bitUpMs : SZCFG.bitDownMs);
+    // Build 113: die Stärke (sie bestimmt auch, WELCHE Blöcke verrutschen) geht nur zusammen mit einem neuen Muster an den Shader, als Höchstwert seit dem letzten:
+    // so zucken die Blöcke mit den Hats, wechseln aber nie öfter als die Saat (höchstens 3 pro Sekunde)
+    SZ.bitHold = Math.max(SZ.bitHold, SZ.bit);
+    if (st[7] !== SZ.seedPrev) { SZ.seedPrev = st[7]; SZ.bitPub = SZ.bitHold; SZ.bitHold = SZ.bit; }
+    st[3] = !gb || SZ.bitPub < SZCFG.bitMin ? 0 : SZ.bitPub;
     SZ.st.ac += SZ.acA; SZ.st.gr += SZ.gr; if (SZ.acA > SZ.st.acMax) SZ.st.acMax = SZ.acA; SZ.st.bit += st[3]; if (st[3] > SZ.st.bitMax) SZ.st.bitMax = st[3]; }
   // PADS
   SZ.pe = ems(SZ.pe, V.pads_env, SZCFG.padSmoothMs); SZ.pp = ems(SZ.pp, V.pads_pitch, SZCFG.padSmoothMs);
