@@ -1,4 +1,4 @@
-// new-milkdrop- · Teil 13b: Schaltzentrale, Teil 3a (ab Build 106)
+// new-milkdrop- · Teil 13b: Schaltzentrale (Teil 3a ab Build 106, 3b ab Build 109, Bit-Salat und Akzente ab Build 112)
 // Alle Teile teilen sich einen gemeinsamen Bereich (wie vorher der eine große Block in index.html).
 // Dieser Teil ändert window.__AM_STEP NICHT: bricht er ab, läuft alles wie in Build 105 (die Anschlüsse in js/01, 04, 12, 12b prüfen window.__SZ).
 if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzentrale) nicht gestartet, ein früherer Teil ist abgebrochen');
@@ -17,10 +17,14 @@ if (window.__AM_STEP !== 13) throw new Error('new-milkdrop-: Teil 13b (schaltzen
 //                    ohne Pads größer (mit Obergrenze), damit die Farbe nicht stehen bleibt.
 //   HATS   (Details) hats_density → Menge der Funken (Mischpult, mxSparks).
 //   DIRIGENT         ak_build_strength → Aufbau (statt fester 8 Takte), ak_drop_strength → Wucht des Drops (statt immer gleich stark).
-// Noch nicht in 3a (siehe ANWEISUNG-NAECHSTER-CHAT.md): Kick-Ebene (Drehen), Acid-Ebene (Verzerrung, braucht die Butterchurn-Kopie).
+//   ACID   (Build 110) Verzerrung im Ausgabe-Durchgang (AK-PATCH 10); HATS-Körnung und Glitzern im Comp-Shader.
+//   BIT-SALAT (Build 112, AK-PATCH 11) Glitch: Blockversatz (auf der Seite des Hats-Treffers), RGB-Versatz, Farbstufen. Leise aus Hats-Dichte und
+//                    Acid-Resonanz, stark im Aufbau (ak_build_strength) und als Stoß am Drop (ak_drop_strength, klingt über ca. 4 s ab).
+//   AKZENTE (Build 112) R_entry/R_release je Ebene: Kick-Einsatz = Puls-Neustart (Zoom-Stoß, nicht im Drop, der hat seinen eigenen),
+//                    Acid-Einsatz = Verzerrungs-Ruck, Hats-Einsatz = Funkenregen, Hats-Ausklingen = weniger neue Funken und Körnung. Pads: siehe oben.
 // Alles stark geglättet; jede Ebene einzeln in der Werkstatt (Gruppe „Schaltzentrale“) von 0 bis 150 % einstellbar.
 const SZCFG = {
-  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1, kick: 1, acid: 1 },      // Voreinstellung der Regler (1 = 100 %)
+  gain: { raum: 1, pads: 1, hats: 1, dirigent: 1, kick: 1, acid: 1, bit: 1 },      // Voreinstellung der Regler (1 = 100 %)
   panMaxFloorSec: 6,        // Position wird auf ihr gleitendes Maximum der letzten Sekunden bezogen (live erreicht sie nur ca. ±0,5, offline ±0,9)
   panFloor: 0.35,           // ... mindestens dieses Maximum (sonst würde Rauschen bei Mono voll ausschlagen)
   panSmoothMs: 120,         // Glättung der Position für das Bild (flackerfrei)
@@ -51,12 +55,25 @@ const SZCFG = {
   padSmoothMs: 1500,        // Glättung von Pads-Pegel und Tonhöhe fürs Bild
   barStepWith: 0.5, barStepWithout: 1.4, barStepMax: 40,   // Takt-Farbschritt: mit Pads, ohne Pads, Obergrenze in Grad
   hatsMin: 0.5, hatsMax: 1.5,                              // Funken-Menge: 50 % bei keiner Hats-Dichte bis 150 % bei dichten Hats
-  dropWuchtMin: 0.5, dropWuchtMax: 1.4                     // Drop-Wucht (Blitz, Funken, Zoom-Stoß) aus ak_drop_strength 0..1
+  dropWuchtMin: 0.5, dropWuchtMax: 1.4,                    // Drop-Wucht (Blitz, Funken, Zoom-Stoß) aus ak_drop_strength 0..1
+  bitHats: 0.5, bitHit: 0.35, bitAcid: 0.5,   // Bit-Salat im Groove (Build 113, vorher 0,35/0/0,25: im Groove nur 0,06-0,14 = unsichtbar): Hats-Pegel (hats_env × (0,4 + 0,6 × hats_density)),
+                                     // Zucken auf jedem Hats-Treffer (hats_hit), Acid-Kanten (acid_env × acid_reso)
+  bitBuild: 0.7, bitDrop: 1.0,       // ... im Aufbau dazu (mal ak_build_strength²: steigt erst spät stark), am Drop als Stoß (mal ak_drop_strength)
+  bitDropMs: 4000, bitMax: 0.85,     // Drop-Stoß klingt so langsam ab; größte Stärke (Shader: Blöcke bis 4 % der Breite, Farbstufen bis 5)
+  bitUpMs: 60, bitDownMs: 600, bitMin: 0.03, bitBreak: 0.35,   // ... im Break nur so viel (Bild weit und ruhig)   // Glättung (Anstieg/Abfall); darunter ist der Filter ganz aus (Durchgang übersprungen)
+  entry: 0.8,                        // ab diesem R_entry gilt ein Einsatz (einmal pro Anstieg)
+  kickEntryZoom: 0.018,              // Kick-Einsatz: Zoom-Stoß (Teil des 8-%-Deckels im Mischpult)
+  acidJolt: 0.35, acidJoltMs: 400,   // Acid-Einsatz: Verzerrungs-Ruck, klingt so schnell ab
+  hatsEntrySpark: 2,                 // Hats-Einsatz: ein Funkenregen (wie ein starker Hats-Treffer, kostet Konto)
+  hatsReleaseCut: 0.7                // Hats-Ausklingen: so viel weniger neue Funken und Körnung bei hats_release 1
 };
 const SZ = { gain: Object.assign({}, SZCFG.gain), on: true, panMax: SZCFG.panFloor, panS: 0, act: 0, acA: 0, acPh: 0, gr: 0, gl: 0, stage: new Float32Array(8), kickS: 1, kickDir: 1, speedS: 0, widthS: 0,
   pe: 0, pp: 0.5, hueT: 0, hue: 0, entryPrev: 0, bright: 1, satMul: 1, x: 0, skew: 0, lastT: 0,
-  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0 } };
+  bit: 0, bitDrop: 0, bitHold: 0, bitPub: 0, seedPrev: -1, secPrev: 0, acJolt: 0, ePrev: { kick: 0, acid: 0, hats: 0 },
+  st: { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0, bit: 0, bitMax: 0, ek: 0, ea: 0, eh: 0 } };
 { const g = store.get('sz-gain', null); if (g) for (const k in SZ.gain) if (typeof g[k] === 'number' && g[k] >= 0 && g[k] <= 1.5) SZ.gain[k] = g[k]; }
+// Einsatz einer Rolle: einmal, wenn R_entry über SZCFG.entry steigt
+function szEntry(name) { const v = AKV[name + '_entry'], was = SZ.ePrev[name]; SZ.ePrev[name] = v; return v > SZCFG.entry && was <= SZCFG.entry; }
 const szActive = () => SZ.on && toggles.mix && !reduceMotion;
 const szScan = () => scanActive() && curAnalysis && curAnalysis.aufbau;
 
@@ -79,19 +96,38 @@ function szFrame(dt) {
   SZ.x = SZ.panS * SZCFG.xMaxPct * g; SZ.skew = SZ.panS * SZCFG.skewMaxDeg * g;
   SZ.kickS = ems(SZ.kickS, szActive() && sectionKey() === 'break' ? SZCFG.kickBreak : 1, SZCFG.kickMs);
   SZ.breath = ems(SZ.breath || 0, szActive() ? SZCFG.breathMax * SZ.gain.raum * wd * (0.5 + 0.5 * AKSIDE.ak_side) : 0, SZCFG.breathMs);
+  // AKZENTE (Build 112): Einsatz einer Rolle nach mindestens einem Takt Pause
+  { const on = szActive(), eK = szEntry('kick'), eA = szEntry('acid'), eH = szEntry('hats');
+    if (on && eK && SZ.gain.kick > 0 && toggles.pulse && sectionKey() !== 'drop' && typeof mxKick === 'function') {
+      const P = scanActive() ? curAnalysis.beatS : 60 / bpm; mxKick(MX.z, SZCFG.kickEntryZoom * Math.min(1.5, SZ.gain.kick), 2 * Math.PI / P, MX.c.zeta); SZ.st.ek++; }
+    if (on && eA && SZ.gain.acid > 0) { SZ.acJolt = SZCFG.acidJolt * Math.min(1.5, SZ.gain.acid); SZ.st.ea++; }
+    if (on && eH && SZ.gain.hats > 0 && typeof onHat === 'function') { onHat(SZCFG.hatsEntrySpark * Math.min(1.5, SZ.gain.hats)); SZ.st.eh++; } }
+  SZ.acJolt *= Math.exp(-dt * 1000 / SZCFG.acidJoltMs);
   // ACID (Verzerrung) und HATS (Körnung, Glitzern): Werte für die Endstufe in der Butterchurn-Kopie (AK-PATCH 10). Alles 0 = Stufe übersprungen.
   { const on = szActive(), ga = on ? Math.min(1.5, SZ.gain.acid) : 0, gh = on ? Math.min(1.5, SZ.gain.hats) : 0, dg = on && SZ.gain.dirigent > 0 && szScan() ? Math.min(1.5, SZ.gain.dirigent) : 0;
     const wA = V.acid_env * (0.25 + 0.75 * V.acid_cutoff) * (1 + dg * (SZCFG.acidBuild * V.ak_build_strength + SZCFG.acidDrop * V.ak_drop_strength * (V.ak_section === 3 ? 1 : 0)));
-    const tA = Math.min(1, wA) * ga;
+    const tA = Math.min(1, Math.min(1, wA) * ga + SZ.acJolt);
     SZ.acA = ems(SZ.acA, tA, tA > SZ.acA ? SZCFG.acidUpMs : SZCFG.acidDownMs);
     SZ.acPh = (SZ.acPh + dt * (SZCFG.acidPhase[0] + (SZCFG.acidPhase[1] - SZCFG.acidPhase[0]) * V.acid_squelch)) % 1000;
-    const tG = Math.min(1, V.hats_env * (0.3 + 0.7 * V.hats_density)) * gh;
+    const tG = Math.min(1, V.hats_env * (0.3 + 0.7 * V.hats_density)) * gh * (1 - SZCFG.hatsReleaseCut * V.hats_release);
     SZ.gr = ems(SZ.gr, tG, tG > SZ.gr ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
     SZ.gl = ems(SZ.gl, Math.min(1, V.hats_hit * 0.6 + 0.4 * tG) * gh, SZ.gl < tG ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
     const st = SZ.stage; st[0] = SZ.acA < 0.003 ? 0 : SZ.acA; st[1] = SZ.acPh; st[2] = SZ.acA < 0.003 ? 0 : V.acid_reso;
     st[4] = SZ.gr < 0.01 ? 0 : SZ.gr * SZCFG.grainMax; st[5] = SZ.gl < 0.01 ? 0 : SZ.gl * SZCFG.glitterMax; st[6] = AKSIDE.hats_side * (on ? Math.min(1, SZ.gain.raum) : 0);
     st[7] = Math.floor(performance.now() / 1000 * SZCFG.seedHz) % 997;
-    SZ.st.ac += SZ.acA; SZ.st.gr += SZ.gr; if (SZ.acA > SZ.st.acMax) SZ.st.acMax = SZ.acA; }
+    // BIT-SALAT (AK-PATCH 11): leise aus Hats und Acid-Kanten, stark im Aufbau, Stoß am Drop. Muster wechselt nur mit der Saat st[7] (höchstens 3 pro Sekunde)
+    const gb = on ? Math.min(1.5, SZ.gain.bit) : 0;
+    if (V.ak_section === 3 && SZ.secPrev !== 3 && dg > 0) SZ.bitDrop = Math.max(SZ.bitDrop, V.ak_drop_strength > 0 ? V.ak_drop_strength : 0.6);
+    SZ.secPrev = V.ak_section; SZ.bitDrop *= Math.exp(-dt * 1000 / SZCFG.bitDropMs);
+    const bb = V.ak_build_strength, tB = Math.min(SZCFG.bitMax, gb * ((SZCFG.bitHats * V.hats_env * (0.4 + 0.6 * V.hats_density) + SZCFG.bitHit * V.hats_hit) * (1 - SZCFG.hatsReleaseCut * V.hats_release) + SZCFG.bitAcid * V.acid_env * V.acid_reso
+      + dg * (SZCFG.bitBuild * bb * bb * (V.ak_section === 3 ? 0 : 1) + SZCFG.bitDrop * SZ.bitDrop)));
+    SZ.bit = ems(SZ.bit, tB * (V.ak_section === 1 ? SZCFG.bitBreak : 1), tB > SZ.bit ? SZCFG.bitUpMs : SZCFG.bitDownMs);
+    // Build 113: die Stärke (sie bestimmt auch, WELCHE Blöcke verrutschen) geht nur zusammen mit einem neuen Muster an den Shader, als Höchstwert seit dem letzten:
+    // so zucken die Blöcke mit den Hats, wechseln aber nie öfter als die Saat (höchstens 3 pro Sekunde)
+    SZ.bitHold = Math.max(SZ.bitHold, SZ.bit);
+    if (st[7] !== SZ.seedPrev) { SZ.seedPrev = st[7]; SZ.bitPub = SZ.bitHold; SZ.bitHold = SZ.bit; }
+    st[3] = !gb || SZ.bitPub < SZCFG.bitMin ? 0 : SZ.bitPub;
+    SZ.st.ac += SZ.acA; SZ.st.gr += SZ.gr; if (SZ.acA > SZ.st.acMax) SZ.st.acMax = SZ.acA; SZ.st.bit += st[3]; if (st[3] > SZ.st.bitMax) SZ.st.bitMax = st[3]; }
   // PADS
   SZ.pe = ems(SZ.pe, V.pads_env, SZCFG.padSmoothMs); SZ.pp = ems(SZ.pp, V.pads_pitch, SZCFG.padSmoothMs);
   const gp = szActive() ? SZ.gain.pads : 0;
@@ -116,7 +152,7 @@ window.szBarStep = st => {                                                      
 window.szHats = () => {                                                              // js/12b mxSparks: Funken-Menge
   if (!szActive()) return 1;
   const base = SZCFG.hatsMin + (SZCFG.hatsMax - SZCFG.hatsMin) * AKV.hats_density;
-  return 1 + (base - 1) * Math.min(1.5, SZ.gain.hats);
+  return (1 + (base - 1) * Math.min(1.5, SZ.gain.hats)) * (1 - SZCFG.hatsReleaseCut * Math.min(1, SZ.gain.hats) * AKV.hats_release);   // Build 112: Hats klingen aus = weniger neue Funken
 };
 window.szKickAmp = () => szActive() ? Math.min(1.5, SZ.gain.kick) * SZ.kickS : 1;  // js/12b: Stärke des Kick-Zooms (Break leiser)
 window.szKickRot = (r, k, wR, one) => {                                              // js/12b: Drehen im Takt, ein Anstoß je Kick
@@ -127,10 +163,10 @@ window.szKickRot = (r, k, wR, one) => {                                         
 window.szAcidRot = () => szActive() ? 1 - SZCFG.acidRotShare * Math.min(1, SZ.gain.kick) : 1;   // js/12b: 303-Filterfahrt dreht weniger
 window.szBreakBreath = () => szActive() && sectionKey() === 'break' ? SZCFG.breakBreath * Math.min(1, SZ.gain.pads) * SZ.pe : 0;   // js/12b: Break atmet mit den Pads
 const SZ_ZERO = new Float32Array(8);
-// Die Acid-Verzerrung sitzt im Ausgabe-Durchgang der Kopie (AK-PATCH 10); der läuft nur, wenn setOutputAA(true) gesetzt ist (das Bild geht dann erst in eine Textur und von dort
+// Die Acid-Verzerrung (AK-PATCH 10) und der Bit-Salat (AK-PATCH 11) sitzen im Ausgabe-Durchgang der Kopie; der läuft nur, wenn setOutputAA(true) gesetzt ist (das Bild geht dann erst in eine Textur und von dort
 // verzerrt auf den Schirm, kostet einen Durchgang). Darum nur einschalten, solange die Verzerrung wirklich sichtbar ist (Schalten mit Hysterese, damit es nicht hin und her springt).
 let szAA = false;
-window.szOutputAA = () => { const a = szActive() ? SZ.stage[0] : 0; szAA = szAA ? a > 0.004 : a > 0.02; return szAA; };
+window.szOutputAA = () => { const a = szActive() ? Math.max(SZ.stage[0], SZ.stage[3]) : 0; szAA = szAA ? a > 0.004 : a > 0.02; return szAA; };
 window.szStage = () => szActive() ? SZ.stage : SZ_ZERO;                                                         // js/09: Werte für viz.setAkStage (AK-PATCH 10)
 window.szSide = () => {                                                              // js/13 onHat: Seite des letzten Hats-Treffers, Stärke 0..1 (0 = Mitte oder Regler aus)
   const a = szActive() ? Math.min(1, SZ.gain.raum) : 0, v = AKSIDE.hats_side * a;
@@ -151,7 +187,7 @@ window.__SZ = SZ;
   if (werk) {
     const box = document.createElement('div'); box.className = 'grp';
     const lb = document.createElement('span'); lb.className = 'gl'; lb.textContent = 'Schaltzentrale'; box.appendChild(lb);
-    const NAMES = { kick: 'Kick (Puls, Drehen)', acid: 'Acid (Verzerrung)', raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)' };
+    const NAMES = { kick: 'Kick (Puls, Drehen)', acid: 'Acid (Verzerrung)', raum: 'Raum (Stereo)', pads: 'Pads (Farbe)', hats: 'Hats (Funken)', dirigent: 'Dirigent (Aufbau, Drop)', bit: 'Bit-Salat (Glitch)' };
     for (const k of Object.keys(NAMES)) {
       const row = document.createElement('label'); row.style.cssText = 'flex:0 0 100%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)';
       const t = document.createElement('span'); t.style.cssText = 'flex:0 0 150px'; t.textContent = NAMES[k];
@@ -167,7 +203,7 @@ window.__SZ = SZ;
 setInterval(() => {
   const S = SZ.st; if (S.n < 600 || !szActive()) return;
   const f = x => x.toFixed(2).replace('.', ',');
-  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Acid-Verzerrung Ø ' + f(S.ac / S.n) + ' (max ' + f(S.acMax) + ') · Hats-Körnung Ø ' + f(S.gr / S.n) + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
-    + ' · Regler Kick/Acid/Raum/Pads/Hats/Dirigent ' + ['kick', 'acid', 'raum', 'pads', 'hats', 'dirigent'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
-  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0 };
+  erg('Schaltzentrale (letzte Minute): Raum Ø ' + f(S.act / S.n) + ' (max ' + f(S.actMax) + ') · Pads-Helligkeit ' + f(S.bMin) + '…' + f(S.bMax) + ' · Acid-Verzerrung Ø ' + f(S.ac / S.n) + ' (max ' + f(S.acMax) + ') · Hats-Körnung Ø ' + f(S.gr / S.n) + ' · Bit-Salat Ø ' + f(S.bit / S.n) + ' (max ' + f(S.bitMax) + ') · Einsätze Kick/Acid/Hats ' + S.ek + '/' + S.ea + '/' + S.eh + ' · Seiten-Funken links/rechts/Mitte ' + S.spL + '/' + S.spR + '/' + (S.sp - S.spL - S.spR) + ' · Drops mit Wucht ' + S.drops
+    + ' · Regler Kick/Acid/Raum/Pads/Hats/Dirigent/Bit-Salat ' + ['kick', 'acid', 'raum', 'pads', 'hats', 'dirigent', 'bit'].map(k => Math.round(100 * SZ.gain[k])).join('/') + ' %' + (szScan() ? ' · Dirigent: Aufbau ' + f(AKV.ak_build_strength) + ', Drop-Stärke ' + f(AKV.ak_drop_strength) : ''));
+  SZ.st = { n: 0, act: 0, actMax: 0, bMin: 9, bMax: 0, drops: 0, t: 0, sp: 0, spL: 0, spR: 0, ac: 0, acMax: 0, gr: 0, bit: 0, bitMax: 0, ek: 0, ea: 0, eh: 0 };
 }, 60000);

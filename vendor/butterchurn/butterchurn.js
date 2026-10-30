@@ -64,14 +64,28 @@ function akShaderSet(gl, locs, bufs, vars) {
 }
 if (typeof window !== 'undefined') window.AK_VAR_NAMES = AK_VAR_NAMES;
 /* AK-PATCH 10: Endstufe im Comp-Shader (Acid-Verzerrung, Hats-Körnung und Glitzern). Werte kommen NICHT über AK_VAR_NAMES, sondern über
-   Visualizer.setAkStage([acid, phase, reso, 0, körnung, glitzern, seite, saat]) in AK_STAGE (zwei uniform vec4 akfx_a, akfx_b).
+   Visualizer.setAkStage([acid, phase, reso, bitsalat, körnung, glitzern, seite, saat]) (bitsalat: AK-PATCH 11) in AK_STAGE (zwei uniform vec4 akfx_a, akfx_b).
    Alles 0 (Voreinstellung) = beide Blöcke werden im Shader übersprungen: Bild und Rechenzeit wie im Original (Regressionstest). */
 var AK_STAGE = new Float32Array(8);
 var AK_STAGE_DECL = "\nuniform vec4 akfx_a;\nuniform vec4 akfx_b;\nfloat _akfh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\n";
 var AK_STAGE_POST = "\n if (akfx_a.x > 0.0 && akfx_a.z > 0.0) { ret = mix(ret, smoothstep(0.0, 1.0, ret), 0.5 * akfx_a.x * akfx_a.z); }\n" +
   " if (akfx_b.x > 0.0) { ret += (_akfh(floor(gl_FragCoord.xy * 0.5) + akfx_b.w) - 0.5) * 0.12 * akfx_b.x; }\n" +
   " if (akfx_b.y > 0.0) { float _akw = 1.0 + akfx_b.z * (uv_orig.x - 0.5) * 2.0; if (_akfh(floor(gl_FragCoord.xy / 3.0) + akfx_b.w * 1.7) > 1.0 - 0.012 * akfx_b.y * max(_akw, 0.0)) ret += vec3(0.35 * akfx_b.y); }\n";
-var AK_OUT_DECL = "\nuniform vec4 akfx_a;\nvec2 _akoff(vec2 p) { if (akfx_a.x <= 0.0) return vec2(0.0); return vec2(sin(p.y * 14.0 + akfx_a.y * 6.2831853) * 0.007, sin(p.x * 11.0 - akfx_a.y * 4.0) * 0.004) * akfx_a.x; }\n";
+/* AK-PATCH 11: Bit-Salat-Filter (Glitch) im Ausgabe-Durchgang. Stärke = AK_STAGE[3] (akfx_a.w), Seite = AK_STAGE[6] (akfx_b.z), Saat = AK_STAGE[7] (akfx_b.w).
+   Blockversatz (ab Build 113 mit Wurzel-Kurve: schon kleine Stärken sichtbar; Streifen der Bildzeilen, auf der Seite des Hats-Treffers häufiger, Richtung zur Seite), RGB-Versatz und Farbstufen (Posterize, auf den
+   nächsten Wert gerundet: Helligkeit bleibt im Mittel gleich). Das Muster hängt NUR an der Saat (keine Zeit im Shader): neue Muster so oft, wie die App
+   die Saat wechselt (höchstens 3 pro Sekunde). Bei Stärke 0 überspringt der Shader alles. */
+var AK_OUT_DECL = "\nuniform vec4 akfx_a;\nuniform vec4 akfx_b;\nfloat _akoh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\n" +
+  "vec2 _akbits(vec2 p) { float s = sqrt(akfx_a.w), sd = akfx_b.z, sw = clamp(1.0 + sd * (p.x - 0.5) * 2.0, 0.0, 2.0);\n" +
+  " float row = floor(p.y * 22.0), col = floor(p.x * 5.0), h = _akoh(vec2(row, col) + akfx_b.w * 3.1);\n" +
+  " float dir = abs(sd) > 0.05 ? sign(sd) : (_akoh(vec2(row, akfx_b.w)) < 0.5 ? -1.0 : 1.0);\n" +
+  " float blk = step(1.0 - 0.3 * s * sw, h) * (0.015 + 0.05 * _akoh(vec2(col, row) + akfx_b.w)) * dir;\n" +
+  " float ln = step(1.0 - 0.06 * s, _akoh(vec2(floor(p.y * 160.0), akfx_b.w * 0.7))) * 0.01 * dir;\n" +
+  " return vec2((blk + ln) * s, 0.0); }\n" +
+  "vec2 _akoff(vec2 p) { vec2 o = vec2(0.0); if (akfx_a.x > 0.0) o = vec2(sin(p.y * 14.0 + akfx_a.y * 6.2831853) * 0.007, sin(p.x * 11.0 - akfx_a.y * 4.0) * 0.004) * akfx_a.x; if (akfx_a.w > 0.0) o += _akbits(p); return o; }\n";
+var AK_OUT_POST = "\n if (akfx_a.w > 0.0) { float _aks = akfx_a.w; vec2 _akr = vec2((0.0012 + 0.003 * abs(akfx_b.z)) * _aks * (akfx_b.z < 0.0 ? -1.0 : 1.0), 0.0);\n" +
+  "  _akc.r = textureLod(uTexture, _akp + _akr, 0.0).r; _akc.b = textureLod(uTexture, _akp - _akr, 0.0).b;\n" +
+  "  float _akl = mix(40.0, 5.0, sqrt(_aks)); _akc = mix(_akc, floor(_akc * _akl + 0.5) / _akl, 0.75 * _aks); }\n";
 function akStageLocs(gl, program) { return [gl.getUniformLocation(program, 'akfx_a'), gl.getUniformLocation(program, 'akfx_b')]; }
 function akStageSet(gl, locs) {
   if (locs[0]) gl.uniform4f(locs[0], AK_STAGE[0], AK_STAGE[1], AK_STAGE[2], AK_STAGE[3]);
@@ -4039,7 +4053,7 @@ function () {
       this.gl.shaderSource(vertShader, "#version 300 es\n       const vec2 halfmad = vec2(0.5);\n       in vec2 aPos;\n       out vec2 _akin_M;\n       out vec2 _akin_NW;\n       out vec2 _akin_NE;\n       out vec2 _akin_SW;\n       out vec2 _akin_SE;\n       uniform vec4 texsize;\n       void main(void) {\n         gl_Position = vec4(aPos, 0.0, 1.0);\n\n         _akin_M = aPos * halfmad + halfmad;\n         _akin_NW = _akin_M + (vec2(-1.0, -1.0) * texsize.zx);\n         _akin_NE = _akin_M + (vec2(1.0, -1.0) * texsize.zx);\n         _akin_SW = _akin_M + (vec2(-1.0, 1.0) * texsize.zx);\n         _akin_SE = _akin_M + (vec2(1.0, 1.0) * texsize.zx);\n       }");
       this.gl.compileShader(vertShader);
       var fragShader = this.gl.createShader(this.gl.FRAGMENT_SHADER);
-      this.gl.shaderSource(fragShader, "#version 300 es\n       precision ".concat(this.floatPrecision, " float;\n       precision highp int;\n       precision mediump sampler2D;\n\n       in vec2 _akin_M;\n       in vec2 _akin_NW;\n       in vec2 _akin_NE;\n       in vec2 _akin_SW;\n       in vec2 _akin_SE;\n       out vec4 fragColor;" + /* AK-PATCH 10 */ AK_OUT_DECL + "\n       uniform vec4 texsize;\n       uniform sampler2D uTexture;\n\n       #ifndef FXAA_REDUCE_MIN\n         #define FXAA_REDUCE_MIN   (1.0/ 128.0)\n       #endif\n       #ifndef FXAA_REDUCE_MUL\n         #define FXAA_REDUCE_MUL   (1.0 / 8.0)\n       #endif\n       #ifndef FXAA_SPAN_MAX\n         #define FXAA_SPAN_MAX     8.0\n       #endif\n\n       void main(void) {\n         vec2 v_rgbM = _akin_M + _akoff(_akin_M); vec2 v_rgbNW = _akin_NW + _akoff(_akin_M); vec2 v_rgbNE = _akin_NE + _akoff(_akin_M); vec2 v_rgbSW = _akin_SW + _akoff(_akin_M); vec2 v_rgbSE = _akin_SE + _akoff(_akin_M);\n         vec4 color;\n         vec3 rgbNW = textureLod(uTexture, v_rgbNW, 0.0).xyz;\n         vec3 rgbNE = textureLod(uTexture, v_rgbNE, 0.0).xyz;\n         vec3 rgbSW = textureLod(uTexture, v_rgbSW, 0.0).xyz;\n         vec3 rgbSE = textureLod(uTexture, v_rgbSE, 0.0).xyz;\n         vec3 rgbM  = textureLod(uTexture, v_rgbM, 0.0).xyz;\n         vec3 luma = vec3(0.299, 0.587, 0.114);\n         float lumaNW = dot(rgbNW, luma);\n         float lumaNE = dot(rgbNE, luma);\n         float lumaSW = dot(rgbSW, luma);\n         float lumaSE = dot(rgbSE, luma);\n         float lumaM  = dot(rgbM,  luma);\n         float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n         float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n\n         mediump vec2 dir;\n         dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));\n         dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));\n\n         float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) *\n                               (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);\n\n         float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n         dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX),\n                   max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),\n                   dir * rcpDirMin)) * texsize.zw;\n\n         vec3 rgbA = 0.5 * (\n             textureLod(uTexture, v_rgbM + dir * (1.0 / 3.0 - 0.5), 0.0).xyz +\n             textureLod(uTexture, v_rgbM + dir * (2.0 / 3.0 - 0.5), 0.0).xyz);\n         vec3 rgbB = rgbA * 0.5 + 0.25 * (\n             textureLod(uTexture, v_rgbM + dir * -0.5, 0.0).xyz +\n             textureLod(uTexture, v_rgbM + dir * 0.5, 0.0).xyz);\n\n         float lumaB = dot(rgbB, luma);\n         if ((lumaB < lumaMin) || (lumaB > lumaMax))\n           color = vec4(rgbA, 1.0);\n         else\n           color = vec4(rgbB, 1.0);\n\n         fragColor = color;\n       }"));
+      this.gl.shaderSource(fragShader, "#version 300 es\n       precision ".concat(this.floatPrecision, " float;\n       precision highp int;\n       precision mediump sampler2D;\n\n       in vec2 _akin_M;\n       in vec2 _akin_NW;\n       in vec2 _akin_NE;\n       in vec2 _akin_SW;\n       in vec2 _akin_SE;\n       out vec4 fragColor;" + /* AK-PATCH 10 */ AK_OUT_DECL + "\n       uniform vec4 texsize;\n       uniform sampler2D uTexture;\n\n       #ifndef FXAA_REDUCE_MIN\n         #define FXAA_REDUCE_MIN   (1.0/ 128.0)\n       #endif\n       #ifndef FXAA_REDUCE_MUL\n         #define FXAA_REDUCE_MUL   (1.0 / 8.0)\n       #endif\n       #ifndef FXAA_SPAN_MAX\n         #define FXAA_SPAN_MAX     8.0\n       #endif\n\n       void main(void) {\n         vec2 v_rgbM = _akin_M + _akoff(_akin_M); vec2 v_rgbNW = _akin_NW + _akoff(_akin_M); vec2 v_rgbNE = _akin_NE + _akoff(_akin_M); vec2 v_rgbSW = _akin_SW + _akoff(_akin_M); vec2 v_rgbSE = _akin_SE + _akoff(_akin_M);\n         vec4 color;\n         vec3 rgbNW = textureLod(uTexture, v_rgbNW, 0.0).xyz;\n         vec3 rgbNE = textureLod(uTexture, v_rgbNE, 0.0).xyz;\n         vec3 rgbSW = textureLod(uTexture, v_rgbSW, 0.0).xyz;\n         vec3 rgbSE = textureLod(uTexture, v_rgbSE, 0.0).xyz;\n         vec3 rgbM  = textureLod(uTexture, v_rgbM, 0.0).xyz;\n         vec3 luma = vec3(0.299, 0.587, 0.114);\n         float lumaNW = dot(rgbNW, luma);\n         float lumaNE = dot(rgbNE, luma);\n         float lumaSW = dot(rgbSW, luma);\n         float lumaSE = dot(rgbSE, luma);\n         float lumaM  = dot(rgbM,  luma);\n         float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n         float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n\n         mediump vec2 dir;\n         dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));\n         dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));\n\n         float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) *\n                               (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);\n\n         float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n         dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX),\n                   max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX),\n                   dir * rcpDirMin)) * texsize.zw;\n\n         vec3 rgbA = 0.5 * (\n             textureLod(uTexture, v_rgbM + dir * (1.0 / 3.0 - 0.5), 0.0).xyz +\n             textureLod(uTexture, v_rgbM + dir * (2.0 / 3.0 - 0.5), 0.0).xyz);\n         vec3 rgbB = rgbA * 0.5 + 0.25 * (\n             textureLod(uTexture, v_rgbM + dir * -0.5, 0.0).xyz +\n             textureLod(uTexture, v_rgbM + dir * 0.5, 0.0).xyz);\n\n         float lumaB = dot(rgbB, luma);\n         if ((lumaB < lumaMin) || (lumaB > lumaMax))\n           color = vec4(rgbA, 1.0);\n         else\n           color = vec4(rgbB, 1.0);\n\n         vec2 _akp = v_rgbM; vec3 _akc = color.rgb;" + /* AK-PATCH 11 */ AK_OUT_POST + "\n         fragColor = vec4(_akc, 1.0);\n       }"));
       this.gl.compileShader(fragShader);
       this.gl.attachShader(this.shaderProgram, vertShader);
       this.gl.attachShader(this.shaderProgram, fragShader);
@@ -4047,6 +4061,7 @@ function () {
       this.positionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aPos');
       this.textureLoc = this.gl.getUniformLocation(this.shaderProgram, 'uTexture');
       this.akfxLoc = this.gl.getUniformLocation(this.shaderProgram, 'akfx_a'); /* AK-PATCH 10 */
+      this.akfxLocB = this.gl.getUniformLocation(this.shaderProgram, 'akfx_b'); /* AK-PATCH 11 */
       this.texsizeLoc = this.gl.getUniformLocation(this.shaderProgram, 'texsize');
     }
   }, {
@@ -4057,7 +4072,7 @@ function () {
       this.gl.shaderSource(vertShader, "#version 300 es\n       const vec2 halfmad = vec2(0.5);\n       in vec2 aPos;\n       out vec2 uv;\n       void main(void) {\n         gl_Position = vec4(aPos, 0.0, 1.0);\n         uv = aPos * halfmad + halfmad;\n       }");
       this.gl.compileShader(vertShader);
       var fragShader = this.gl.createShader(this.gl.FRAGMENT_SHADER);
-      this.gl.shaderSource(fragShader, "#version 300 es\n       precision ".concat(this.floatPrecision, " float;\n       precision highp int;\n       precision mediump sampler2D;\n\n       in vec2 uv;\n       out vec4 fragColor;\n       uniform sampler2D uTexture;" + /* AK-PATCH 10 */ AK_OUT_DECL + "\n       void main(void) {\n         fragColor = vec4(texture(uTexture, uv + _akoff(uv)).rgb, 1.0);\n       }"));
+      this.gl.shaderSource(fragShader, "#version 300 es\n       precision ".concat(this.floatPrecision, " float;\n       precision highp int;\n       precision mediump sampler2D;\n\n       in vec2 uv;\n       out vec4 fragColor;\n       uniform sampler2D uTexture;" + /* AK-PATCH 10 */ AK_OUT_DECL + "\n       void main(void) {\n         vec2 _akp = uv + _akoff(uv); vec3 _akc = texture(uTexture, _akp).rgb;" + /* AK-PATCH 11 */ AK_OUT_POST + "\n         fragColor = vec4(_akc, 1.0);\n       }"));
       this.gl.compileShader(fragShader);
       this.gl.attachShader(this.shaderProgram, vertShader);
       this.gl.attachShader(this.shaderProgram, fragShader);
@@ -4065,6 +4080,7 @@ function () {
       this.positionLocation = this.gl.getAttribLocation(this.shaderProgram, 'aPos');
       this.textureLoc = this.gl.getUniformLocation(this.shaderProgram, 'uTexture');
       this.akfxLoc = this.gl.getUniformLocation(this.shaderProgram, 'akfx_a'); /* AK-PATCH 10 */
+      this.akfxLocB = this.gl.getUniformLocation(this.shaderProgram, 'akfx_b'); /* AK-PATCH 11 */
     }
   }, {
     key: "renderQuadTexture",
@@ -4078,6 +4094,7 @@ function () {
       this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
       this.gl.uniform1i(this.textureLoc, 0);
       if (this.akfxLoc) this.gl.uniform4f(this.akfxLoc, AK_STAGE[0], AK_STAGE[1], AK_STAGE[2], AK_STAGE[3]); /* AK-PATCH 10 */
+      if (this.akfxLocB) this.gl.uniform4f(this.akfxLocB, AK_STAGE[4], AK_STAGE[5], AK_STAGE[6], AK_STAGE[7]); /* AK-PATCH 11 */
 
       if (this.useFXAA()) {
         this.gl.uniform4fv(this.texsizeLoc, new Float32Array([this.texsizeX, this.texsizeY, 1.0 / this.texsizeX, 1.0 / this.texsizeY]));
@@ -6787,7 +6804,7 @@ function () {
       }
     }
   }, {
-    /* AK-PATCH 10: Werte der Endstufe setzen (8 Zahlen, siehe AK_STAGE). Nicht-Zahlen werden 0. */
+    /* AK-PATCH 10: Werte der Endstufe setzen (8 Zahlen, siehe AK_STAGE; Platz 3 = Bit-Salat, AK-PATCH 11). Nicht-Zahlen werden 0. */
     key: "setAkStage",
     value: function setAkStage(arr) {
       if (!arr) return;

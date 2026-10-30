@@ -154,6 +154,7 @@ async function analyzeFile(file, alive = () => true) {
   } else if (kxErr) A.kmErr = kxErr;
   // Build 103: Aufbau-Detektor auf den Klangmesser-Werten pro Takt (js/analyse.js): Drops, Aufbau, drop_strength, ohne feste Längen
   if (A.km) { try { A.aufbau = aufbauFor(A); } catch (e) { A.aufbau = null; A.aufbauErr = String(e && e.message || e); } }
+  if (A.aufbau) { try { abschnitteMitDetektor(A); } catch (e) { A.aufbauErr = 'Abschnitte: ' + String(e && e.message || e); } }   // Build 114: Detektor-Drops in die Abschnitte
   if (!alive()) return SCAN_STOP;
   A.file = file;
   return A;

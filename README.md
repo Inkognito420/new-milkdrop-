@@ -10,7 +10,7 @@ Acid ist die Version für Auftritte und bleibt unverändert. Hier wird weiterent
    Variablen erweitert, die alten 245 Presets laufen nachweislich bit-gleich wie vorher.
 2. **Klangrollen-Analyse** (`js/08b-klangrollen.js`): erkennt Kick, Acid-Linie (303), Hi-Hats und Pads getrennt und gibt jedem Preset
    41 neue Werte (Einsatz, Anschlag, Aufbau, Ausklingen, Filter, Resonanz, Hats-Dichte, Pads-Tonhöhe, Tempo, Takt, Abschnitt, Aufbau- und Drop-Stärke, Stereo-Position, -Tempo und -Breite).
-   Die Presets nutzen diese Werte noch nicht. Das kommt im nächsten Schritt.
+   Die Presets nutzen diese Werte (noch) nicht; die Schaltzentrale (unten) macht daraus Bildebenen über allen Presets.
 
 Build-Nummern: new-milkdrop- zählt ab **Build 100** (steht im Protokoll), damit es nicht mit Acid verwechselt wird.
 
@@ -33,7 +33,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js`, `butterchurnPresetsExtra.min.js` und `butterchurnPresetsExtra2.min.js` (unverändert, 100 + 146 + 122 Presets, 367 verschiedene Namen), Lizenz.
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
-- `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale Teil 3a, siehe unten „Schaltzentrale“.
+- `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale (alle Ebenen, Bit-Salat, Akzente), siehe unten „Schaltzentrale“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
 - `acid-shader.js`, `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: eigene Shader, die 5 eigenen Acid-Presets, vermessene Presets.
@@ -62,23 +62,37 @@ new-milkdrop- nie etwas von Acid verändert:
   pro Takt die Drops, den Aufbau davor und die Drop-Stärke (`drop_strength` 0–1). Keine festen Längen: Pausen von 2 bis beliebig vielen Takten,
   Aufbau auch über durchlaufendem Kick (als Anstieg von Hektik, Schärfe oder beidem). Maßstab sind die echten Tracks in `pruefdaten/`
   (`node test/aufbau.test.js`). Im Protokoll steht pro Track „Aufbau-Detektor: Drop Takt … Pause … Aufbau … Stärke …“.
-  Die Bild-Effekte nutzen das noch nicht (kommt mit der Schaltzentrale).
+  Ab Build 114 fließen seine Drops in die Abschnitte ein (`abschnitteMitDetektor`): Ein Drop, den der Scan nicht kennt, wird im Intro ab Stärke 0,5
+  zum Drop (das Intro endet dort), im Groove nur, wenn er klar ist (Stärke ab 0,7 und mindestens 4 Takte Pause). Ein Drop dauert jetzt 8 Takte (vorher 4).
+  Im Protokoll: „Scan: … Drops (davon n vom Aufbau-Detektor)“.
 - Notfall: scheitert die Analyse (Datei nicht lesbar, über 15 Minuten, zu wenig Speicher), kommt eine Meldung und Play heißt
   „Ohne Analyse spielen“: ein Tipp spielt den Track, das Bild reagiert dann nur live.
 
-## Schaltzentrale (ab Build 106, Teil 3a)
+## Schaltzentrale (ab Build 106, vollständig ab Build 112)
 
 Jede Klangrolle bekommt genau EINE Bildebene, wie Kanäle am Mischpult. Läuft über den Schalter „Mischpult“ (aus = alte Effekte). In der Werkstatt
-gibt es die Gruppe „Schaltzentrale“ mit vier Reglern (0 = aus, 100 % normal, bis 150 %; gespeichert unter `nmd:sz-gain`).
+gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pads, Hats, Dirigent, Bit-Salat (0 = aus, 100 % normal, bis 150 %; gespeichert unter `nmd:sz-gain`).
+„Bewegung reduzieren“ des Geräts schaltet die Schaltzentrale ab.
+- **Kick (Rhythmus, ab Build 109):** Zoom-Puls und Drehen im Takt (Richtung wechselt je Takt-Eins), Kick-Schläge aus dem Scan-Raster. Im Break fährt die Ebene auf 25 % herunter,
+  das Bild atmet dann nur mit den Pads. Die 303-Filterfahrt dreht nur noch 30 %.
+- **Acid (Verzerrung, ab Build 110):** `acid_env` × `acid_cutoff` = Stärke, `acid_squelch` = Tempo der Welle, `acid_reso` = Kantenkontrast. Sitzt in der Butterchurn-Kopie (`AK-PATCH 10`).
 - **Raum (Stereo):** aktiv nur bei echter Wanderung (größter Ausschlag von `ak_pan` über 0,2, voll ab 0,5); Breite allein genügt nicht. `ak_pan` schiebt das Bild bis 1,3 % nach links/rechts und verzieht es bis 1° (`skewX`), `ak_pan_speed` und `ak_width` bestimmen, wie stark. Die Position wird auf ihr
   gleitendes Maximum bezogen (live erreicht sie nur ca. ±0,5) und hart in der Änderungsgeschwindigkeit begrenzt (`SZCFG.panSlew`): sehr schnelles Ping-Pong wird zum sanften Schimmern,
   nichts flackert. Ohne Stereo-Bewegung bleibt das alte Schwanken im Takt.
 - **Pads (Farbe):** Farbton gleitet (Tempo = `pads_env`), `pads_pitch` steuert Helligkeit und Sättigung (tief = düster und satt, hoch = hell und leuchtend), `pads_entry` = weicher Farbwechsel.
   Der Takt-Farbschritt wird mit Pads halb so groß, ohne Pads größer (Obergrenze 40°).
-- **Hats (Details):** `hats_density` skaliert die Menge der Funken (50–150 %).
+- **Hats (Details):** `hats_density` skaliert die Menge der Funken (50–150 %); Körnung und Glitzern im Bild (ab Build 110), Funken auf der Seite, auf der der Hats-Treffer klingt (ab Build 108).
+  Mitten (Claps, 303-Noten) lösen keine Funken aus (Claps machen Ringe).
+- **Bit-Salat (Glitch, ab Build 112, `AK-PATCH 11`):** Blockversatz in Streifen (häufiger auf der Seite des letzten Hats-Treffers, Richtung zu dieser Seite), leichter RGB-Versatz und Farbstufen.
+  Im Groove zuckt er mit jedem Hats-Treffer und folgt der Acid-Resonanz (ab Build 113 deutlich sichtbar: bei Stärke 0,3 ändern sich ca. 19 % der Bildpunkte), im Break nur 35 %, stark im Aufbau (`ak_build_strength`², ohne Scan nicht), am Drop ein Stoß (`ak_drop_strength`), der über ca. 4 s abklingt.
+  Sicher fürs Live-Spielen: neue Muster und neue Stärke höchstens 3 pro Sekunde (die Stärke geht nur zusammen mit einem neuen Muster an den Shader), kein Blitzen (Farbstufen gerundet, mittlere Helligkeit bleibt), weich ein- und ausgeblendet, Stärke höchstens 85 %.
+  Sitzt im selben Ausgabe-Durchgang wie die Acid-Verzerrung (kostet keinen weiteren Durchgang; der Durchgang läuft nur, solange einer der beiden sichtbar ist).
+- **Akzente (ab Build 112):** Einsatz einer Rolle nach mindestens einem Takt Pause (`R_entry`): Kick = Zoom-Stoß (nicht im Drop, der hat seinen eigenen), Acid = Verzerrungs-Ruck,
+  Hats = Funkenregen, Pads = weicher Farbwechsel. Hats klingen aus (`hats_release`) = weniger neue Funken und Körnung. Im Protokoll: „Einsätze Kick/Acid/Hats“.
 - **Dirigent:** vor dem Drop gilt `ak_build_strength` (gemessener Aufbau) statt der festen 8 Takte (`PRE_BARS`), im Drop skaliert `ak_drop_strength` Blitz, Funken und Zoom-Stoß (50–140 %).
   Regler „Dirigent“ auf 0 = alte feste Regel.
-Noch offen: Kick-Ebene (Drehen), Acid-Ebene (Verzerrung, braucht die Butterchurn-Kopie), Hats-Körnung, Mitten ohne Funken. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
+Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
 
 ## Klangrollen: die neuen Variablen
 
@@ -145,8 +159,8 @@ Läuft bei jedem Push als GitHub-Aktion (`.github/workflows/pruefen.yml`). Von H
   `PLAYWRIGHT_MODULE=… CHROMIUM_PATH=… node test/browser.js [Szenario,...]`: alle Acid-Prüfungen (Start, Bedienung, Shader, Scan, Offline,
   Notaus, Hänger-Wächter, Lastbremse …) und neu `klangrollen` (künstliche Tracks aus `test/gen-track.js`: Kick durchgehend, Kick-Lücke,
   neue 303, voll gegen halb laut), `klangrollenLive`, `echtbutterchurn` (mit der echten Kopie statt Attrappe) und ab Build 102
-  `startsperre`, `speicher`, `notfall` (Partitur: erst analysieren, dann spielen; Speicher und Aufräumen; Analyse scheitert).
-- `node test/butterchurn-regression.js`: alle 245 Presets mit dem Original und mit der Kopie zeichnen und die Pixel vergleichen (dauert etwa 8 Minuten).
+  `startsperre`, `speicher`, `notfall` (Partitur: erst analysieren, dann spielen; Speicher und Aufräumen; Analyse scheitert), `schaltzentrale`, `stereoLive`.
+- `node test/butterchurn-regression.js`: alle 367 Presets mit dem Original und mit der Kopie zeichnen und die Pixel vergleichen (dauert etwa 8 Minuten).
 
 Geprüft wird in einer Sandbox mit Software-Grafik. Ob es auf dem Handy flüssig läuft (60 fps auf dem iPhone 15 Pro), zeigt nur ein echter Lauf:
 Protokoll → „Letzter Lauf“ bzw. „Kopieren“ nach etwa 10 Minuten.
