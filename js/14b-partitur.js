@@ -14,7 +14,7 @@ if (window.__AM_STEP !== 14) throw new Error('new-milkdrop-: Teil 14b (partitur)
 //
 // Analyse-Version: steigt, sobald sich an Scan oder Partitur etwas ändert, das andere Ergebnisse gibt. Ältere Einträge gelten dann
 // nicht mehr (werden neu gerechnet und beim Aufräumen entfernt).
-const PARTITUR_V = 4;                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103); 3 = Pads mit Gehaltenheit, Kick am Raster, reso/hd/pp (Build 104)
+const PARTITUR_V = 5;  // 5 = Drops 8 Takte, Detektor-Drops in den Abschnitten (Build 114);                                // 2 = mit Aufbau-Detektor (A.aufbau, Build 103); 3 = Pads mit Gehaltenheit, Kick am Raster, reso/hd/pp (Build 104)
 const PT_DB = 'nmd-partitur';                        // eigene Datenbank (Vorsatz nmd-, Acid benutzt sie nie)
 const PT_MAX_N = 200, PT_MAX_MB = 50;                // Aufräumen: höchstens so viele Tracks und so viele MB, die am längsten unbenutzten fliegen zuerst
 const PT_FPS = 60;                                   // Bilder pro Sekunde wie live (AKCFG.padHoldFrames und kickRiseFrames zählen Bilder)

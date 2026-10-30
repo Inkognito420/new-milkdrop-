@@ -89,7 +89,7 @@ function applyScanFor(f) {
     } else {
       curAnalysis = A; jrScan(f, A);
       if (A.grid) setBpm(A.bpm, true);
-      erg((A.fromStore ? 'Scan (aus Speicher): ' : 'Scan fertig: ') + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' : 'kein festes Raster'));
+      erg((A.fromStore ? 'Scan (aus Speicher): ' : 'Scan fertig: ') + (A.grid ? A.bpm.toFixed(2) + ' BPM, ' + A.drops + ' Drops' + (A.detektorDrops ? ' (davon ' + A.detektorDrops + ' vom Aufbau-Detektor)' : '') : 'kein festes Raster'));
       if (A.klang) erg('Klangbild (Schläge und Töne getrennt, ' + A.klangMs + ' ms): ' + klangSummary(A));
       else if (A.klangErr) err('Klangbild fehlgeschlagen: ' + A.klangErr);
       if (A.km) erg('Klangmesser (' + A.kmMs + ' ms): ' + kmSummary(A));

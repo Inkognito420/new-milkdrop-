@@ -134,14 +134,14 @@ function analyzeEnvelopes(env, hopS) {
           const a = mean(bHi, barPhase + 4 * j, barPhase + 4 * (j + 2)) + mean(bMid, barPhase + 4 * j, barPhase + 4 * (j + 2));
           const z = mean(bHi, barPhase + 4 * (e - 2), barPhase + 4 * e) + mean(bMid, barPhase + 4 * (e - 2), barPhase + 4 * e);
           if (n >= 2 && z > a * 1.15) for (let x = e - n; x < e; x++) types[x] = 'buildup';
-          // Drop: die ersten 4 Takte, wenn der Kick zurückkommt
-          for (let x = e; x < Math.min(e + 4, last + 1); x++) types[x] = 'drop';
+          // Drop: die ersten DROP_BARS Takte, wenn der Kick zurückkommt (bis Build 113: 4 Takte, im iPhone-Protokoll nur 7 s Drop, dann wieder Groove)
+          for (let x = e; x < Math.min(e + DROP_BARS, last + 1); x++) types[x] = 'drop';
         }
         j = e;
       } else j++;
     }
     // Langes Intro ohne Kick: Einstieg des Kicks zählt als Drop
-    if (first >= 8) for (let x = first; x < Math.min(first + 4, nBars); x++) if (types[x] === 'groove') types[x] = 'drop';
+    if (first >= 8) for (let x = first; x < Math.min(first + DROP_BARS, nBars); x++) if (types[x] === 'groove') types[x] = 'drop';
   }
 
   // Abschnitte zusammenfassen
@@ -593,6 +593,39 @@ function aufbauDetektor(K, C = AUFBAU) {
     drops.push({ bar: d, pause, pauseFrom: p0, buildFrom: from, buildBars: from < 0 ? 0 : d - from, rise: Math.round(rise * 1000) / 1000, strength: Math.round(strength * 1000) / 1000 });
   }
   return { n, build, drops };
+}
+// Build 114: Drops des Aufbau-Detektors in die Abschnitte übernehmen. Der Scan kennt Drops nur dort, wo der Kick nach mindestens 4 Takten
+// zurückkommt, und nennt alles vor dem ersten Kick mit vollem Bassdruck „Intro“. iPhone-Protokoll „Lutgens - Resonance“: Intro bis 111 s,
+// obwohl der Kick läuft und der Detektor Drops bei 55 s (Stärke 0,51) und 83 s (0,62) fand: knapp 2 Minuten ohne Drop-Moment.
+// Regel: ein Detektor-Drop, den der Scan nicht kennt (kein Scan-Drop innerhalb nearBars), wird zum Drop von DROP_BARS Takten,
+//   - im (ursprünglichen) Intro ab Stärke introMin; das Intro endet dort, danach Groove,
+//   - im Groove nur, wenn er klar ist (Stärke ab grooveMin UND Pause ab grooveMinPause Takten): Fills und Mini-Breaks (iPhone-Protokoll
+//     „Adrenaline“: 2-4 Takte Pause, Stärke 0,42-0,61) bleiben Groove.
+// Break, Aufbau und Outro bleiben, wie der Scan sie sieht. Gibt die Zahl der übernommenen Drops zurück.
+const DROP_BARS = 8;
+const DETEKTOR_DROP = { introMin: 0.5, grooveMin: 0.7, grooveMinPause: 4, nearBars: 2 };
+function abschnitteMitDetektor(A) {
+  const P = A && A.aufbau, S = A && A.sections; if (!P || !P.drops || !S || !S.length || !A.grid || !(P.barS > 0)) return 0;
+  const C = DETEKTOR_DROP, barS = P.barS, bar0 = S[0].startBar - S[0].t0 / barS;
+  const toBar = t => Math.round(t / barS + bar0);
+  let added = 0;
+  for (const d of P.drops) {
+    if (S.some(s => s.type === 'drop' && Math.abs(s.t0 - d.t) <= C.nearBars * barS)) continue;
+    const i = S.findIndex(s => d.t >= s.t0 && d.t < s.t1); if (i < 0) continue;
+    const s = S[i], intro = s.type === 'intro' || s.exIntro;
+    if (intro ? d.strength < C.introMin : !(s.type === 'groove' && d.strength >= C.grooveMin && d.pause >= C.grooveMinPause)) continue;
+    const end = Math.min(s.t1, d.t + DROP_BARS * barS), parts = [];
+    if (d.t - s.t0 >= 0.5 * barS) parts.push(Object.assign({}, s, { t1: d.t, endBar: toBar(d.t) }));
+    parts.push({ type: 'drop', startBar: toBar(d.t), endBar: toBar(end), t0: d.t, t1: end, detektor: +d.strength.toFixed(2) });
+    if (s.t1 - end >= 0.5 * barS) parts.push(Object.assign({}, s, { type: s.type === 'intro' ? 'groove' : s.type, exIntro: intro || undefined, t0: end, startBar: toBar(end) }));
+    else parts[parts.length - 1].t1 = s.t1;
+    S.splice(i, 1, ...parts); added++;
+  }
+  if (!added) return 0;
+  for (let i = S.length - 1; i > 0; i--) if (S[i].type === S[i - 1].type && !S[i].detektor) { S[i - 1].t1 = S[i].t1; S[i - 1].endBar = S[i].endBar; S.splice(i, 1); }
+  for (const s of S) if (!s.blendBars || s.detektor || s.exIntro) s.blendBars = Math.max(1, Math.min(s.type === 'drop' ? 2 : 4, Math.floor((s.endBar - s.startBar) / 2) || 1));
+  A.drops = S.filter(s => s.type === 'drop').length; A._drops = null; A.detektorDrops = added;
+  return added;
 }
 // Für die Partitur: Aufbau und Drops auf das Takt-Raster des Klangmessers (A.km.t0, A.km.barS)
 function aufbauFor(A) {

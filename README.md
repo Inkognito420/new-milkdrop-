@@ -62,7 +62,9 @@ new-milkdrop- nie etwas von Acid verändert:
   pro Takt die Drops, den Aufbau davor und die Drop-Stärke (`drop_strength` 0–1). Keine festen Längen: Pausen von 2 bis beliebig vielen Takten,
   Aufbau auch über durchlaufendem Kick (als Anstieg von Hektik, Schärfe oder beidem). Maßstab sind die echten Tracks in `pruefdaten/`
   (`node test/aufbau.test.js`). Im Protokoll steht pro Track „Aufbau-Detektor: Drop Takt … Pause … Aufbau … Stärke …“.
-  Die Bild-Effekte nutzen das noch nicht (kommt mit der Schaltzentrale).
+  Ab Build 114 fließen seine Drops in die Abschnitte ein (`abschnitteMitDetektor`): Ein Drop, den der Scan nicht kennt, wird im Intro ab Stärke 0,5
+  zum Drop (das Intro endet dort), im Groove nur, wenn er klar ist (Stärke ab 0,7 und mindestens 4 Takte Pause). Ein Drop dauert jetzt 8 Takte (vorher 4).
+  Im Protokoll: „Scan: … Drops (davon n vom Aufbau-Detektor)“.
 - Notfall: scheitert die Analyse (Datei nicht lesbar, über 15 Minuten, zu wenig Speicher), kommt eine Meldung und Play heißt
   „Ohne Analyse spielen“: ein Tipp spielt den Track, das Bild reagiert dann nur live.
 
