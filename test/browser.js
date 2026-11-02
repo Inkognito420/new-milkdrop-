@@ -712,6 +712,37 @@ const SZ = {
     check('Stereo live: keine Seitenfehler', errs.length === 0 && m.errs.length === 0, errs.concat(m.errs).join(' | '));
     await m.close();
   },
+  async mix() {
+    // Mix (Build 115): zwei Favoriten kreuzen, unsichtbar prüfen, zeigen; Stern = Rezept, nach Neuladen wieder da. Mit der echten Butterchurn-Kopie.
+    const { page, errs, close } = await open({ real: true });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    await page.evaluate(() => { audio.currentTime = 20; auto = false; for (const n of names.slice(0, 40)) favs.add(n); store.set('am-favs', [...favs]); });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(async () => {
+      const out = { knopf: !$('mixBtn').hidden, mixe: [] };
+      for (let i = 0; i < 3; i++) { const t0 = performance.now(); const ok = await mixNow(); out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0) }); }
+      // q-Werte: B's Comp braucht q2 → B's Formeln laufen mit, q2 wird gesichert und zurückgeschrieben; liest A's Warp q2 → passt nicht
+      presets['T·A'] = { baseVals: { zoom: 1.1 }, init_eqs_str: '', frame_eqs_str: 'a.q2=5;a.zoom=1.2;', pixel_eqs_str: '', warp: '', comp: '', shapes: [], waves: [] };
+      presets['T·B'] = { baseVals: { gammaadj: 1.7, zoom: 0.9 }, init_eqs_str: 'a.k=1;', frame_eqs_str: 'a.q2=a.k*3;', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(q2); }', shapes: [], waves: [] };
+      presets['T·C'] = Object.assign({}, presets['T·A'], { warp: ' shader_body { ret = vec3(q2); }' });
+      const m = mixBuild({ a: 'T·A', b: 'T·B', f: 'a' }), bad = mixBuild({ a: 'T·C', b: 'T·B', f: 'a' });
+      const run = m && new Function('a', m.init_eqs_str + ';' + m.frame_eqs_str + ' return a;')({});
+      out.q = { gebaut: !!m, zoomA: m && m.baseVals.zoom, gammaB: m && m.baseVals.gammaadj, q2: run && run.q2, zoomFormel: run && run.zoom, konflikt: bad === null };
+      delete presets['T·A']; delete presets['T·B']; delete presets['T·C'];
+      out.log = LOG.filter(l => /^Mix/.test(l.x)).map(l => l.x).slice(-6); out.st = window.__MIX.st;
+      return out; });
+    console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
+    const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
+    check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
+    check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
+    const star = await page.evaluate(() => { if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; });
+    await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
+    const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
+    check('Mix: Stern speichert das Rezept (nmd:mixe), nach dem Neuladen ist der Mix wieder da, hat seinen Stern und lässt sich laden', star && star.saved.includes(star.n) && back.da && back.fav && back.laden, JSON.stringify({ star, back }));
+    check('Mix: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+  },
   async echtbutterchurn() {
     // Mit der echten Butterchurn-Kopie (vendor/) statt Attrappe: Start, Presets, die neuen Werte kommen im Renderer an
     const { page, errs, close } = await open({ real: true });

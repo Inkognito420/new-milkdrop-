@@ -34,6 +34,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
 - `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale (alle Ebenen, Bit-Salat, Akzente), siehe unten „Schaltzentrale“.
+- `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
 - `acid-shader.js`, `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: eigene Shader, die 5 eigenen Acid-Presets, vermessene Presets.
@@ -93,6 +94,18 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Mix: neue Bilder aus zwei Favoriten (ab Build 115)
+
+Der Knopf **Mix** (neben dem Stern) kreuzt zwei Favoriten zu einem Bild, das es so noch nicht gab, wie die „mash“-Presets der Milkdrop-Szene:
+- **Bewegung** von Elternteil A: Grundwerte (Zoom, Drehen, Verschiebung, Wellen …), Formeln und Warp-Shader.
+- **Look** von Elternteil B: Comp-Shader (wie das Bild angemalt wird) und Look-Grundwerte (Gamma, Echo, Unschärfe, Invertieren …).
+- **Formen** (Shapes, Waves) von A oder B.
+Braucht B's Look q-Werte aus B's Formeln, laufen B's Formeln mit, und die q-Werte werden nach A's Formeln zurückgeschrieben. Lesen A und B dasselbe q, wird das Paar nicht gebaut.
+Jeder Mix wird vorher unsichtbar geprüft (zweiter, kleiner Visualizer 128×72, 40 Bilder): nicht schwarz/trüb, nicht weiß, bewegt sich, keine Fehler. Sonst nächstes Paar (höchstens 8).
+**Stern auf einem Mix = behalten:** gespeichert wird nur das Rezept (`nmd:mixe`: Namen der Eltern, Formen-Seite), beim Start wird der Mix neu gebaut und läuft dann wie jeder Favorit
+in der automatischen Auswahl mit. Ohne Stern ist er nach dem Neuladen weg. Weniger als 2 Favoriten: Eltern zufällig. Mixe gehen (noch) nicht in „Sichern/Laden“ mit.
+Protokoll: „Mix: … Bewegung „A“, Look „B“ … geprüft (Helligkeit, Bewegung)“ bzw. „Mix verworfen (Grund)“. Test: Szenario `mix`.
 
 ## Klangrollen: die neuen Variablen
 
