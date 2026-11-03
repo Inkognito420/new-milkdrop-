@@ -105,8 +105,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 121;
-const BUILD = 'Build ' + BUILD_NO + ' · Bildbogen mit Partitur und Protokoll, Mix-Prüfung „flach“';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 122;
+const BUILD = 'Build ' + BUILD_NO + ' · Mitschnitt: Video mit Ton und Protokoll teilen';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -255,6 +255,7 @@ const TOGGLES = [
   ["instr", "Hören", "Instrumente hören", true, "Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche."],
   ["tune", "Hören", "Reaktions-Angleich", true, "Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)"],
   ["name", "Anzeige", "Name oben rechts", true, "Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)"],
+  ["rec", "Anzeige", "Mitschnitt", true, "Nimmt während der Musik ein kleines Video mit Ton auf (nur im Speicher, nichts wird gespeichert). Teilen über „Mitschnitt“ im Protokoll, zusammen mit dem ganzen Protokoll"],
   ["journal", "Anzeige", "Mitschreiben", true, "Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet."]
 ];
 const TOG_DEFAULT = {}, TOG_LABEL = {}, togIds = {};

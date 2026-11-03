@@ -99,8 +99,8 @@ const SZ = {
       const nachKlick = handSet().length; $('allAuto').click();
       return { schalter: ids.length, tabelle: TOGGLES.length, nachKlick, nachAuto: handSet().length, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
     });
-    check('Bedienung: 17 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 17 && r.tabelle === 17, JSON.stringify(r));
-    check('Bedienung: alle Schalter umgelegt = 17 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 17 && r.nachAuto === 0, JSON.stringify(r));
+    check('Bedienung: 18 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 18 && r.tabelle === 18, JSON.stringify(r));
+    check('Bedienung: alle Schalter umgelegt = 18 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 18 && r.nachAuto === 0, JSON.stringify(r));
     check('Bedienung: keine Fehler im Protokoll, keine Seitenfehler', r.fehler.length === 0 && errs.length === 0, r.fehler.concat(errs).join(' | '));
     await close();
   },
@@ -327,7 +327,7 @@ const SZ = {
       const had = toggles.spark; toggles.spark = !had; dSettings(JSON.parse(txt).settings); o.einstellungen = toggles.spark === had;
       o.schalter = Object.keys(JSON.parse(txt).settings.toggles).length; return o;
     });
-    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 17 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 17, JSON.stringify(r));
+    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 18 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 18, JSON.stringify(r));
     await close();
   },
   async fehlermeldungen() {
@@ -607,7 +607,7 @@ const SZ = {
     check('ak_drop_strength: schon im Break vor dem Drop die Stärke des kommenden Drops (über 0), im Drop dieselbe (gleicher Wert ±0,02)', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop > 0 && Math.abs(sc.break.drop - sc.drop.drop) < 0.02, JSON.stringify(sc));
     const ml = await page.evaluate(() => { akM.n = 1800; akM.t = 1; akMeasure(1e6); return LOG.map(l => l.x).filter(x => /Klangrollen-Messung/.test(x)).pop() || ''; });
     check('Klangrollen-Messzeile: enthält Pads-Gehaltenheit, Stereo und die Lage der Kick-Treffer am Raster', /Gehaltenheit/.test(ml) && /Stereo: \|Position\|/.test(ml) && /Kick-Treffer am Raster: \d+ von \d+/.test(ml), ml.slice(-260));
-    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 17 Schalter bleiben 17', d.an && /BPM/.test(d.text) && d.schalter === 17, JSON.stringify(d));
+    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 18 Schalter bleiben 18', d.an && /BPM/.test(d.text) && d.schalter === 18, JSON.stringify(d));
     await close();
   },
   async schaltzentrale() {
@@ -711,6 +711,28 @@ const SZ = {
     check('Stereo live: Mono-Track (Test-Track): Position bleibt in der Mitte (unter 0,25), Breite unter 0,25', c.max < 0.25 && c.w < 0.25, JSON.stringify(c));
     check('Stereo live: keine Seitenfehler', errs.length === 0 && m.errs.length === 0, errs.concat(m.errs).join(' | '));
     await m.close();
+  },
+  async mitschnitt() {
+    // Mitschnitt (Build 122): Video mit Ton im Speicher, in Teile unter der Größengrenze aufgeteilt, Teilen mit Protokoll und Partitur. Echte Kopie.
+    const { page, errs, close } = await open({ real: true });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    await page.evaluate(() => { MSCFG.maxSegMin = 0.1; audio.currentTime = 20; });
+    await page.waitForTimeout(9000);
+    await page.evaluate(async () => { MSCFG.forceGL = true; await msCut('Test WebGL'); });          // Farbe über WebGL wie auf dem iPhone
+    await page.waitForTimeout(5000);
+    const r = await page.evaluate(async () => {
+      const f = await msFiles(), v = f.filter(x => /^mitschnitt/.test(x.name));
+      const out = { ok: __MS.ok, err: __MS.err, mime: __MS.mime, knopf: $('logBild').textContent, n: v.length, typen: [...new Set(v.map(x => x.type))], kb: v.map(x => Math.round(x.size / 1024)),
+        protokoll: f.some(x => /^protokoll.*\.txt$/.test(x.name)), partitur: f.some(x => /^partitur/.test(x.name)), gl: !!__MS.gl, log: LOG.some(l => /Mitschnitt läuft/.test(l.x)) };
+      // abgeschaltet: kein neuer Teil
+      toggles.rec = false; const before = __MS.n; await new Promise(res => setTimeout(res, 1500)); out.ausKeinNeuer = __MS.n === before && (!__MS.cur || __MS.cur.state !== 'rec'); toggles.rec = true;
+      return out; });
+    console.log('       (Info) Mitschnitt: ' + JSON.stringify(r));
+    check('Mitschnitt: nimmt während der Musik auf (Video mit Ton), teilt in mehrere Videodateien, Knopf heißt „Mitschnitt“, beim Teilen kommen Protokoll und Partitur mit', r.ok && !r.err && r.knopf === 'Mitschnitt' && r.n >= 2 && r.typen.every(t => /^video\//.test(t)) && r.kb.every(k => k > 5) && r.protokoll && r.partitur && r.log, JSON.stringify(r));
+    check('Mitschnitt: Farbe über WebGL (Weg für Safari) nimmt ohne Fehler auf; Schalter „Mitschnitt“ aus = keine neue Aufnahme', r.gl && !r.err && r.ausKeinNeuer, JSON.stringify(r));
+    check('Mitschnitt: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
   },
   async bildbogen() {
     // Bildbogen (Build 117): Vorschaubilder von dem, was auf dem Schirm ist, vor und nach jedem Wechsel; als Blatt zum Teilen. Echte Butterchurn-Kopie.

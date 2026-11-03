@@ -44,27 +44,35 @@ function bbRecolor(x, w, h, f) {
 }
 const BB = { tracks: {}, list: [], nextT: 0, lastT: -1e9, name: '', after: null, cv: null, cx: null, n: 0 };
 const bbPos = () => micOn ? 'Mikro' : (curFile && !audio.paused || audio.currentTime > 0) ? Math.floor(audio.currentTime / 60) + ':' + String(Math.floor(audio.currentTime % 60)).padStart(2, '0') : '';
+// Was auf dem Schirm ist, verkleinert in einen 2D-Kontext zeichnen (Build 122: auch für den Mitschnitt, js/09c).
+// o.base: Milkdrop (gespiegelt wie auf dem Schirm) und eigener Shader; o.color: deren Farbfilter (ctx.filter, sonst nachgerechnet); o.fx: Funken, Ringe, Blitz
+function bbScreen(x, tw, th, o) {
+  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.fillStyle = '#000'; x.fillRect(0, 0, tw, th);
+  const useF = o.color && bbFilterOk;
+  if (o.base) {
+    const shFull = shCur && shOp >= 0.999;
+    if (!shFull) {
+      x.save(); if (useF) { try { x.filter = canvas.style.filter || 'none'; } catch (e) {} }
+      const fl = !shCur && mdFlip ? mdFlip : '';
+      const sx = /scale\(-1,/.test(fl) ? -1 : 1, sy = /,-1\)/.test(fl) ? -1 : 1;
+      if (sx < 0 || sy < 0) { x.translate(sx < 0 ? tw : 0, sy < 0 ? th : 0); x.scale(sx, sy); }
+      x.drawImage(canvas, 0, 0, tw, th); x.restore();
+    }
+    if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); if (useF) { try { x.filter = shEl.style.filter || 'none'; } catch (e) {} } x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
+    if (o.color && !bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Milkdrop und eigener Shader haben denselben Filter (applyFilter, js/04); Funken und Blitz nicht
+  }
+  if (o.fx) {
+    x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(fxc, 0, 0, tw, th); x.restore();
+    if (o.flash !== false && flash > 0.02) { x.fillStyle = 'rgba(255,255,255,' + Math.min(1, flash).toFixed(2) + ')'; x.fillRect(0, 0, tw, th); }
+  }
+}
 function bbGrab(name, tag) {
   const W0 = canvas.clientWidth || innerWidth || 1, H0 = canvas.clientHeight || innerHeight || 1;
   const tw = W0 >= H0 ? BBCFG.long : 112, th = Math.max(40, Math.round(tw * H0 / W0));
   if (!BB.cv) { BB.cv = document.createElement('canvas'); BB.cx = BB.cv.getContext('2d'); }
   const c = BB.cv, x = BB.cx; if (!x) return;
   if (c.width !== tw || c.height !== th) { c.width = tw; c.height = th; }
-  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.fillStyle = '#000'; x.fillRect(0, 0, tw, th);
-  try {
-    const shFull = shCur && shOp >= 0.999;
-    if (!shFull) {
-      x.save(); try { x.filter = canvas.style.filter || 'none'; } catch (e) {}
-      const fl = !shCur && mdFlip ? mdFlip : '';
-      const sx = /scale\(-1,/.test(fl) ? -1 : 1, sy = /,-1\)/.test(fl) ? -1 : 1;
-      if (sx < 0 || sy < 0) { x.translate(sx < 0 ? tw : 0, sy < 0 ? th : 0); x.scale(sx, sy); }
-      x.drawImage(canvas, 0, 0, tw, th); x.restore();
-    }
-    if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); try { x.filter = shEl.style.filter || 'none'; } catch (e) {} x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
-    if (!bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Milkdrop und eigener Shader haben denselben Filter (applyFilter, js/04); Funken und Blitz nicht
-    x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(fxc, 0, 0, tw, th); x.restore();
-    if (flash > 0.02) { x.fillStyle = 'rgba(255,255,255,' + Math.min(1, flash).toFixed(2) + ')'; x.fillRect(0, 0, tw, th); }
-  } catch (e) { return; }
+  try { bbScreen(x, tw, th, { base: true, color: true, fx: true }); } catch (e) { return; }
   const tk = micOn ? 'Mikro' : curFile ? curFile.name : '';
   if (tk && curAnalysis && curFile && !micOn && !BB.tracks[tk]) BB.tracks[tk] = curAnalysis;     // Build 121: Partitur des Tracks für das Partitur-Blatt
   const item = { t: stamp(), pos: bbPos(), name: name || '', tag, sec: sectionKey(), w: tw, h: th, blob: null,
@@ -193,5 +201,5 @@ async function bbShare() {
     return files.length;
   } finally { if (btn) { btn.disabled = false; btn.textContent = 'Bildbogen'; } }
 }
-{ const b = $('logBild'); if (b) b.addEventListener('click', () => { bbShare(); }); }
-window.__BB = BB; window.bbFiles = bbFiles; window.bbPartituren = bbPartituren; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;
+{ const b = $('logBild'); if (b) b.addEventListener('click', () => { if (window.msShare && window.msShare.ok()) window.msShare(); else bbShare(); }); }   // Build 122: Mitschnitt (js/09c), sonst Bildbogen
+window.bbScreen = bbScreen; window.__BB = BB; window.bbFiles = bbFiles; window.bbPartituren = bbPartituren; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;
