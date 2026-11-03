@@ -728,6 +728,20 @@ const SZ = {
     console.log('       (Info) Bildbogen: ' + JSON.stringify(r));
     check('Bildbogen: Knopf im Protokoll, Vorschaubilder entstehen regelmäßig und je eins vor und nach dem Bildwechsel', r.knopf && r.n >= 4 && r.vor && r.nach && r.blobs >= 3, JSON.stringify(r));
     check('Bildbogen: ein Blatt als JPEG (über 5 KB, unter 3 MB), zeigt Bilder (nicht schwarz)', r.blaetter >= 1 && r.kb > 5 && r.kb < 3000 && r.w > 100 && r.mean > 8, JSON.stringify(r));
+    const fm = await page.evaluate(() => {   // Farbmatrix (für Safari ohne ctx.filter) gegen den echten Filter des Browsers: Farbkreis mit Verläufen
+      const w = 120, h = 60, mk = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, src = mk(), sx = src.getContext('2d');
+      for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) { sx.fillStyle = 'hsl(' + (i * 3) + ',' + (40 + j) + '%,' + (20 + j) + '%)'; sx.fillRect(i, j, 1, 1); }
+      const out = {};
+      for (const f of ['contrast(1.12) saturate(1.08) hue-rotate(73.0deg) saturate(0.85) brightness(1.060)', 'hue-rotate(-140.0deg)', 'saturate(1.45) brightness(0.900)']) {
+        const a = mk(), ax = a.getContext('2d'); ax.filter = f; ax.drawImage(src, 0, 0);
+        const b = mk(), bx = b.getContext('2d'); bx.drawImage(src, 0, 0); bbRecolor(bx, w, h, f);
+        const da = ax.getImageData(0, 0, w, h).data, db = bx.getImageData(0, 0, w, h).data; let d = 0;
+        for (let i = 0; i < da.length; i += 4) d += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+        out[f] = +(d / (w * h * 3)).toFixed(2);
+      }
+      return out; });
+    console.log('       (Info) Farbmatrix gegen Browser-Filter (mittlere Abweichung 0-255): ' + JSON.stringify(fm));
+    check('Bildbogen: nachgerechnete Farbe (Safari ohne ctx.filter) wie der echte Filter (mittlere Abweichung unter 4 von 255)', Object.values(fm).every(v => v < 4), JSON.stringify(fm));
     check('Bildbogen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },

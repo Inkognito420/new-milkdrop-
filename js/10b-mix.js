@@ -19,8 +19,10 @@ const MIXCFG = {
   tries: 8,                    // so viele Paare höchstens pro Knopfdruck
   w: 128, h: 72,               // Größe des Prüf-Visualizers
   frames: 40, perTick: 4,      // so viele Prüf-Bilder (je 1/30 s Musikzeit), so viele pro Bildschirm-Bild (verteilt die Arbeit)
-  lumaMin: 16, lumaMax: 205,   // mittlere Helligkeit (0-255): darunter schwarz bzw. trüb, darüber zu hell (Build 118: 245 → 205, iPhone-Protokoll: Mixe mit 208-228 wirkten fast weiß, keiner bekam einen Stern)
-  moveMin: 0.4,                // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild
+  lumaMin: 16, lumaMax: 220,   // mittlere Helligkeit (0-255): darunter schwarz bzw. trüb, darüber zu hell. Build 119 nach Emmos Sternen (Bildbogen + Protokoll Build 117):
+                               // gesternt bei Helligkeit 20, 24, 71, 210; nicht gesternt und fast weiß bei 227-234 (Build 118 hatte 205, das hätte den 210er verworfen)
+  moveMin: 5,                  // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild. Build 119: 0,4 → 5 (gesternt bei Bewegung 15-74,
+                               // die fast stehenden mit 0,5 und 4 sahen im Bildbogen wie ein Standbild aus)
   blend: 2,                    // Überblenden zum Mix in Sekunden
   share: 0.35,                 // Auto-Mix (Build 118): so viele automatische Bildwechsel (Abschnitt, Phrase, Zeit) werden ein frischer Mix (Regler in der Werkstatt)
   prepEveryMs: 3000,           // so oft wird nachgesehen, ob ein Mix vorbereitet werden muss

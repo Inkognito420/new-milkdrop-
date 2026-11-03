@@ -101,7 +101,8 @@ Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausg
 Das Protokoll sagt, welches Bild lief, der Bildbogen zeigt, wie es aussah. Während Musik läuft, entsteht alle 5 s ein Vorschaubild (192 px breit, im Hochformat 112),
 dazu bei jedem Bildwechsel eins kurz davor (rot beschriftet) und 3,2 s danach (blau). Gezeichnet wird, was auf dem Schirm ist: Milkdrop mit Farbfilter
 (wenn der Browser `ctx.filter` kann, sonst steht „ohne Farbfilter“ im Kopf) und Spiegelung, eigener Shader, Funken und Ringe, Blitz. Nicht dabei: Zoom/Drehen des
-Mischpults. Die Bilder liegen nur im Speicher (JPEG, höchstens 360, ca. 25 Minuten), beim Neuladen sind sie weg.
+Mischpults. Safari (iPhone) kann `ctx.filter` nicht: dort wird der Farbfilter ab Build 119 als Farbmatrix nachgerechnet (Kopf: „Farbe nachgerechnet“,
+Abweichung zum echten Filter im Test 0–3 von 255). Die Bilder liegen nur im Speicher (JPEG, höchstens 360, ca. 25 Minuten), beim Neuladen sind sie weg.
 **Mehr → Protokoll → „Bildbogen“** setzt sie zu Blättern zusammen (6 Spalten, 120 Bilder pro Blatt; unter jedem Bild Zeit wie im Protokoll, Track-Position,
 Anlass oder Abschnitt, Preset-Name) und öffnet das Teilen-Menü (iPhone) bzw. lädt sie herunter. Ein Blatt hat typisch wenige hundert KB.
 Gelesen wird die WebGL-Fläche direkt nach dem Zeichnen im selben Bild (`bbFrame` am Ende der Schleife in `js/09`). Test: Szenario `bildbogen`.
@@ -130,7 +131,7 @@ Protokoll: „Mix: … Bewegung „A“, Look „B“ … geprüft (Helligkeit, 
 **Auto-Mix (ab Build 118):** Ein geprüfter Mix liegt immer schon bereit: 3,5 s nach jedem Bildwechsel (Überblenden ist dann durch) wird im Hintergrund
 der nächste gesucht und geprüft. Bei einem automatischen Wechsel (Abschnitt, Phrase, Zeit; nicht beim Wischen) wird er mit dem Anteil aus der Werkstatt
 (Gruppe „Mix“, Regler „Auto-Mix“, Voreinstellung 35 %, 0 = nie, gespeichert unter `nmd:mix-anteil`) gezeigt, also auch genau auf dem Drop. Der Knopf nimmt
-den bereitliegenden Mix sofort. Zu hell gilt ab Build 118 schon ab mittlerer Helligkeit 205 (vorher 245). Protokoll: „Auto-Mix · drop: …“ und jede Minute „Mix (letzte Minute): …“.
+den bereitliegenden Mix sofort. Prüfgrenzen ab Build 119 nach Emmos Sternen: Helligkeit 16–220, Bewegung ab 5 (vorher 0,4: fast stehende Mixe kamen durch). Protokoll: „Auto-Mix · drop: …“ und jede Minute „Mix (letzte Minute): …“.
 
 ## Klangrollen: die neuen Variablen
 

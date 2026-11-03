@@ -19,7 +19,29 @@ const BBCFG = {
   q: 0.72,              // JPEG-Qualität der Vorschaubilder
   cols: 6, perSheet: 120, sheetQ: 0.82   // Bildbogen: Spalten, Bilder pro Blatt, JPEG-Qualität
 };
-const bbFilterOk = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;   // ohne: Vorschaubilder ohne Takt-/Acid-Farbe
+const bbFilterOk = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
+// Build 119: Safari (iPhone) kann ctx.filter nicht (erster Bildbogen: „ohne Farbfilter“). Dann wird der CSS-Filter des Bilds (contrast, saturate, hue-rotate,
+// brightness, wie applyFilter in js/04 sie setzt) als Farbmatrix nachgerechnet, nach den Formeln der Filter-Spezifikation (ohne Zwischen-Abschneiden).
+function bbMatrix(f) {
+  let M = [1, 0, 0, 0, 1, 0, 0, 0, 1], o = [0, 0, 0];
+  const mul = (A, a) => { const N = [], q = []; for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) N[r * 3 + c] = A[r * 3] * M[c] + A[r * 3 + 1] * M[3 + c] + A[r * 3 + 2] * M[6 + c]; q[r] = A[r * 3] * o[0] + A[r * 3 + 1] * o[1] + A[r * 3 + 2] * o[2] + a[r]; } M = N; o = q; };
+  String(f || '').replace(/([a-z-]+)\(([-\d.]+)(deg)?\)/g, (m, fn, v) => {
+    const x = +v;
+    if (fn === 'saturate') mul([0.213 + 0.787 * x, 0.715 - 0.715 * x, 0.072 - 0.072 * x, 0.213 - 0.213 * x, 0.715 + 0.285 * x, 0.072 - 0.072 * x, 0.213 - 0.213 * x, 0.715 - 0.715 * x, 0.072 + 0.928 * x], [0, 0, 0]);
+    else if (fn === 'hue-rotate') { const c = Math.cos(x * Math.PI / 180), s = Math.sin(x * Math.PI / 180);
+      mul([0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928, 0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283, 0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072], [0, 0, 0]); }
+    else if (fn === 'brightness') mul([x, 0, 0, 0, x, 0, 0, 0, x], [0, 0, 0]);
+    else if (fn === 'contrast') mul([x, 0, 0, 0, x, 0, 0, 0, x], [127.5 - 127.5 * x, 127.5 - 127.5 * x, 127.5 - 127.5 * x]);
+    return m; });
+  return { M, o };
+}
+function bbRecolor(x, w, h, f) {
+  if (!f || f === 'none') return;
+  const { M, o } = bbMatrix(f), img = x.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const r = d[i], g = d[i + 1], b = d[i + 2];
+    d[i] = M[0] * r + M[1] * g + M[2] * b + o[0]; d[i + 1] = M[3] * r + M[4] * g + M[5] * b + o[1]; d[i + 2] = M[6] * r + M[7] * g + M[8] * b + o[2]; }
+  x.putImageData(img, 0, 0);
+}
 const BB = { list: [], nextT: 0, lastT: -1e9, name: '', after: null, cv: null, cx: null, n: 0 };
 const bbPos = () => micOn ? 'Mikro' : (curFile && !audio.paused || audio.currentTime > 0) ? Math.floor(audio.currentTime / 60) + ':' + String(Math.floor(audio.currentTime % 60)).padStart(2, '0') : '';
 function bbGrab(name, tag) {
@@ -39,6 +61,7 @@ function bbGrab(name, tag) {
       x.drawImage(canvas, 0, 0, tw, th); x.restore();
     }
     if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); try { x.filter = shEl.style.filter || 'none'; } catch (e) {} x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
+    if (!bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Milkdrop und eigener Shader haben denselben Filter (applyFilter, js/04); Funken und Blitz nicht
     x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(fxc, 0, 0, tw, th); x.restore();
     if (flash > 0.02) { x.fillStyle = 'rgba(255,255,255,' + Math.min(1, flash).toFixed(2) + ')'; x.fillRect(0, 0, tw, th); }
   } catch (e) { return; }
@@ -85,7 +108,7 @@ async function bbSheets() {
     const c = document.createElement('canvas'); c.width = cols * cw + 8; c.height = head + rows * chh + 4;
     const x = c.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, c.width, c.height);
     x.fillStyle = '#c6f432'; x.font = 'bold 13px monospace';
-    x.fillText('New Milkdrop Bildbogen · Build ' + BUILD_NO + ' · ' + new Date().toLocaleString('de-DE') + (parts > 1 ? ' · Blatt ' + (p + 1) + '/' + parts : '') + ' · ' + L[0].t + '–' + L[L.length - 1].t + (bbFilterOk ? '' : ' · ohne Farbfilter'), 8, 21);
+    x.fillText('New Milkdrop Bildbogen · Build ' + BUILD_NO + ' · ' + new Date().toLocaleString('de-DE') + (parts > 1 ? ' · Blatt ' + (p + 1) + '/' + parts : '') + ' · ' + L[0].t + '–' + L[L.length - 1].t + (bbFilterOk ? '' : ' · Farbe nachgerechnet'), 8, 21);
     for (let i = 0; i < L.length; i++) {
       const it = L[i], col = i % cols, row = Math.floor(i / cols), x0 = 4 + col * cw, y0 = head + row * chh;
       const im = await bbLoad(it.blob);
