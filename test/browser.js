@@ -712,6 +712,25 @@ const SZ = {
     check('Stereo live: keine Seitenfehler', errs.length === 0 && m.errs.length === 0, errs.concat(m.errs).join(' | '));
     await m.close();
   },
+  async bildbogen() {
+    // Bildbogen (Build 117): Vorschaubilder von dem, was auf dem Schirm ist, vor und nach jedem Wechsel; als Blatt zum Teilen. Echte Butterchurn-Kopie.
+    const { page, errs, close } = await open({ real: true });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    await page.evaluate(() => { BBCFG.everyS = 1; BBCFG.afterS = 1.5; auto = false; audio.currentTime = 20; __BB.nextT = 0; });
+    await page.waitForTimeout(5000); await page.evaluate(() => goNext()); await page.waitForTimeout(3500);
+    const r = await page.evaluate(async () => {
+      const L = __BB.list.slice(), sheets = await bbSheets(), b = sheets[0];
+      let mean = -1, w = 0, h = 0;
+      if (b) { const u = URL.createObjectURL(b), im = new Image(); await new Promise(res => { im.onload = res; im.onerror = res; im.src = u; }); w = im.width; h = im.height;
+        const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(im, 0, 0); const d = x.getImageData(0, 40, w, h - 40).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; mean = s / (d.length / 4) / 3; }
+      return { knopf: !!$('logBild'), n: L.length, vor: L.some(i => i.tag === 'vor Wechsel'), nach: L.some(i => i.tag === 'nach Wechsel'), blobs: L.filter(i => i.blob).length, blaetter: sheets.length, kb: b ? Math.round(b.size / 1024) : 0, w, h, mean: +mean.toFixed(1) }; });
+    console.log('       (Info) Bildbogen: ' + JSON.stringify(r));
+    check('Bildbogen: Knopf im Protokoll, Vorschaubilder entstehen regelmäßig und je eins vor und nach dem Bildwechsel', r.knopf && r.n >= 4 && r.vor && r.nach && r.blobs >= 3, JSON.stringify(r));
+    check('Bildbogen: ein Blatt als JPEG (über 5 KB, unter 3 MB), zeigt Bilder (nicht schwarz)', r.blaetter >= 1 && r.kb > 5 && r.kb < 3000 && r.w > 100 && r.mean > 8, JSON.stringify(r));
+    check('Bildbogen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+  },
   async mix() {
     // Mix (Build 115): zwei Favoriten kreuzen, unsichtbar prüfen, zeigen; Stern = Rezept, nach Neuladen wieder da. Mit der echten Butterchurn-Kopie.
     const { page, errs, close } = await open({ real: true });
