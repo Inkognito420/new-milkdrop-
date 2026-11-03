@@ -16,11 +16,14 @@ if (window.__AM_STEP !== 10) throw new Error('new-milkdrop-: Teil 10b (mix) nich
 const MIX_LOOK_KEYS = ['gammaadj', 'echo_zoom', 'echo_alpha', 'echo_orient', 'red_blue', 'brighten', 'darken', 'solarize', 'invert',
   'b1n', 'b2n', 'b3n', 'b1x', 'b2x', 'b3x', 'b1ed'];
 const MIXCFG = {
-  tries: 8,                    // so viele Paare höchstens pro Knopfdruck
+  tries: 12,                   // so viele Paare höchstens pro Suche (Build 120: 8 → 12, in der Sandbox fand jede 12. Suche mit 12 Favoriten in 8 Versuchen nichts)
   w: 128, h: 72,               // Größe des Prüf-Visualizers
   frames: 40, perTick: 4,      // so viele Prüf-Bilder (je 1/30 s Musikzeit), so viele pro Bildschirm-Bild (verteilt die Arbeit)
   lumaMin: 16, lumaMax: 220,   // mittlere Helligkeit (0-255): darunter schwarz bzw. trüb, darüber zu hell. Build 119 nach Emmos Sternen (Bildbogen + Protokoll Build 117):
                                // gesternt bei Helligkeit 20, 24, 71, 210; nicht gesternt und fast weiß bei 227-234 (Build 118 hatte 205, das hätte den 210er verworfen)
+  washLuma: 185, washStd: 35,  // Build 120 (zweiter Bildbogen vom iPhone): blass = hell UND wenig Kontrast (Streuung der Helligkeit über das Bild).
+                               // Gemessen an Emmos Bildbögen (Helligkeit/Kontrast): verworfen gehörten 220/30, 215/20, 213/26, 242/7, 229/32; gut waren z. B. 97/38, 70/76
+  flatStd: 15, flatSat: 12,    // grau = kaum Kontrast UND kaum Farbe (gemessen 86/4 bzw. 89/14 bei Farbigkeit 0-10); dunkel, aber farbig (26/12, Farbigkeit 44) bleibt
   moveMin: 5,                  // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild. Build 119: 0,4 → 5 (gesternt bei Bewegung 15-74,
                                // die fast stehenden mit 0,5 und 4 sahen im Bildbogen wie ein Standbild aus)
   blend: 2,                    // Überblenden zum Mix in Sekunden
@@ -28,7 +31,7 @@ const MIXCFG = {
   prepEveryMs: 3000,           // so oft wird nachgesehen, ob ein Mix vorbereitet werden muss
   prepAfterSwitchMs: 3500      // ... aber erst so lange nach einem Bildwechsel (Überblenden ist dann durch, das Prüfen stört nichts)
 };
-const MIX = { recipes: [], busy: false, viz: null, vizFail: false, ready: null, share: MIXCFG.share, st: { made: 0, rejected: 0, auto: 0, why: {} } };
+const MIX = { bad: new Set(), recipes: [], busy: false, viz: null, vizFail: false, ready: null, share: MIXCFG.share, st: { made: 0, rejected: 0, auto: 0, why: {} } };
 { const v = store.get('mix-anteil', null); if (typeof v === 'number' && v >= 0 && v <= 1) MIX.share = v; }
 const isMix = n => typeof n === 'string' && n.indexOf('Mix · ') === 0;
 const mixQs = s => { const o = new Set(); String(s || '').replace(/\bq(\d+)\b/g, (m, d) => { o.add(+d); return m; }); return o; };
@@ -83,6 +86,11 @@ function mixViz() {
   } catch (e) { MIX.viz = null; MIX.vizFail = true; err('Mix: Prüf-Grafik startet nicht (' + (e && e.message || e) + '), Mixe laufen ungeprüft'); }
   return MIX.viz;
 }
+// Bewertung eines Prüfbilds: '' = gut, sonst der Grund (Helligkeit, Kontrast = Streuung der Helligkeit, Farbe = max-min je Punkt, Bewegung; alles 0-255)
+function mixJudge(l, sd, sat, d) {
+  const C = MIXCFG;
+  return l < C.lumaMin ? 'schwarz' : l > C.lumaMax ? 'weiß' : d < C.moveMin ? 'steht' : (l >= C.washLuma && sd < C.washStd) ? 'blass' : (sd < C.flatStd && sat < C.flatSat) ? 'grau' : '';
+}
 const mixTick = () => new Promise(res => requestAnimationFrame(() => res()));
 async function mixCheck(p) {
   const V = mixViz(); if (!V) return { ok: true, skip: true };
@@ -97,12 +105,15 @@ async function mixCheck(p) {
       if (i % MIXCFG.perTick === 0) await mixTick();
     }
   } catch (e) { return { ok: false, why: 'Fehler' }; }
-  let l = 0, d = 0; const n = W * H;
-  for (let i = 0; i < px.length; i += 4) { const y = 0.3 * f40[i] + 0.59 * f40[i + 1] + 0.11 * f40[i + 2]; l += y; d += Math.abs(f40[i] - f20[i]) + Math.abs(f40[i + 1] - f20[i + 1]) + Math.abs(f40[i + 2] - f20[i + 2]); }
-  l /= n; d /= 3 * n;
-  const out = { luma: +l.toFixed(1), move: +d.toFixed(2) };
-  out.ok = l >= MIXCFG.lumaMin && l <= MIXCFG.lumaMax && d >= MIXCFG.moveMin;
-  if (!out.ok) out.why = l < MIXCFG.lumaMin ? 'schwarz' : l > MIXCFG.lumaMax ? 'weiß' : 'steht';
+  let l = 0, l2 = 0, d = 0, sat = 0; const n = W * H;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = f40[i], g = f40[i + 1], b = f40[i + 2], y = 0.3 * r + 0.59 * g + 0.11 * b;
+    l += y; l2 += y * y; sat += Math.max(r, g, b) - Math.min(r, g, b);
+    d += Math.abs(r - f20[i]) + Math.abs(g - f20[i + 1]) + Math.abs(b - f20[i + 2]);
+  }
+  l /= n; d /= 3 * n; sat /= n; const sd = Math.sqrt(Math.max(0, l2 / n - l * l));
+  const out = { luma: +l.toFixed(1), move: +d.toFixed(2), kontrast: +sd.toFixed(1), farbe: +sat.toFixed(1) };
+  out.why = mixJudge(l, sd, sat, d); out.ok = !out.why;
   return out;
 }
 
@@ -112,10 +123,12 @@ async function mixFind(tag) {
   if (P.pool.length < 2) { rea('Mix: zu wenige Presets'); return null; }
   for (let t = 0; t < MIXCFG.tries; t++) {
     const a = P.pool[Math.floor(Math.random() * P.pool.length)], b = P.pool[Math.floor(Math.random() * P.pool.length)];
-    const r = { a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, p = mixBuild(r);
-    if (!p) { MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; continue; }
+    const r = { a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, key = a + '|' + b;
+    if (MIX.bad.has(key)) continue;                                   // Build 120: schon einmal durchgefallen (bis zum Neuladen gemerkt)
+    const p = mixBuild(r);
+    if (!p) { MIX.bad.add(key); MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; continue; }
     const c = await mixCheck(p);
-    if (!c.ok) { MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Bewegung ' + c.move : '') + '): ' + a + ' × ' + b); continue; }
+    if (!c.ok) { MIX.bad.add(key); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Kontrast ' + c.kontrast + ', Farbe ' + c.farbe + ', Bewegung ' + c.move : '') + '): ' + a + ' × ' + b); continue; }
     return { r, p, c, fav: P.fav };
   }
   rea(tag + ': in ' + MIXCFG.tries + ' Versuchen kein passendes Paar gefunden');
@@ -126,7 +139,7 @@ function mixShow(m, blend, why, tag) {
   const n = mixName(m.r); presets[n] = m.p; tunedCache.delete(n);
   if (!loadByName(n, blend, true, why)) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; return false; }
   MIX.st.made++;
-  erg(tag + ': ' + n + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
+  erg(tag + ': ' + n + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Kontrast ' + m.c.kontrast + ', Farbe ' + m.c.farbe + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
   return true;
 }
 // Vorbereiten: ein geprüfter Mix liegt bereit, damit der nächste Wechsel (z. B. der Drop) ohne Wartezeit genau auf dem Takt kommt
@@ -194,4 +207,4 @@ function mixSave() {
   if (ok || lost) rea('Mixe mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Eltern (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if (isMix(curName) || MIX.recipes.some(r => !favs.has(r.n))) mixSave(); });   // läuft nach dem Stern-Knopf (js/05): Stern gesetzt = Rezept speichern, weg = löschen
 { const b = $('mixBtn'); if (b) { b.hidden = false; b.addEventListener('click', () => { mixNow(); }); } }
-window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixPrepare = mixPrepare;
+window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;
