@@ -131,7 +131,9 @@ Protokoll: „Mix: … Bewegung „A“, Look „B“ … geprüft (Helligkeit, 
 **Auto-Mix (ab Build 118):** Ein geprüfter Mix liegt immer schon bereit: 3,5 s nach jedem Bildwechsel (Überblenden ist dann durch) wird im Hintergrund
 der nächste gesucht und geprüft. Bei einem automatischen Wechsel (Abschnitt, Phrase, Zeit; nicht beim Wischen) wird er mit dem Anteil aus der Werkstatt
 (Gruppe „Mix“, Regler „Auto-Mix“, Voreinstellung 35 %, 0 = nie, gespeichert unter `nmd:mix-anteil`) gezeigt, also auch genau auf dem Drop. Der Knopf nimmt
-den bereitliegenden Mix sofort. Prüfgrenzen ab Build 119 nach Emmos Sternen: Helligkeit 16–220, Bewegung ab 5 (vorher 0,4: fast stehende Mixe kamen durch). Protokoll: „Auto-Mix · drop: …“ und jede Minute „Mix (letzte Minute): …“.
+den bereitliegenden Mix sofort. Prüfgrenzen ab Build 119 nach Emmos Sternen: Helligkeit 16–220, Bewegung ab 5 (vorher 0,4: fast stehende Mixe kamen durch). Ab Build 120 nach seinem zweiten
+Bildbogen auch Kontrast und Farbe: „blass“ (Helligkeit ab 185 und Kontrast unter 35) und „grau“ (Kontrast unter 15 und Farbe unter 12) fallen durch (`mixJudge`).
+Bis zu 12 Versuche pro Suche, durchgefallene Paare werden bis zum Neuladen nicht noch einmal probiert. Protokoll: „Auto-Mix · drop: …“ und jede Minute „Mix (letzte Minute): …“.
 
 ## Klangrollen: die neuen Variablen
 

@@ -763,11 +763,14 @@ const SZ = {
       const run = m && new Function('a', m.init_eqs_str + ';' + m.frame_eqs_str + ' return a;')({});
       out.q = { gebaut: !!m, zoomA: m && m.baseVals.zoom, gammaB: m && m.baseVals.gammaadj, q2: run && run.q2, zoomFormel: run && run.zoom, konflikt: bad === null };
       delete presets['T·A']; delete presets['T·B']; delete presets['T·C'];
+      // Build 120: Bewertung mit den Messwerten aus Emmos Bildbögen (Helligkeit, Kontrast, Farbe; Bewegung 20)
+      out.urteil = [[220, 30, 8], [215, 20, 57], [242, 7, 11], [229, 32, 55], [86, 4, 0], [89, 14, 10], [97, 38, 188], [70, 76, 32], [26, 12, 44], [131, 40, 108]].map(v => mixJudge(v[0], v[1], v[2], 20) || 'gut');
       out.log = LOG.filter(l => /^Mix/.test(l.x)).map(l => l.x).slice(-6); out.st = window.__MIX.st;
       return out; });
     console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
     const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
     check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
+    check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) und graue (kein Kontrast, keine Farbe) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
       const w = ms => new Promise(r => setTimeout(r, ms)), out = {}; auto = true; __MIX.share = 1; __MIX.ready = null;
