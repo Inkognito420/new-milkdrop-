@@ -34,6 +34,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
 - `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale (alle Ebenen, Bit-Salat, Akzente), siehe unten „Schaltzentrale“.
+- `js/09b-bildbogen.js` (ab Build 117): Bildbogen, Vorschaubilder vom Bildschirm zum Teilen, siehe unten „Bildbogen“.
 - `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
@@ -94,6 +95,16 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Bildbogen: sehen, was auf dem Schirm war (ab Build 117)
+
+Das Protokoll sagt, welches Bild lief, der Bildbogen zeigt, wie es aussah. Während Musik läuft, entsteht alle 5 s ein Vorschaubild (192 px breit, im Hochformat 112),
+dazu bei jedem Bildwechsel eins kurz davor (rot beschriftet) und 3,2 s danach (blau). Gezeichnet wird, was auf dem Schirm ist: Milkdrop mit Farbfilter
+(wenn der Browser `ctx.filter` kann, sonst steht „ohne Farbfilter“ im Kopf) und Spiegelung, eigener Shader, Funken und Ringe, Blitz. Nicht dabei: Zoom/Drehen des
+Mischpults. Die Bilder liegen nur im Speicher (JPEG, höchstens 360, ca. 25 Minuten), beim Neuladen sind sie weg.
+**Mehr → Protokoll → „Bildbogen“** setzt sie zu Blättern zusammen (6 Spalten, 120 Bilder pro Blatt; unter jedem Bild Zeit wie im Protokoll, Track-Position,
+Anlass oder Abschnitt, Preset-Name) und öffnet das Teilen-Menü (iPhone) bzw. lädt sie herunter. Ein Blatt hat typisch wenige hundert KB.
+Gelesen wird die WebGL-Fläche direkt nach dem Zeichnen im selben Bild (`bbFrame` am Ende der Schleife in `js/09`). Test: Szenario `bildbogen`.
 
 ## Abwechslung: Varianten und Spiegeln (ab Build 116)
 
