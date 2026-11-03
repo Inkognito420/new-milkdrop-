@@ -42,7 +42,7 @@ function bbRecolor(x, w, h, f) {
     d[i] = M[0] * r + M[1] * g + M[2] * b + o[0]; d[i + 1] = M[3] * r + M[4] * g + M[5] * b + o[1]; d[i + 2] = M[6] * r + M[7] * g + M[8] * b + o[2]; }
   x.putImageData(img, 0, 0);
 }
-const BB = { list: [], nextT: 0, lastT: -1e9, name: '', after: null, cv: null, cx: null, n: 0 };
+const BB = { tracks: {}, list: [], nextT: 0, lastT: -1e9, name: '', after: null, cv: null, cx: null, n: 0 };
 const bbPos = () => micOn ? 'Mikro' : (curFile && !audio.paused || audio.currentTime > 0) ? Math.floor(audio.currentTime / 60) + ':' + String(Math.floor(audio.currentTime % 60)).padStart(2, '0') : '';
 function bbGrab(name, tag) {
   const W0 = canvas.clientWidth || innerWidth || 1, H0 = canvas.clientHeight || innerHeight || 1;
@@ -65,7 +65,10 @@ function bbGrab(name, tag) {
     x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(fxc, 0, 0, tw, th); x.restore();
     if (flash > 0.02) { x.fillStyle = 'rgba(255,255,255,' + Math.min(1, flash).toFixed(2) + ')'; x.fillRect(0, 0, tw, th); }
   } catch (e) { return; }
-  const item = { t: stamp(), pos: bbPos(), name: name || '', tag, sec: sectionKey(), w: tw, h: th, blob: null };
+  const tk = micOn ? 'Mikro' : curFile ? curFile.name : '';
+  if (tk && curAnalysis && curFile && !micOn && !BB.tracks[tk]) BB.tracks[tk] = curAnalysis;     // Build 121: Partitur des Tracks für das Partitur-Blatt
+  const item = { t: stamp(), pos: bbPos(), name: name || '', tag, sec: sectionKey(), w: tw, h: th, blob: null,
+    tk, tpos: micOn ? -1 : audio.currentTime, snd: [AKV.kick_env, AKV.acid_env, AKV.hats_env, AKV.pads_env].map(v => Math.max(0, Math.min(1, +v || 0))) };
   BB.list.push(item); BB.n++; if (BB.list.length > BBCFG.max) BB.list.shift();
   try { c.toBlob(b => { if (b) item.blob = b; else BB.list.splice(BB.list.indexOf(item), 1); }, 'image/jpeg', BBCFG.q); }
   catch (e) { BB.list.splice(BB.list.indexOf(item), 1); }
@@ -113,6 +116,7 @@ async function bbSheets() {
       const it = L[i], col = i % cols, row = Math.floor(i / cols), x0 = 4 + col * cw, y0 = head + row * chh;
       const im = await bbLoad(it.blob);
       if (im) x.drawImage(im, x0 + (cw - 8 - it.w) / 2, y0 + (ih - it.h) / 2, it.w, it.h);
+      if (it.snd) bbMeter(x, x0 + (cw - 8 - it.w) / 2 + 2, y0 + (ih + it.h) / 2 - 2, it.snd);
       x.fillStyle = it.tag === 'vor Wechsel' ? '#f9a' : it.tag === 'nach Wechsel' ? '#8cf' : '#ccc'; x.font = '10px monospace';
       x.fillText((it.t + ' ' + (it.pos ? '▶' + it.pos + ' ' : '') + (it.tag || it.sec || '')).slice(0, Math.floor((cw - 8) / 6)), x0, y0 + ih + 12);
       x.fillStyle = '#fff'; x.fillText(String(it.name).slice(0, Math.floor((cw - 8) / 6)), x0, y0 + ih + 24);
@@ -121,18 +125,73 @@ async function bbSheets() {
   }
   return out.filter(Boolean);
 }
+// Klang im Moment des Bilds (Build 121): vier kleine Balken unten links im Vorschaubild, Kick / Acid / Hats / Pads (Klangrollen, 0..1)
+const BB_ROLLEN = [['Kick', '#ff5050'], ['Acid', '#c6f432'], ['Hats', '#4dd2ff'], ['Pads', '#b48cff']];
+function bbMeter(x, left, bottom, v) {
+  x.fillStyle = 'rgba(0,0,0,0.6)'; x.fillRect(left, bottom - 18, 23, 18);
+  for (let k = 0; k < 4; k++) { const h = Math.max(1, Math.round(16 * v[k])); x.fillStyle = BB_ROLLEN[k][1]; x.fillRect(left + 2 + k * 5, bottom - 1 - h, 4, h); }
+}
+// Partitur-Blatt je Track (Build 121): die Musik als Zeitleiste (Abschnitte, Kick/Acid/Hats/Pads Takt für Takt, Drops) und darunter,
+// wann welches Vorschaubild entstand (Zeit wie im Protokoll). So passen Bild, Protokoll und Musik zusammen.
+const BB_SEC = { intro: '#4a4a66', groove: '#2a7a4a', break: '#3366cc', buildup: '#cc9933', drop: '#e03030', outro: '#665555' };
+async function bbPartituren() {
+  const out = [], names = [...new Set(BB.list.filter(i => i.tk && i.tk !== 'Mikro').map(i => i.tk))];
+  for (const tk of names) {
+    const A = BB.tracks[tk], L = BB.list.filter(i => i.tk === tk && i.tpos >= 0);
+    const W = 1208, X0 = 64, XW = W - X0 - 12, dur = A && A.duration ? A.duration : Math.max(1, ...L.map(i => i.tpos)) + 5;
+    const tx = s => X0 + Math.max(0, Math.min(1, s / dur)) * XW, rows = { sec: 30, r0: 58, rh: 20, img: 146 }, H = 236;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    x.fillStyle = '#111'; x.fillRect(0, 0, W, H);
+    x.fillStyle = '#c6f432'; x.font = 'bold 13px monospace';
+    x.fillText(('Partitur · ' + tk + (A && A.bpm ? ' · ' + A.bpm.toFixed(1) + ' BPM' : '') + ' · ' + Math.floor(dur / 60) + ':' + String(Math.floor(dur % 60)).padStart(2, '0') + ' · Build ' + BUILD_NO).slice(0, 150), 8, 19);
+    x.font = '10px monospace'; x.fillStyle = '#aaa';
+    x.fillText('Abschnitt', 4, rows.sec + 13); BB_ROLLEN.forEach((r, k) => { x.fillStyle = r[1]; x.fillText(r[0], 4, rows.r0 + k * rows.rh + 13); });
+    x.fillStyle = '#aaa'; x.fillText('Bilder', 4, rows.img + 12);
+    if (A && A.sections) for (const s of A.sections) {
+      const a = tx(s.t0), b = tx(s.t1); x.fillStyle = BB_SEC[s.type] || '#444'; x.fillRect(a, rows.sec, Math.max(1, b - a - 1), 18);
+      if (b - a > 34) { x.fillStyle = '#fff'; x.fillText(s.type, a + 3, rows.sec + 13); }
+    }
+    const P = A && A.rollen;
+    if (P && P.n) for (let bi = 0; bi < P.n; bi++) {
+      const a = tx(P.bar0 + bi * P.barS), b = tx(P.bar0 + (bi + 1) * P.barS);
+      for (let k = 0; k < 4; k++) { const v = P.v[bi * P.f.length + k] / 255; x.globalAlpha = 0.12 + 0.88 * v; x.fillStyle = BB_ROLLEN[k][1]; x.fillRect(a, rows.r0 + k * rows.rh + Math.round((1 - v) * 16), Math.max(1, b - a), 2 + Math.round(v * 16)); }
+      if (P.ent[bi] & 15) { x.globalAlpha = 1; x.fillStyle = '#fff'; x.fillRect(a, rows.r0 - 4, 1, 3); }
+    }
+    x.globalAlpha = 1;
+    if (!A) { x.fillStyle = '#f9a'; x.fillText('keine Partitur (Track lief ohne Analyse)', X0, rows.r0 + 20); }
+    if (A && A.aufbau && A.aufbau.drops) for (const d of A.aufbau.drops) { const a = tx(d.t); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(a, rows.sec - 2); x.lineTo(a - 4, rows.sec - 9); x.lineTo(a + 4, rows.sec - 9); x.fill(); }
+    for (let m = 0; m <= dur; m += 30) { const a = tx(m); x.fillStyle = '#333'; x.fillRect(a, rows.r0, 1, 4 * rows.rh); x.fillStyle = '#777'; x.fillText(Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'), a + 2, rows.img - 6); }
+    let lastX = -1e9, lane = 0;
+    for (const it of L) {
+      const a = tx(it.tpos); x.fillStyle = it.tag === 'vor Wechsel' ? '#f9a' : it.tag === 'nach Wechsel' ? '#8cf' : '#888';
+      x.fillRect(a, rows.img, 1, it.tag === 'nach Wechsel' ? 14 : 8);
+      if (it.tag === 'nach Wechsel' && a - lastX > 44) { lane = (lane + 1) % 4; x.fillText(it.t, a + 2, rows.img + 26 + lane * 16); lastX = a; }
+    }
+    x.fillStyle = '#777'; x.fillText('▲ Drop (Aufbau-Detektor) · rot = Bild vor Wechsel, blau = nach Wechsel (mit Zeit wie im Protokoll und im Bildbogen) · Balken: Klangrollen je Takt', 8, H - 6);
+    out.push({ tk, blob: await new Promise(res => c.toBlob(b => res(b), 'image/jpeg', 0.88)) });
+  }
+  return out.filter(o => o.blob);
+}
+// Alle Dateien zum Teilen: Bildbogen-Blätter, Partitur-Blätter, vollständiges Protokoll
+async function bbFiles() {
+  const blobs = await bbSheets(); if (!blobs.length) return [];
+  const day = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, ''), safe = s => String(s).replace(/\.[a-z0-9]+$/i, '').replace(/[^\w\-]+/g, '_').slice(0, 40);
+  const files = blobs.map((b, i) => new File([b], 'bildbogen-' + day + (blobs.length > 1 ? '-' + (i + 1) : '') + '.jpg', { type: 'image/jpeg' }));
+  for (const p of await bbPartituren()) files.push(new File([p.blob], 'partitur-' + day + '-' + safe(p.tk) + '.jpg', { type: 'image/jpeg' }));
+  files.push(new File([logTextAll()], 'protokoll-' + day + '.txt', { type: 'text/plain' }));
+  return files;
+}
 async function bbShare() {
   const btn = $('logBild'); if (btn) { btn.disabled = true; btn.textContent = 'Bildbogen …'; }
   try {
-    const blobs = await bbSheets();
-    if (!blobs.length) { rea('Bildbogen: noch keine Bilder (sie entstehen, während Musik läuft)'); return 0; }
-    const day = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    const files = blobs.map((b, i) => new File([b], 'bildbogen-' + day + (blobs.length > 1 ? '-' + (i + 1) : '') + '.jpg', { type: 'image/jpeg' }));
-    rea('Bildbogen: ' + BB.list.length + ' Bilder auf ' + files.length + (files.length === 1 ? ' Blatt' : ' Blättern') + ', zusammen ' + Math.round(files.reduce((s, f) => s + f.size, 0) / 1024) + ' KB');
+    const files = await bbFiles();
+    if (!files.length) { rea('Bildbogen: noch keine Bilder (sie entstehen, während Musik läuft)'); return 0; }
+    const nb = files.filter(f => /^bildbogen/.test(f.name)).length, np = files.filter(f => /^partitur/.test(f.name)).length;
+    rea('Bildbogen: ' + BB.list.length + ' Bilder auf ' + nb + (nb === 1 ? ' Blatt' : ' Blättern') + ', ' + np + ' Partitur-' + (np === 1 ? 'Blatt' : 'Blätter') + ', Protokoll ' + LOG_ALL.length + ' Zeilen, zusammen ' + Math.round(files.reduce((s, f) => s + f.size, 0) / 1024) + ' KB');
     if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: 'New Milkdrop Bildbogen' }); return files.length; } catch (e) { if (e && e.name === 'AbortError') return files.length; } }
     for (const f of files) { const a = document.createElement('a'), u = URL.createObjectURL(f); a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 20000); }
     return files.length;
   } finally { if (btn) { btn.disabled = false; btn.textContent = 'Bildbogen'; } }
 }
 { const b = $('logBild'); if (b) b.addEventListener('click', () => { bbShare(); }); }
-window.__BB = BB; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;
+window.__BB = BB; window.bbFiles = bbFiles; window.bbPartituren = bbPartituren; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;

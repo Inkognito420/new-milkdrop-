@@ -61,12 +61,14 @@ const fbuf = new Float32Array(analyser.frequencyBinCount);
 const binHz = ctx.sampleRate / analyser.fftSize;
 
 // ===== Protokoll: Auslöser → Reaktion → Ergebnis =====
-const LOG = [], LOG_MAX = 400, LOG_HEAD = 6, t0 = performance.now();   // die ersten LOG_HEAD Zeilen (Build, Start, Gerät) bleiben immer erhalten (Build 49)
+const LOG = [], LOG_MAX = 400, LOG_HEAD = 6, t0 = performance.now();
+const LOG_ALL = [], LOG_ALL_MAX = 20000;          // Build 121: alle Zeilen (ohne „ausgelassen“) für den Bildbogen, die ältesten fallen erst nach 20000 weg   // die ersten LOG_HEAD Zeilen (Build, Start, Gerät) bleiben immer erhalten (Build 49)
 const stamp = () => { const t = (performance.now() - t0) / 1000; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + (t % 60).toFixed(1).padStart(4, '0'); };
 let logCount = 0;
 function logEv(kind, text) {
   logCount++;
   LOG.push({ t: stamp(), k: kind, x: String(text) });
+  LOG_ALL.push(LOG[LOG.length - 1]); if (LOG_ALL.length > LOG_ALL_MAX) LOG_ALL.splice(LOG_HEAD, LOG_ALL.length - LOG_ALL_MAX);
   if (LOG.length > LOG_MAX) {
     const g = LOG[LOG_HEAD];
     if (g && g.gap) { g.gap++; g.x = '… ' + g.gap + ' Zeilen ausgelassen'; LOG.splice(LOG_HEAD + 1, 1); }
@@ -78,6 +80,7 @@ const trg = t => logEv('a', t), rea = t => logEv('r', t), erg = t => logEv('e', 
 let hudWoke = 0;                                 // Zeitpunkt, an dem ein Tipp die Leiste geweckt hat
 const KIND = { a: 'AUSLÖSER ', r: 'REAKTION  ', e: 'ERGEBNIS  ', x: 'FEHLER    ' };
 function logText() { return LOG.map(l => l.t + '  ' + KIND[l.k] + l.x).join('\n'); }
+function logTextAll() { return LOG_ALL.map(l => l.t + '  ' + KIND[l.k] + l.x).join('\n'); }
 let logHold = false;                              // zeigt das Protokoll des letzten Laufs: neue Zeilen überschreiben es nicht
 function renderLog() {
   if (logHold) return;
@@ -102,8 +105,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 120;
-const BUILD = 'Build ' + BUILD_NO + ' · Mix-Prüfung mit Kontrast und Farbe (keine blassen und grauen Mixe)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 121;
+const BUILD = 'Build ' + BUILD_NO + ' · Bildbogen mit Partitur und Protokoll, Mix-Prüfung „flach“';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
