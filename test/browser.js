@@ -728,6 +728,20 @@ const SZ = {
     console.log('       (Info) Bildbogen: ' + JSON.stringify(r));
     check('Bildbogen: Knopf im Protokoll, Vorschaubilder entstehen regelmäßig und je eins vor und nach dem Bildwechsel', r.knopf && r.n >= 4 && r.vor && r.nach && r.blobs >= 3, JSON.stringify(r));
     check('Bildbogen: ein Blatt als JPEG (über 5 KB, unter 3 MB), zeigt Bilder (nicht schwarz)', r.blaetter >= 1 && r.kb > 5 && r.kb < 3000 && r.w > 100 && r.mean > 8, JSON.stringify(r));
+    const fm = await page.evaluate(() => {   // Farbmatrix (für Safari ohne ctx.filter) gegen den echten Filter des Browsers: Farbkreis mit Verläufen
+      const w = 120, h = 60, mk = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }, src = mk(), sx = src.getContext('2d');
+      for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) { sx.fillStyle = 'hsl(' + (i * 3) + ',' + (40 + j) + '%,' + (20 + j) + '%)'; sx.fillRect(i, j, 1, 1); }
+      const out = {};
+      for (const f of ['contrast(1.12) saturate(1.08) hue-rotate(73.0deg) saturate(0.85) brightness(1.060)', 'hue-rotate(-140.0deg)', 'saturate(1.45) brightness(0.900)']) {
+        const a = mk(), ax = a.getContext('2d'); ax.filter = f; ax.drawImage(src, 0, 0);
+        const b = mk(), bx = b.getContext('2d'); bx.drawImage(src, 0, 0); bbRecolor(bx, w, h, f);
+        const da = ax.getImageData(0, 0, w, h).data, db = bx.getImageData(0, 0, w, h).data; let d = 0;
+        for (let i = 0; i < da.length; i += 4) d += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+        out[f] = +(d / (w * h * 3)).toFixed(2);
+      }
+      return out; });
+    console.log('       (Info) Farbmatrix gegen Browser-Filter (mittlere Abweichung 0-255): ' + JSON.stringify(fm));
+    check('Bildbogen: nachgerechnete Farbe (Safari ohne ctx.filter) wie der echte Filter (mittlere Abweichung unter 4 von 255)', Object.values(fm).every(v => v < 4), JSON.stringify(fm));
     check('Bildbogen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },
@@ -755,7 +769,18 @@ const SZ = {
     const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
     check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
-    const star = await page.evaluate(() => { if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; });
+    const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
+      const w = ms => new Promise(r => setTimeout(r, ms)), out = {}; auto = true; __MIX.share = 1; __MIX.ready = null;
+      for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
+      out.bereit = !!__MIX.ready;
+      nextPreset(1.5, undefined, false, 'n'); out.wischen = curName; out.nochBereit = !!__MIX.ready;
+      nextPreset(0, undefined, false, 's'); out.abschnitt = curName; out.log = LOG.some(l => /^Auto-Mix · /.test(l.x));
+      for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
+      __MIX.share = 0; nextPreset(0, undefined, false, 's'); out.anteilNull = curName; out.regler = !!$('mixShare');
+      __MIX.share = 0.35; auto = false; return out; });
+    console.log('       (Info) Auto-Mix: ' + JSON.stringify(am));
+    check('Auto-Mix: ein geprüfter Mix liegt bereit; ein automatischer Wechsel (Abschnitt) nimmt ihn bei Anteil 100 %, Wischen nicht, bei Anteil 0 kommt keiner; Regler in der Werkstatt', am.bereit && !/^Mix · /.test(am.wischen) && am.nochBereit && /^Mix · /.test(am.abschnitt) && am.log && !/^Mix · /.test(am.anteilNull) && am.regler, JSON.stringify(am));
+    const star = await page.evaluate(n => { if (!/^Mix · /.test(curName) && /^Mix · /.test(n || '')) loadByName(n, 0); if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; }, am.abschnitt);
     await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
     const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
     check('Mix: Stern speichert das Rezept (nmd:mixe), nach dem Neuladen ist der Mix wieder da, hat seinen Stern und lässt sich laden', star && star.saved.includes(star.n) && back.da && back.fav && back.laden, JSON.stringify({ star, back }));

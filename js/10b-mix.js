@@ -19,11 +19,17 @@ const MIXCFG = {
   tries: 8,                    // so viele Paare höchstens pro Knopfdruck
   w: 128, h: 72,               // Größe des Prüf-Visualizers
   frames: 40, perTick: 4,      // so viele Prüf-Bilder (je 1/30 s Musikzeit), so viele pro Bildschirm-Bild (verteilt die Arbeit)
-  lumaMin: 16, lumaMax: 245,   // mittlere Helligkeit (0-255): darunter schwarz bzw. trüb, darüber weiß
-  moveMin: 0.4,                // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild
-  blend: 2                     // Überblenden zum Mix in Sekunden
+  lumaMin: 16, lumaMax: 220,   // mittlere Helligkeit (0-255): darunter schwarz bzw. trüb, darüber zu hell. Build 119 nach Emmos Sternen (Bildbogen + Protokoll Build 117):
+                               // gesternt bei Helligkeit 20, 24, 71, 210; nicht gesternt und fast weiß bei 227-234 (Build 118 hatte 205, das hätte den 210er verworfen)
+  moveMin: 5,                  // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild. Build 119: 0,4 → 5 (gesternt bei Bewegung 15-74,
+                               // die fast stehenden mit 0,5 und 4 sahen im Bildbogen wie ein Standbild aus)
+  blend: 2,                    // Überblenden zum Mix in Sekunden
+  share: 0.35,                 // Auto-Mix (Build 118): so viele automatische Bildwechsel (Abschnitt, Phrase, Zeit) werden ein frischer Mix (Regler in der Werkstatt)
+  prepEveryMs: 3000,           // so oft wird nachgesehen, ob ein Mix vorbereitet werden muss
+  prepAfterSwitchMs: 3500      // ... aber erst so lange nach einem Bildwechsel (Überblenden ist dann durch, das Prüfen stört nichts)
 };
-const MIX = { recipes: [], busy: false, viz: null, vizFail: false, st: { made: 0, rejected: 0, why: {} } };
+const MIX = { recipes: [], busy: false, viz: null, vizFail: false, ready: null, share: MIXCFG.share, st: { made: 0, rejected: 0, auto: 0, why: {} } };
+{ const v = store.get('mix-anteil', null); if (typeof v === 'number' && v >= 0 && v <= 1) MIX.share = v; }
 const isMix = n => typeof n === 'string' && n.indexOf('Mix · ') === 0;
 const mixQs = s => { const o = new Set(); String(s || '').replace(/\bq(\d+)\b/g, (m, d) => { o.add(+d); return m; }); return o; };
 const mixShort = n => { const s = String(n).replace(/^[_$\s]+/, '').split(/ - | · /).pop().replace(/\s*[\[(].*$/, '').trim() || String(n); return s.length > 22 ? s.slice(0, 21) + '…' : s; };
@@ -100,30 +106,79 @@ async function mixCheck(p) {
   return out;
 }
 
-// ===== Knopf „Mix“: Paar suchen, prüfen, zeigen =====
-async function mixNow() {
-  if (MIX.busy || !viz) return false;
-  MIX.busy = true; const btn = $('mixBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Mix …'; }
-  try {
-    const P = mixParents();
-    if (P.pool.length < 2) { rea('Mix: zu wenige Presets'); return false; }
-    if (!P.fav) rea('Mix: weniger als 2 Favoriten, Eltern werden zufällig gewählt');
-    for (let t = 0; t < MIXCFG.tries; t++) {
-      const a = P.pool[Math.floor(Math.random() * P.pool.length)], b = P.pool[Math.floor(Math.random() * P.pool.length)];
-      const r = { a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, p = mixBuild(r);
-      if (!p) { MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; continue; }
-      const c = await mixCheck(p);
-      if (!c.ok) { MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea('Mix verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Bewegung ' + c.move : '') + '): ' + a + ' × ' + b); continue; }
-      const n = mixName(r); presets[n] = p; tunedCache.delete(n);
-      if (!loadByName(n, MIXCFG.blend, true, 'm')) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; continue; }
-      MIX.st.made++;
-      erg('Mix: ' + n + ' · Bewegung „' + a + '“, Look „' + b + '“, Formen von ' + (p.mix.f === 'a' ? 'Bewegung' : 'Look') + (c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + c.luma + ', Bewegung ' + c.move + ')'));
-      return true;
-    }
-    rea('Mix: in ' + MIXCFG.tries + ' Versuchen kein passendes Paar gefunden, nochmal tippen');
-    return false;
-  } finally { MIX.busy = false; if (btn) { btn.disabled = false; btn.textContent = 'Mix'; } }
+// ===== Paar suchen und prüfen (für Knopf und Auto-Mix) =====
+async function mixFind(tag) {
+  const P = mixParents();
+  if (P.pool.length < 2) { rea('Mix: zu wenige Presets'); return null; }
+  for (let t = 0; t < MIXCFG.tries; t++) {
+    const a = P.pool[Math.floor(Math.random() * P.pool.length)], b = P.pool[Math.floor(Math.random() * P.pool.length)];
+    const r = { a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, p = mixBuild(r);
+    if (!p) { MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; continue; }
+    const c = await mixCheck(p);
+    if (!c.ok) { MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Bewegung ' + c.move : '') + '): ' + a + ' × ' + b); continue; }
+    return { r, p, c, fav: P.fav };
+  }
+  rea(tag + ': in ' + MIXCFG.tries + ' Versuchen kein passendes Paar gefunden');
+  return null;
 }
+// Einen gefundenen Mix zeigen
+function mixShow(m, blend, why, tag) {
+  const n = mixName(m.r); presets[n] = m.p; tunedCache.delete(n);
+  if (!loadByName(n, blend, true, why)) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; return false; }
+  MIX.st.made++;
+  erg(tag + ': ' + n + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
+  return true;
+}
+// Vorbereiten: ein geprüfter Mix liegt bereit, damit der nächste Wechsel (z. B. der Drop) ohne Wartezeit genau auf dem Takt kommt
+async function mixPrepare() {
+  if (MIX.busy || MIX.ready || !viz) return;
+  MIX.busy = true;
+  try { const m = await mixFind('Auto-Mix'); if (m) MIX.ready = m; }
+  finally { MIX.busy = false; }
+}
+setInterval(() => {
+  const playing = micOn || (curFile && !audio.paused);
+  if (MIX.share > 0 && playing && !frozen && document.visibilityState === 'visible' && performance.now() - lastSwitch > MIXCFG.prepAfterSwitchMs) mixPrepare();
+}, MIXCFG.prepEveryMs);
+// Auto-Mix: aus nextPreset (js/08) für automatische Wechsel. true = ein Mix wurde gezeigt.
+function mixAuto(blend, why) {
+  if (!auto || MIX.share <= 0 || !MIX.ready || 'stf'.indexOf(why) < 0 || Math.random() >= MIX.share) return false;
+  const m = MIX.ready; MIX.ready = null;
+  if (!mixShow(m, blend, why, 'Auto-Mix · ' + sectionKey())) return false;
+  MIX.st.auto++; return true;
+}
+window.mixAuto = mixAuto;
+
+// ===== Knopf „Mix“: liegt einer bereit, sofort; sonst suchen =====
+async function mixNow() {
+  if (!viz) return false;
+  const btn = $('mixBtn');
+  if (MIX.busy) {                                                    // gerade wird einer vorbereitet (oder ein zweiter Tipp): abwarten, dann den nehmen
+    if (btn) { btn.disabled = true; btn.textContent = 'Mix …'; }
+    for (let i = 0; i < 600 && MIX.busy; i++) await mixTick();
+    if (btn) { btn.disabled = false; btn.textContent = 'Mix'; }
+    if (MIX.busy) return false;
+  }
+  if (MIX.ready) { const m = MIX.ready; MIX.ready = null; return mixShow(m, MIXCFG.blend, 'm', 'Mix'); }
+  MIX.busy = true; if (btn) { btn.disabled = true; btn.textContent = 'Mix …'; }
+  try { const m = await mixFind('Mix'); return m ? mixShow(m, MIXCFG.blend, 'm', 'Mix') : false; }
+  finally { MIX.busy = false; if (btn) { btn.disabled = false; btn.textContent = 'Mix'; } }
+}
+
+// ===== Werkstatt: Regler „Mix-Anteil“ =====
+{ const werk = document.getElementById('werk');
+  if (werk) {
+    const box = document.createElement('div'); box.className = 'grp';
+    const lb = document.createElement('span'); lb.className = 'gl'; lb.textContent = 'Mix'; box.appendChild(lb);
+    const row = document.createElement('label'); row.style.cssText = 'flex:0 0 100%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)';
+    const t = document.createElement('span'); t.style.cssText = 'flex:0 0 150px'; t.textContent = 'Auto-Mix (Anteil der Wechsel)';
+    const r = document.createElement('input'); r.type = 'range'; r.min = '0'; r.max = '100'; r.step = '5'; r.value = String(Math.round(MIX.share * 100)); r.id = 'mixShare'; r.style.flex = '1';
+    const v = document.createElement('span'); v.style.cssText = 'flex:0 0 40px;text-align:right'; v.textContent = r.value + ' %';
+    r.addEventListener('input', () => { MIX.share = +r.value / 100; v.textContent = r.value + ' %'; store.set('mix-anteil', MIX.share); });
+    row.appendChild(t); row.appendChild(r); row.appendChild(v); box.appendChild(row); werk.appendChild(box);
+  } }
+// Protokoll: einmal pro Minute, wenn Mixe kamen
+setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %'); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
 
 // ===== Rezepte: Mixe mit Stern bleiben =====
 function mixSave() {
@@ -139,4 +194,4 @@ function mixSave() {
   if (ok || lost) rea('Mixe mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Eltern (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if (isMix(curName) || MIX.recipes.some(r => !favs.has(r.n))) mixSave(); });   // läuft nach dem Stern-Knopf (js/05): Stern gesetzt = Rezept speichern, weg = löschen
 { const b = $('mixBtn'); if (b) { b.hidden = false; b.addEventListener('click', () => { mixNow(); }); } }
-window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild;
+window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixPrepare = mixPrepare;

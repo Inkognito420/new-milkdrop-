@@ -218,6 +218,7 @@ function nextPreset(blend = 2.7, tg, exact, why) {
     const sn = pickShader();
     if (sn && loadByName(sn, blend, true, why)) { rea('Eigener Shader · Stil ' + lastShStyle + ' · Abschnitt ' + sectionKey()); return; }
   }
+  if (window.mixAuto && window.mixAuto(blend, why)) return;          // Build 118: Auto-Mix (js/10b), ein Teil der automatischen Wechsel wird ein frischer Mix
   for (let tries = 0; tries < 20; tries++) {
     lastFitInfo = '';
     const n = toggles.mood ? pickPreset(tg || moodTarget(sectionKey())) : randomUsable();
