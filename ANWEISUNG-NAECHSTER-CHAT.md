@@ -10,6 +10,7 @@ Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neue
 - Kosten: Vor jedem Workflow oder Agenten-Einsatz FRAGEN. Lieber selbst in wenigen Schritten arbeiten. Wochenlimit beachten (Stand Build 105: 90 % verbraucht, Reset Mittwoch 05:00): erst das Wichtigste, nur Geprüftes mergen.
 - Ehrlich berichten: was getestet wurde (Sandbox, Software-Grafik, künstliche Tracks, keine echten Handys) und was nicht. Immer klar sagen, was GEMESSEN und was eine FESTE REGEL ist. Nie „fertig“ melden, was nicht geprüft ist.
 - Speicher-Trennung (Acid und new-milkdrop- teilen sich die Adresse): new-milkdrop- speichert nur mit Vorsatz `nmd:` (`KEY_NS`), Offline-Speicher `nmd-<Build>`, Datenbanken `nmd-wd` (Hänger-Wächter), `nmd-partitur` (Partitur). Nie ändern, nie Acids Schlüssel (`am-...` ohne Vorsatz, `acid-<B>`, `acid-wd`) beschreiben oder löschen.
+- **Emmos Einstellungen nie überschreiben** (von Emmo bestätigt): Was er in der Werkstatt aus- oder umgestellt hat (Schalter in `nmd:am-toggles`, Regler wie `nmd:sz-gain`, `nmd:mix-anteil`), bleibt so. Keine Migration, kein „Zurücksetzen“, keine neue Voreinstellung, die gespeicherte Werte ersetzt. Neue Schalter/Regler dürfen nur dazukommen (mit Voreinstellung für den, der sie noch nie gestellt hat). Beispiel: „Hats & Snares“ ist bei ihm bewusst aus.
 - Fremder Code nur mit passender Lizenz (MIT, BSD, Apache-2.0, ISC, zlib; Lizenztext und Herkunft in den Ordner, Eintrag im README unter „Lizenzen“). Kein GPL/AGPL/LGPL. Alles lokal im Repo, kein CDN.
 
 ## AUFBAU VON new-milkdrop- (Stand Build 105)
