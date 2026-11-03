@@ -23,7 +23,8 @@ const MIXCFG = {
                                // gesternt bei Helligkeit 20, 24, 71, 210; nicht gesternt und fast weiß bei 227-234 (Build 118 hatte 205, das hätte den 210er verworfen)
   washLuma: 185, washStd: 35,  // Build 120 (zweiter Bildbogen vom iPhone): blass = hell UND wenig Kontrast (Streuung der Helligkeit über das Bild).
                                // Gemessen an Emmos Bildbögen (Helligkeit/Kontrast): verworfen gehörten 220/30, 215/20, 213/26, 242/7, 229/32; gut waren z. B. 97/38, 70/76
-  flatStd: 15, flatSat: 12,    // grau = kaum Kontrast UND kaum Farbe (gemessen 86/4 bzw. 89/14 bei Farbigkeit 0-10); dunkel, aber farbig (26/12, Farbigkeit 44) bleibt
+  flatStd: 15, flatSat: 12,
+  flatAny: 10,                 // Build 121: flach = kaum Kontrast, auch wenn farbig (dritter Bildbogen: „cartune × splatter effects“ war nur eine Farbfläche, Kontrast 3-7, Farbe 34-186)    // grau = kaum Kontrast UND kaum Farbe (gemessen 86/4 bzw. 89/14 bei Farbigkeit 0-10); dunkel, aber farbig (26/12, Farbigkeit 44) bleibt
   moveMin: 5,                  // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild. Build 119: 0,4 → 5 (gesternt bei Bewegung 15-74,
                                // die fast stehenden mit 0,5 und 4 sahen im Bildbogen wie ein Standbild aus)
   blend: 2,                    // Überblenden zum Mix in Sekunden
@@ -89,7 +90,7 @@ function mixViz() {
 // Bewertung eines Prüfbilds: '' = gut, sonst der Grund (Helligkeit, Kontrast = Streuung der Helligkeit, Farbe = max-min je Punkt, Bewegung; alles 0-255)
 function mixJudge(l, sd, sat, d) {
   const C = MIXCFG;
-  return l < C.lumaMin ? 'schwarz' : l > C.lumaMax ? 'weiß' : d < C.moveMin ? 'steht' : (l >= C.washLuma && sd < C.washStd) ? 'blass' : (sd < C.flatStd && sat < C.flatSat) ? 'grau' : '';
+  return l < C.lumaMin ? 'schwarz' : l > C.lumaMax ? 'weiß' : d < C.moveMin ? 'steht' : (l >= C.washLuma && sd < C.washStd) ? 'blass' : (sd < C.flatStd && sat < C.flatSat) ? 'grau' : sd < C.flatAny ? 'flach' : '';
 }
 const mixTick = () => new Promise(res => requestAnimationFrame(() => res()));
 async function mixCheck(p) {

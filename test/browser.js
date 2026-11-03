@@ -742,6 +742,10 @@ const SZ = {
       return out; });
     console.log('       (Info) Farbmatrix gegen Browser-Filter (mittlere Abweichung 0-255): ' + JSON.stringify(fm));
     check('Bildbogen: nachgerechnete Farbe (Safari ohne ctx.filter) wie der echte Filter (mittlere Abweichung unter 4 von 255)', Object.values(fm).every(v => v < 4), JSON.stringify(fm));
+    const fl = await page.evaluate(async () => { for (let i = 0; i < 450; i++) rea('Füllzeile ' + i); const f = await bbFiles(); const txt = f.find(x => /\.txt$/.test(x.name)); const t = txt ? await txt.text() : '';
+      return { namen: f.map(x => x.name.replace(/-\d{12}/, '')), partitur: f.filter(x => /^partitur/.test(x.name)).map(x => x.size), zeilen: t.split('\n').length, sichtbar: LOG.length, ausgelassen: /ausgelassen/.test(t), klang: __BB.list.every(i => Array.isArray(i.snd) && i.snd.length === 4) }; });
+    console.log('       (Info) Bildbogen-Dateien: ' + JSON.stringify(fl));
+    check('Bildbogen (Build 121): Teilen enthält Bildbogen, ein Partitur-Blatt je Track (JPEG über 5 KB) und das ganze Protokoll als Text (mehr Zeilen als sichtbar, nichts ausgelassen); jedes Bild kennt den Klang (Kick/Acid/Hats/Pads)', fl.namen.some(n => /^bildbogen/.test(n)) && fl.partitur.length >= 1 && fl.partitur.every(z => z > 5000) && fl.namen.some(n => /^protokoll.*\.txt$/.test(n)) && fl.zeilen > fl.sichtbar && !fl.ausgelassen && fl.klang, JSON.stringify(fl));
     check('Bildbogen: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },
@@ -764,13 +768,13 @@ const SZ = {
       out.q = { gebaut: !!m, zoomA: m && m.baseVals.zoom, gammaB: m && m.baseVals.gammaadj, q2: run && run.q2, zoomFormel: run && run.zoom, konflikt: bad === null };
       delete presets['T·A']; delete presets['T·B']; delete presets['T·C'];
       // Build 120: Bewertung mit den Messwerten aus Emmos Bildbögen (Helligkeit, Kontrast, Farbe; Bewegung 20)
-      out.urteil = [[220, 30, 8], [215, 20, 57], [242, 7, 11], [229, 32, 55], [86, 4, 0], [89, 14, 10], [97, 38, 188], [70, 76, 32], [26, 12, 44], [131, 40, 108]].map(v => mixJudge(v[0], v[1], v[2], 20) || 'gut');
+      out.urteil = [[220, 30, 8], [215, 20, 57], [242, 7, 11], [229, 32, 55], [86, 4, 0], [89, 14, 10], [97, 38, 188], [70, 76, 32], [26, 12, 44], [131, 40, 108], [114, 7, 186], [29, 3, 140]].map(v => mixJudge(v[0], v[1], v[2], 20) || 'gut');
       out.log = LOG.filter(l => /^Mix/.test(l.x)).map(l => l.x).slice(-6); out.st = window.__MIX.st;
       return out; });
     console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
     const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
     check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
-    check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) und graue (kein Kontrast, keine Farbe) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut', JSON.stringify(r.urteil));
+    check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) , graue (kein Kontrast, keine Farbe) und flache Farbflächen (Build 121) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut,flach,flach', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
       const w = ms => new Promise(r => setTimeout(r, ms)), out = {}; auto = true; __MIX.share = 1; __MIX.ready = null;

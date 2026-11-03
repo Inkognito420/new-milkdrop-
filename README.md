@@ -107,6 +107,13 @@ Abweichung zum echten Filter im Test 0–3 von 255). Die Bilder liegen nur im Sp
 Anlass oder Abschnitt, Preset-Name) und öffnet das Teilen-Menü (iPhone) bzw. lädt sie herunter. Ein Blatt hat typisch wenige hundert KB.
 Gelesen wird die WebGL-Fläche direkt nach dem Zeichnen im selben Bild (`bbFrame` am Ende der Schleife in `js/09`). Test: Szenario `bildbogen`.
 
+**Ab Build 121 mit Musik und Protokoll:** Jedes Vorschaubild hat unten links vier kleine Balken: Kick (rot), Acid (grün), Hats (blau), Pads (lila) im Moment
+der Aufnahme (Klangrollen). Pro Track kommt ein **Partitur-Blatt** dazu: Abschnitte (Intro, Groove, Break, Aufbau, Drop, Outro), Kick/Acid/Hats/Pads Takt
+für Takt aus der Partitur, Drops des Aufbau-Detektors (▲) und darunter jedes Vorschaubild als Strich (rot vor, blau nach einem Wechsel, mit Zeit wie im
+Protokoll). „Bildbogen“ teilt alles zusammen: Bildbogen-Blätter, Partitur-Blätter und das **ganze Protokoll als Textdatei** (`LOG_ALL`, bis 20000 Zeilen;
+das sichtbare Protokoll bleibt bei 400 Zeilen mit „ausgelassen“). Die Zeiten passen überall zusammen (Uhr seit Seitenstart, `stamp()`).
+Musik selbst wird nicht geteilt: Claude kann sie nicht hören, die Partitur zeigt, was die App gehört hat.
+
 ## Abwechslung: Varianten und Spiegeln (ab Build 116)
 
 Emmo: „es wiederholt sich oft, das Bild sieht jedes Mal gleich aus“.
