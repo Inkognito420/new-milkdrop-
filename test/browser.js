@@ -731,6 +731,20 @@ const SZ = {
     console.log('       (Info) Mitschnitt: ' + JSON.stringify(r));
     check('Mitschnitt: nimmt während der Musik auf (Video mit Ton), teilt in mehrere Videodateien, Knopf heißt „Mitschnitt“, beim Teilen kommen Protokoll und Partitur mit', r.ok && !r.err && r.knopf === 'Mitschnitt' && r.n >= 2 && r.typen.every(t => /^video\//.test(t)) && r.kb.every(k => k > 5) && r.protokoll && r.partitur && r.log, JSON.stringify(r));
     check('Mitschnitt: Farbe über WebGL (Weg für Safari) nimmt ohne Fehler auf; Schalter „Mitschnitt“ aus = keine neue Aufnahme', r.gl && !r.err && r.ausKeinNeuer, JSON.stringify(r));
+    const lw = await page.evaluate(async () => {   // Leer-Wächter (Build 123): ein schwarzes Bild bei Musik wird nach 2,5 s gewechselt und kommt nicht wieder
+      const w = ms => new Promise(r => setTimeout(r, ms)), z = { enabled: 0 };
+      presets['T·Leer'] = { baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, decay: 0.5, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(0.0); }', shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] };
+      const g0 = guard; guard = false; auto = true; audio.currentTime = 30; await w(500); loadByName('T·Leer', 0); lastSwitch = performance.now() - 3100;   // Leistungs-Wächter aus: in der Sandbox ist alles „zu langsam“
+      for (let i = 0; i < 30 && curName === 'T·Leer'; i++) await w(250);
+      const out = { gewechselt: curName !== 'T·Leer', gemerkt: LEER.has('T·Leer'), nichtMehr: !usable('T·Leer'), log: LOG.some(l => /^Leer-Wächter: „T·Leer“/.test(l.x)) }; guard = g0;
+      // Bewegung im Vorschaubild: gespiegelt sieht es anders aus als ungespiegelt (bbXf liest die CSS-Bewegung)
+      const c = document.createElement('canvas'); c.width = 64; c.height = 30; const x = c.getContext('2d'), px = () => Array.from(x.getImageData(0, 0, 64, 30).data);
+      const tr0 = canvas.style.transform; canvas.style.transform = ''; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const a = px();
+      canvas.style.transform = 'scale(-1,1)'; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const b = px(); canvas.style.transform = tr0;
+      let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); out.spiegelDiff = +(d / a.length).toFixed(2);
+      delete presets['T·Leer']; return out; });
+    console.log('       (Info) Leer-Wächter: ' + JSON.stringify(lw));
+    check('Leer-Wächter (Build 123): schwarzes Bild bei Musik wird nach ca. 2,5 s gewechselt, gemerkt und nicht wieder gewählt; Vorschaubild/Video übernimmt die Bewegung (gespiegelt ≠ ungespiegelt)', lw.gewechselt && lw.gemerkt && lw.nichtMehr && lw.log && lw.spiegelDiff > 1, JSON.stringify(lw));
     check('Mitschnitt: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },

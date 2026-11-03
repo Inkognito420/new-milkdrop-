@@ -16,14 +16,15 @@ if (typeof bbScreen !== 'function') throw new Error('new-milkdrop-: Teil 9c (mit
 const MSCFG = {
   long: 640,             // lange Seite des Videos in Pixeln
   fps: 30,               // Bilder pro Sekunde im Video (die App zeichnet 60, jedes zweite kommt ins Video)
-  vbps: 1200000, abps: 128000,   // gewünschte Bitraten (der Browser hält sich nicht immer daran, darum wird die Größe mitgezählt)
+  vbps: 700000, abps: 96000,     // gewünschte Bitraten (der Browser hält sich nicht immer daran, darum wird die Größe mitgezählt). Build 123: erster Mitschnitt
+                                 // vom iPhone mit 1,2 M + 128 k ergab 1,6 Mbit/s = nur 2:20 min pro 27-MB-Datei; jetzt ca. 4 min
   maxFileMB: 27,         // ab dieser Größe beginnt ein neuer Teil (bleibt sicher unter 29 MB, auch mit dem letzten Datenpaket)
   maxSegMin: 5,          // spätestens nach so vielen Minuten beginnt ein neuer Teil
   sliceMs: 4000,         // so oft liefert die Aufnahme Daten (damit die Größe mitgezählt werden kann)
   keepMB: 140,           // so viel Video wird höchstens behalten (die ältesten Teile fallen weg), bei ca. 6 MB/min etwa 20 Minuten
   forceGL: false         // nur zum Testen: Farbe über WebGL wie auf dem iPhone, auch wenn der Browser ctx.filter kann
 };
-const MS = { ok: false, mime: '', ext: '', segs: [], cur: null, n: 0, tap: null, dest: null, cv: null, cx: null, a: null, ax: null, b: null, bx: null, gl: null, lastF: 0, err: '' };
+const MS = { st: { n: 0, ms: 0, max: 0, t: performance.now() }, ok: false, mime: '', ext: '', segs: [], cur: null, n: 0, tap: null, dest: null, cv: null, cx: null, a: null, ax: null, b: null, bx: null, gl: null, lastF: 0, err: '' };
 { const cand = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
   try {
     if (typeof MediaRecorder !== 'undefined' && HTMLCanvasElement.prototype.captureStream && ctx.createMediaStreamDestination) {
@@ -69,7 +70,10 @@ function msSetup(w, h) {
 // Ein Bild ins Video (aus der Schleife, js/09, direkt nach dem Zeichnen)
 function msFrame(t) {
   const c = MS.cur; if (!c || c.state !== 'rec' || frozen || t - MS.lastF < 1000 / MSCFG.fps - 4) return;
-  MS.lastF = t;
+  MS.lastF = t; const t0 = performance.now();
+  try { msDraw(); } finally { const ms = performance.now() - t0; MS.st.n++; MS.st.ms += ms; if (ms > MS.st.max) MS.st.max = ms; }
+}
+function msDraw() {
   const w = MS.cv.width, h = MS.cv.height;
   try {
     if (!MS.gl) { bbScreen(MS.cx, w, h, { base: true, color: true, fx: true }); return; }
@@ -84,6 +88,10 @@ function msFrame(t) {
   } catch (e) { msFail('Bild: ' + (e && e.message || e)); }
 }
 window.msFrame = msFrame;
+// Protokoll: einmal pro Minute, wie viele Bilder ins Video gingen und was das Zeichnen kostet (Build 123: im ersten iPhone-Mitschnitt kamen nur 15-21 Bilder/s an)
+setInterval(() => { const S = MS.st, now = performance.now(), sec = (now - S.t) / 1000; MS.st = { n: 0, ms: 0, max: 0, t: now }; if (!S.n) return;
+  const fa = fpsHist.filter(h => now - h[0] <= 60000), app = fa.length ? Math.round(fa.reduce((s, h) => s + h[1], 0) / fa.length) : 0;
+  erg('Mitschnitt (letzte Minute): ' + (S.n / sec).toFixed(1).replace('.', ',') + ' Bilder/s ins Video, Zeichnen Ø ' + (S.ms / S.n).toFixed(1).replace('.', ',') + ' ms (max ' + S.max.toFixed(0) + ' ms) · App Ø ' + app + ' fps · ' + (MS.gl ? 'Farbe über WebGL' : 'Farbe direkt') + ' · Teil ' + (MS.cur ? MS.cur.n + ' (' + (MS.cur.bytes / 1048576).toFixed(1).replace('.', ',') + ' MB)' : '–') + ' · gespeichert ' + MS.segs.length + ' Teile, ' + (MS.segs.reduce((s, x) => s + x.blob.size, 0) / 1048576).toFixed(0) + ' MB'); }, 60000);
 
 // ===== Teile aufnehmen =====
 function msTap() {                                                     // Ton der aktuellen Quelle in die Aufnahme (wechselt mit Track, Mikro, Sicherheits-Modus)

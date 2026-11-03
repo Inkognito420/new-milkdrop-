@@ -101,12 +101,19 @@ Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausg
 
 Emmos Idee: statt Bildbogen ein Bildschirm-Mitschnitt, der nur auf Knopfdruck geteilt wird. Solange Musik läuft und der Schalter „Mitschnitt“ (Werkstatt,
 Anzeige) an ist, nimmt die App ein kleines Video auf (640 px lange Seite, 30 Bilder/s, MP4 auf dem iPhone): was auf dem Schirm ist (wie der Bildbogen:
-Milkdrop gespiegelt und mit Farbfilter, eigener Shader, Funken, Blitz; ohne Zoom/Drehen des Mischpults) und den Ton der Quelle (Datei, Sicherheits-Modus
+Milkdrop gespiegelt und mit Farbfilter, eigener Shader, Funken, Blitz; ab Build 123 auch Kick-Zoom, Drehen und Schwanken des Mischpults, gelesen aus dem
+CSS-Transform, `bbXf`) und den Ton der Quelle (Datei, Sicherheits-Modus
 oder Mikro). Ohne Musik pausiert die Aufnahme. Nichts wird gespeichert: die Teile liegen im Speicher, bis die App zu ist, behalten werden die letzten 140 MB
-(ca. 20 Minuten). Jeder Teil ist eine eigene Videodatei unter 27 MB (Claude nimmt höchstens 30 MB pro Datei) bzw. höchstens 5 Minuten; beim Drehen des
+(ab Build 123 mit 0,7 Mbit/s Video ca. 30 Minuten). Jeder Teil ist eine eigene Videodatei unter 27 MB (Claude nimmt höchstens 30 MB pro Datei) bzw. höchstens 5 Minuten; beim Drehen des
 Bildschirms beginnt ebenfalls ein neuer Teil. **Mehr → Protokoll → „Mitschnitt“** teilt die Videos, das ganze Protokoll und die Partitur-Blätter.
 Kann der Browser nicht aufnehmen, heißt der Knopf weiter „Bildbogen“ und teilt den Bildbogen. Farbe: mit `ctx.filter` direkt (`bbScreen`), sonst
 (Safari) über eine kleine WebGL-Fläche mit der Farbmatrix (`bbMatrix`). Test: Szenario `mitschnitt` (Sandbox-Videos mit ffmpeg geprüft: Bild und Ton da).
+
+**Leer-Wächter (ab Build 123):** Der erste iPhone-Mitschnitt (4 Videos, 9 Minuten, mit ffmpeg vermessen) zeigte 4–8 % wirklich leere Bilder
+(Helligkeit unter 8 von 255 und kaum Kontrast) in Strecken von 2 bis 6,4 s bei laufender Musik. Jetzt misst die App alle 0,25 s eine 32×15-Kopie des
+Schirms; ist das Bild bei Musik (Klangrollen zusammen über 0,15) länger als 2,5 s leer, wird gewechselt, und das Bild kommt in dieser Sitzung nicht wieder
+(`LEER`). Dunkle Bilder mit hellen Punkten zählen nicht (Kontrast). Nur mit echter Grafik und Auto-Wechsel. Protokoll: „Leer-Wächter: … s leer …“.
+Jede Minute steht im Protokoll „Mitschnitt (letzte Minute): … Bilder/s ins Video, Zeichnen Ø … ms · App Ø … fps“ (im ersten Mitschnitt kamen nur 15–21 Bilder/s an).
 
 ## Bildbogen: sehen, was auf dem Schirm war (ab Build 117)
 

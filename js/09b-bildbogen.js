@@ -44,6 +44,17 @@ function bbRecolor(x, w, h, f) {
 }
 const BB = { tracks: {}, list: [], nextT: 0, lastT: -1e9, name: '', after: null, cv: null, cx: null, n: 0 };
 const bbPos = () => micOn ? 'Mikro' : (curFile && !audio.paused || audio.currentTime > 0) ? Math.floor(audio.currentTime / 60) + ':' + String(Math.floor(audio.currentTime % 60)).padStart(2, '0') : '';
+// Build 123: die Bewegung des Bilds (CSS-Transform: Kick-Zoom, Drehen, Schwanken, Raum, Spiegeln; js/13 setzt sie jedes Bild) mit ins Vorschaubild/Video.
+// Der Browser rechnet sie in eine Matrix (Pixel, um die Bildmitte); sie wird auf die kleine Fläche umgerechnet. Zwischengespeichert je Transform-Text.
+const bbXfCache = new Map();
+function bbXf(x, el, tw, th) {
+  const s = el.style.transform; if (!s) return;
+  let m = bbXfCache.get(el);
+  if (!m || m.s !== s) { let M = null; try { M = new DOMMatrix(getComputedStyle(el).transform); if (M.isIdentity) M = null; } catch (e) { M = null; } m = { s, M }; bbXfCache.set(el, m); }
+  if (!m.M) return;
+  const cw = el.clientWidth || tw, ch = el.clientHeight || th, M = m.M;
+  x.translate(tw / 2, th / 2); x.scale(tw / cw, th / ch); x.transform(M.a, M.b, M.c, M.d, M.e, M.f); x.scale(cw / tw, ch / th); x.translate(-tw / 2, -th / 2);
+}
 // Was auf dem Schirm ist, verkleinert in einen 2D-Kontext zeichnen (Build 122: auch für den Mitschnitt, js/09c).
 // o.base: Milkdrop (gespiegelt wie auf dem Schirm) und eigener Shader; o.color: deren Farbfilter (ctx.filter, sonst nachgerechnet); o.fx: Funken, Ringe, Blitz
 function bbScreen(x, tw, th, o) {
@@ -53,12 +64,9 @@ function bbScreen(x, tw, th, o) {
     const shFull = shCur && shOp >= 0.999;
     if (!shFull) {
       x.save(); if (useF) { try { x.filter = canvas.style.filter || 'none'; } catch (e) {} }
-      const fl = !shCur && mdFlip ? mdFlip : '';
-      const sx = /scale\(-1,/.test(fl) ? -1 : 1, sy = /,-1\)/.test(fl) ? -1 : 1;
-      if (sx < 0 || sy < 0) { x.translate(sx < 0 ? tw : 0, sy < 0 ? th : 0); x.scale(sx, sy); }
-      x.drawImage(canvas, 0, 0, tw, th); x.restore();
+      bbXf(x, canvas, tw, th); x.drawImage(canvas, 0, 0, tw, th); x.restore();
     }
-    if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); if (useF) { try { x.filter = shEl.style.filter || 'none'; } catch (e) {} } x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
+    if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); if (useF) { try { x.filter = shEl.style.filter || 'none'; } catch (e) {} } bbXf(x, shEl, tw, th); x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
     if (o.color && !bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Milkdrop und eigener Shader haben denselben Filter (applyFilter, js/04); Funken und Blitz nicht
   }
   if (o.fx) {
@@ -81,9 +89,34 @@ function bbGrab(name, tag) {
   try { c.toBlob(b => { if (b) item.blob = b; else BB.list.splice(BB.list.indexOf(item), 1); }, 'image/jpeg', BBCFG.q); }
   catch (e) { BB.list.splice(BB.list.indexOf(item), 1); }
 }
+// ===== Leer-Wächter (Build 123) =====
+// Erster Mitschnitt vom iPhone (4 Videos, ca. 9 Minuten): das Bild war 4-8 % der Zeit wirklich leer (Helligkeit unter 8 und kaum Kontrast), in Strecken
+// von 2 bis 6,4 s, während Musik lief. Ist das Bild bei Musik länger als LEERCFG.ms leer, wird gewechselt; das Bild kommt in dieser Sitzung nicht wieder.
+// Dunkle Bilder mit Inhalt (wenige helle Punkte) zählen nicht als leer (Kontrast). Gemessen auf einer 32×15-Fläche (bbScreen), alle LEERCFG.every ms.
+const LEERCFG = { ms: 2500, every: 250, luma: 8, std: 6, afterSwitch: 3000, music: 0.15 };
+const LEER = new Set(), LW = { cv: null, x: null, since: 0, lastT: 0, n: 0 };
+{ const usable0 = usable; usable = n => usable0(n) && !LEER.has(n); }
+function bbLeer(t) {
+  if (t - LW.lastT < LEERCFG.every) return; LW.lastT = t;
+  const music = (AKV.kick_env || 0) + (AKV.acid_env || 0) + (AKV.hats_env || 0) + (AKV.pads_env || 0);
+  if (!viz || !viz.renderer || !viz.renderer.gl || !auto || !(micOn || (curFile && !audio.paused)) || t - lastSwitch < LEERCFG.afterSwitch || music < LEERCFG.music) { LW.since = 0; return; }
+  if (!LW.cv) { LW.cv = document.createElement('canvas'); LW.cv.width = 32; LW.cv.height = 15; LW.x = LW.cv.getContext('2d', { willReadFrequently: true }); }
+  let l = 0, l2 = 0;
+  try { bbScreen(LW.x, 32, 15, { base: true, color: false, fx: true }); const d = LW.x.getImageData(0, 0, 32, 15).data;
+    for (let i = 0; i < d.length; i += 4) { const y = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; l += y; l2 += y * y; } } catch (e) { return; }
+  l /= 480; const sd = Math.sqrt(Math.max(0, l2 / 480 - l * l));
+  if (!(l < LEERCFG.luma && sd < LEERCFG.std)) { LW.since = 0; return; }
+  if (!LW.since) { LW.since = t; return; }
+  if (t - LW.since < LEERCFG.ms) return;
+  const n = curName, dur = t - LW.since; LW.since = 0; LW.n++;
+  if (n) LEER.add(n);
+  rea('Leer-Wächter: „' + n + '“ war ' + (dur / 1000).toFixed(1).replace('.', ',') + ' s leer, während Musik lief (Helligkeit ' + l.toFixed(1) + ', Kontrast ' + sd.toFixed(1) + ') → Wechsel, kommt in dieser Sitzung nicht wieder');
+  nextPreset(1.0, undefined, false, 'l');
+}
 // Am Ende jedes Bilds aus der Schleife (js/09): Wechsel erkennen, Bilder nehmen
 function bbFrame(t) {
   if (frozen || document.visibilityState !== 'visible') return;
+  bbLeer(t);
   const playing = micOn || (curFile && !audio.paused);
   if (curName !== BB.name) {
     const old = BB.name; BB.name = curName;
@@ -202,4 +235,4 @@ async function bbShare() {
   } finally { if (btn) { btn.disabled = false; btn.textContent = 'Bildbogen'; } }
 }
 { const b = $('logBild'); if (b) b.addEventListener('click', () => { if (window.msShare && window.msShare.ok()) window.msShare(); else bbShare(); }); }   // Build 122: Mitschnitt (js/09c), sonst Bildbogen
-window.bbScreen = bbScreen; window.__BB = BB; window.bbFiles = bbFiles; window.bbPartituren = bbPartituren; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;
+window.bbScreen = bbScreen; window.LEER = LEER; window.LEERCFG = LEERCFG; window.__LW = LW; window.__BB = BB; window.bbFiles = bbFiles; window.bbPartituren = bbPartituren; window.bbSheets = bbSheets; window.bbShare = bbShare; window.BBCFG = BBCFG;
