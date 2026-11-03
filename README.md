@@ -127,6 +127,11 @@ Jeder Mix wird vorher unsichtbar geprüft (zweiter, kleiner Visualizer 128×72, 
 in der automatischen Auswahl mit. Ohne Stern ist er nach dem Neuladen weg. Weniger als 2 Favoriten: Eltern zufällig. Mixe gehen (noch) nicht in „Sichern/Laden“ mit.
 Protokoll: „Mix: … Bewegung „A“, Look „B“ … geprüft (Helligkeit, Bewegung)“ bzw. „Mix verworfen (Grund)“. Test: Szenario `mix`.
 
+**Auto-Mix (ab Build 118):** Ein geprüfter Mix liegt immer schon bereit: 3,5 s nach jedem Bildwechsel (Überblenden ist dann durch) wird im Hintergrund
+der nächste gesucht und geprüft. Bei einem automatischen Wechsel (Abschnitt, Phrase, Zeit; nicht beim Wischen) wird er mit dem Anteil aus der Werkstatt
+(Gruppe „Mix“, Regler „Auto-Mix“, Voreinstellung 35 %, 0 = nie, gespeichert unter `nmd:mix-anteil`) gezeigt, also auch genau auf dem Drop. Der Knopf nimmt
+den bereitliegenden Mix sofort. Zu hell gilt ab Build 118 schon ab mittlerer Helligkeit 205 (vorher 245). Protokoll: „Auto-Mix · drop: …“ und jede Minute „Mix (letzte Minute): …“.
+
 ## Klangrollen: die neuen Variablen
 
 In Preset-Gleichungen heißen sie `a.<name>` (z. B. `a.kick_entry`), in Warp- und Comp-Shadern einfach `<name>` (z. B. `kick_entry`).
