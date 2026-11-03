@@ -34,6 +34,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
 - `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale (alle Ebenen, Bit-Salat, Akzente), siehe unten „Schaltzentrale“.
+- `js/09c-mitschnitt.js` (ab Build 122): Mitschnitt, Video mit Ton der letzten Minuten zum Teilen, siehe unten „Mitschnitt“.
 - `js/09b-bildbogen.js` (ab Build 117): Bildbogen, Vorschaubilder vom Bildschirm zum Teilen, siehe unten „Bildbogen“.
 - `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
@@ -95,6 +96,17 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Mitschnitt: Video mit Ton (ab Build 122)
+
+Emmos Idee: statt Bildbogen ein Bildschirm-Mitschnitt, der nur auf Knopfdruck geteilt wird. Solange Musik läuft und der Schalter „Mitschnitt“ (Werkstatt,
+Anzeige) an ist, nimmt die App ein kleines Video auf (640 px lange Seite, 30 Bilder/s, MP4 auf dem iPhone): was auf dem Schirm ist (wie der Bildbogen:
+Milkdrop gespiegelt und mit Farbfilter, eigener Shader, Funken, Blitz; ohne Zoom/Drehen des Mischpults) und den Ton der Quelle (Datei, Sicherheits-Modus
+oder Mikro). Ohne Musik pausiert die Aufnahme. Nichts wird gespeichert: die Teile liegen im Speicher, bis die App zu ist, behalten werden die letzten 140 MB
+(ca. 20 Minuten). Jeder Teil ist eine eigene Videodatei unter 27 MB (Claude nimmt höchstens 30 MB pro Datei) bzw. höchstens 5 Minuten; beim Drehen des
+Bildschirms beginnt ebenfalls ein neuer Teil. **Mehr → Protokoll → „Mitschnitt“** teilt die Videos, das ganze Protokoll und die Partitur-Blätter.
+Kann der Browser nicht aufnehmen, heißt der Knopf weiter „Bildbogen“ und teilt den Bildbogen. Farbe: mit `ctx.filter` direkt (`bbScreen`), sonst
+(Safari) über eine kleine WebGL-Fläche mit der Farbmatrix (`bbMatrix`). Test: Szenario `mitschnitt` (Sandbox-Videos mit ffmpeg geprüft: Bild und Ton da).
 
 ## Bildbogen: sehen, was auf dem Schirm war (ab Build 117)
 

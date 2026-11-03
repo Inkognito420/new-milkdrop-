@@ -35,6 +35,7 @@ function loop() {
   jrFrame(t);
   fxFrame(t);
   if (window.bbFrame) window.bbFrame(t);          // Build 117: Bildbogen (js/09b), direkt nach dem Zeichnen, solange das Bild noch lesbar ist
+  if (window.msFrame) window.msFrame(t);          // Build 122: Mitschnitt (js/09c), ebenso
   if (auto && !frozen && !(toggles.phrase && engaged()) && t - lastSwitch > switchMs()) nextPreset(blendSecs('groove'), undefined, true, 't');
 }
 // Leistungs-Protokoll: alle 5 Minuten Durchschnitt und tiefster Wert, dazu jede Wächter-Markierung (um zu sehen, ob das Handy mit der Zeit warm wird)
