@@ -37,6 +37,7 @@ function brakeTry(n, fps, t) {
   if (JR.run) JR.run.fl |= 128;
   return true;
 }
+let mdFlip = '';                                     // Build 116: Spiegelung des aktuellen Milkdrop-Presets (CSS, kostet nichts)
 function usable(n) { return !broken.has(n) && !DEAD.has(n) && !suspect.has(n) && !(guard && slow.has(n)); }
 function loadByName(n, blend, pushHist = true, why = 'a') {
   rea('Preset: ' + n);
@@ -49,6 +50,7 @@ function loadByName(n, blend, pushHist = true, why = 'a') {
     if (shCur || shOp > 0) { shCur = null; shFade(0, Math.max(blend, 0.3)); }   // eigener Shader blendet aus, Milkdrop übernimmt
   }
   curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
+  if (!SH[n]) { const r = Math.random(); mdFlip = !toggles.flip ? '' : r < 0.3 ? ' scale(-1,1)' : r < 0.42 ? ' scale(1,-1)' : r < 0.5 ? ' scale(-1,-1)' : ''; }   // Build 116: Spiegeln, dasselbe Preset sieht anders aus
   if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
   recent.push(n); if (recent.length > 90) recent.shift();
   jrStart(n, why);                                   // Mitschreiben: neuer Lauf, der vorige wird mit diesem Anlass abgeschlossen

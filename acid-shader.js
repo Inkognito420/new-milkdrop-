@@ -21,6 +21,9 @@
      u_hue    Grundfarbe 0..1 (barHue + Stimmung, als Anteil eines Kreises)
      u_flash  Strobo-Schutz: 0..1, dämpft das Aufleuchten auf der Takt-Eins
               (Takt-Eins hellt nur helle Stellen auf, Schwarz bleibt schwarz)
+     u_v,u_w  Variante (Build 116): je 4 Zufallszahlen 0..1, bei jedem Einblenden neu
+              (Zahl der Säulen/Strahlen/Segmente, Spiegelung, Muster, Farbspanne).
+              Ohne Angabe 0,5 (mittlere Variante).
 
    Alle Schleifen sind klein und fest (iPhone-freundlich).
 
@@ -41,6 +44,7 @@
     '#endif',
     'uniform float u_time; uniform vec2 u_res;',
     'uniform float u_bass, u_mid, u_treb, u_beat, u_bar, u_build, u_hue, u_flash;',
+    'uniform vec4 u_v, u_w;',   // Build 116: Variante, 8 Zufallszahlen 0..1, neu bei jedem Einblenden (jede Vorstellung sieht anders aus)
     'vec3 hsv(float h, float s, float v){',
     '  vec3 k = clamp(abs(mod(h*6.0 + vec3(0.0,4.0,2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);',
     '  return v * mix(vec3(1.0), k, s);',
@@ -73,11 +77,11 @@
     id: 'peak-strahlen', style: 'peak', name: 'Peak · Strahlen',
     glsl: [
       'void main(){',
-      '  vec2 p = uvc();',
+      '  vec2 p = uvc() - (u_v.zw - 0.5)*0.35;',
       '  float r = length(p);',
       '  float a = atan(p.y, p.x);',
       '  float wob = sin(r*4.0 - u_time*1.2) * (0.8 + u_mid);',
-      '  float rays = 0.5 + 0.5*sin(a*14.0 + u_time*0.5 + wob);',
+      '  float rays = 0.5 + 0.5*sin(a*floor(8.0 + 16.0*u_v.x) + u_time*0.5 + wob + (u_v.y - 0.5)*8.0*r);',
       '  rays = pow(rays, 2.0 + 5.0*(1.0 - u_bass));',
       '  float fade = exp(-r*1.6);',
       '  float rad = 1.1*(1.0 - u_beat);',
@@ -93,24 +97,46 @@
     ].join('\n')
   });
 
-  // 2) Lichtwand: Säulen wie eine LED-Wand, Höhe tanzt mit Bass/Mitten/Höhen
+  // 2) Lichtwand: Säulen wie eine LED-Wand, Höhe tanzt mit Bass/Mitten/Höhen.
+  //    Build 116 (Emmo: „sieht jedes Mal gleich aus, Struktur in die Kästchen, die auch arbeitet“): jede Vorstellung eine eigene Variante
+  //    (12-31 Säulen, 14-47 Segmente, Aufbau von unten / von der Mitte nach oben und unten / Bass in der Mitte, Farbspanne, Lücken, Bogen)
+  //    und in jedem Kästchen ein Muster, das mit der Musik läuft (u_v.w): Plasma (Mitten), Streifen im Tempo (Höhen), Ring (Kick),
+  //    Funkeln (Hi-Hats, höchstens 3 Wechsel pro Sekunde), Wasser (Bass).
   SHADERS.push({
     id: 'peak-lichtwand', style: 'peak', name: 'Peak · Lichtwand',
     glsl: [
       'void main(){',
       '  vec2 q = gl_FragCoord.xy / u_res;',
-      '  float n = 20.0;',
-      '  float col_i = floor(q.x * n);',
-      '  float cx = fract(q.x * n);',
-      '  float seed = hash(vec2(col_i, 1.0));',
+      '  float n = floor(12.0 + 20.0*u_v.x);',
+      '  float segN = floor(14.0 + 34.0*u_v.y);',
+      '  float mode = floor(u_v.z*2.999);',
+      '  float pat = floor(u_v.w*4.999);',
+      '  float gx = mode > 1.5 ? abs(q.x - 0.5)*2.0 : q.x;',
+      '  float y = (mode > 0.5 && mode < 1.5) ? abs(q.y - 0.5)*2.0 : q.y;',
+      '  y += (u_w.z - 0.5)*0.5*sin(q.x*3.14159);',
+      '  float col_i = floor(gx * n);',
+      '  float cx = fract(gx * n);',
+      '  float seed = hash(vec2(col_i, 1.0 + u_w.w));',
       '  float band = col_i / n;',
       '  float lvl = mix(u_bass, mix(u_mid, u_treb, smoothstep(0.5, 1.0, band)), smoothstep(0.0, 0.5, band));',
       '  float hgt = 0.12 + 0.75*lvl*(0.6 + 0.4*sin(u_time*3.0 + seed*20.0)) + 0.1*u_beat;',
-      '  float bar = step(q.y, hgt) * step(0.08, cx) * step(cx, 0.92);',
-      '  float seg = step(0.25, fract(q.y * 36.0));',
-      '  float glow = exp(-abs(q.y - hgt)*18.0) * 0.6;',
-      '  float h = u_hue + band*0.25 + q.y*0.1;',
-      '  vec3 c = hsv(h, 0.7, 1.0) * (bar*seg*(0.7 + 0.3*q.y) + glow);',
+      '  float gap = 0.04 + 0.16*u_w.y;',
+      '  float bar = step(y, hgt) * step(gap, cx) * step(cx, 1.0 - gap);',
+      '  float sy = fract(y * segN);',
+      '  float seg = step(0.25, sy);',
+      '  vec2 cell = vec2((cx - gap)/(1.0 - 2.0*gap), (sy - 0.25)/0.75);',
+      '  vec2 cid = vec2(col_i, floor(y * segN));',
+      '  float tx;',
+      '  if (pat < 0.5) tx = 0.5 + 0.5*sin(q.x*13.0 + u_time*1.4 + 3.0*sin(q.y*9.0 - u_time*0.9) + 4.0*u_mid);',
+      '  else if (pat < 1.5) tx = smoothstep(0.35, 0.65, fract((cell.x + cell.y)*1.5 - u_time*(0.8 + 2.2*u_treb)));',
+      '  else if (pat < 2.5) tx = smoothstep(0.18, 0.0, abs(length(cell - 0.5) - 0.12 - 0.3*u_beat));',
+      '  else if (pat < 3.5) tx = 0.25 + 0.75*step(1.0 - 0.15 - 0.5*u_treb, hash(cid + floor(u_time*3.0)));',
+      '  else tx = vnoise(cid*0.6 + cell*1.5 + vec2(0.0, u_time*(0.4 + 1.2*u_bass)));',
+      '  float h = u_hue + band*(0.1 + 0.7*u_w.x) + y*0.1;',
+      '  float sat = 0.55 + 0.35*u_w.w;',
+      '  float glow = exp(-abs(y - hgt)*18.0) * 0.6;',
+      '  vec3 c = hsv(h, sat, 1.0) * (bar*seg*(0.55 + 0.6*tx)*(0.7 + 0.3*y) + glow);',
+      '  c += hsv(h + 0.5, sat, 1.0) * bar*seg*tx*0.15*u_mid;',
       '  c *= 1.0 + 0.4*u_bar*u_flash;',
       '  c *= 0.85 + 0.3*u_build;',
       '  gl_FragColor = vec4(c, 1.0);',
@@ -129,8 +155,8 @@
       '  p += 0.03*vec2(sin(u_time*0.3), cos(u_time*0.23));',
       '  float r = length(p) + 0.0001;',
       '  float a = atan(p.y, p.x) / 6.2831853;',
-      '  float z = 0.35/r + u_time*0.55;',
-      '  float w = a*10.0 + 0.3*sin(z*0.7);',
+      '  float z = 0.35/r + u_time*(0.35 + 0.45*u_v.y);',
+      '  float w = a*floor(6.0 + 10.0*u_v.x) + 0.3*sin(z*0.7) + (u_v.z - 0.5)*0.6/r;',
       '  float gz = abs(fract(z) - 0.5);',
       '  float gw = abs(fract(w) - 0.5);',
       '  float line = smoothstep(0.06, 0.0, gz) + smoothstep(0.04, 0.0, gw)*0.6;',
@@ -138,7 +164,7 @@
       '  float pulse = 0.65 + 0.35*u_beat + 0.2*u_bass;',
       '  float h = u_hue + 0.04*sin(z*0.5);',
       '  vec3 c = hsv(h, 0.65, 1.0) * line * fog * pulse;',
-      '  c += hsv(h + 0.5, 0.5, 0.25) * (1.0 - fog) * 0.6;',
+      '  c += hsv(h + 0.3 + 0.4*u_v.w, 0.5, 0.25) * (1.0 - fog) * 0.6;',
       '  c += vec3(0.04, 0.04, 0.06);',
       '  c *= 0.85 + 0.4*u_build;',
       '  gl_FragColor = vec4(c, 1.0);',
@@ -156,14 +182,14 @@
       '  return s;',
       '}',
       'void main(){',
-      '  vec2 p = uvc()*2.2;',
-      '  float t = u_time*0.08;',
+      '  vec2 p = uvc()*(1.5 + 1.5*u_v.x);',
+      '  float t = u_time*(0.05 + 0.07*u_v.z);',
       '  vec2 q = vec2(fbm(p + t), fbm(p + vec2(5.2, 1.3) - t));',
       '  float f = fbm(p + 2.0*q + vec2(0.0, t*2.0) + 0.6*u_bass);',
       '  float dens = smoothstep(0.25, 0.9, f);',
       '  float h = u_hue + 0.1*q.x;',
       '  vec3 c = hsv(h, 0.6, 1.0) * dens * (0.35 + 0.55*u_bass + 0.2*u_beat);',
-      '  c += hsv(h + 0.45, 0.5, 1.0) * pow(dens, 3.0) * 0.4 * u_mid;',
+      '  c += hsv(h + 0.2 + 0.6*u_v.y, 0.5, 1.0) * pow(dens, 3.0) * 0.4 * u_mid;',
       '  float vig = 1.0 - 0.9*dot(uvc(), uvc());',
       '  c *= clamp(vig, 0.0, 1.0);',
       '  c *= 0.9 + 0.5*u_build;',
@@ -179,18 +205,19 @@
     id: 'acid-welle', style: 'acid', name: 'Acid · 303-Welle',
     glsl: [
       'void main(){',
-      '  vec2 p = uvc()*3.0;',
+      '  vec2 p = uvc()*(2.0 + 2.0*u_v.x);',
       '  float k = 0.5 + 1.3*u_mid;',
+      '  float fq = 1.0 + 0.8*u_v.y;',
       '  for (int i = 0; i < 4; i++){',
       '    float fi = float(i);',
-      '    p += k*vec2(sin(p.y*1.4 + u_time*0.7 + fi), cos(p.x*1.4 - u_time*0.6 + fi*1.7)) * 0.55;',
+      '    p += k*vec2(sin(p.y*fq + u_time*0.7 + fi), cos(p.x*fq - u_time*0.6 + fi*1.7)) * 0.55;',
       '  }',
       '  float v = sin(p.x*2.0) + sin(p.y*2.0) + sin((p.x + p.y)*1.5);',
-      '  float band = 0.5 + 0.5*sin(v*3.0 + u_time);',
+      '  float band = 0.5 + 0.5*sin(v*(2.0 + 3.0*u_v.z) + u_time);',
       '  float edge = smoothstep(0.35, 0.0, abs(band - 0.5));',
       '  float h = u_hue + v*0.12 + u_mid*0.35;',
       '  vec3 c = hsv(h, 1.0, 1.0) * (0.25 + 0.75*band);',
-      '  c += hsv(h + 0.33, 1.0, 1.0) * edge * (0.5 + 0.8*u_beat);',
+      '  c += hsv(h + 0.2 + 0.3*u_v.w, 1.0, 1.0) * edge * (0.5 + 0.8*u_beat);',
       '  c *= 1.0 + 0.35*u_bar*u_flash;',
       '  c *= 0.85 + 0.5*u_build;',
       '  gl_FragColor = vec4(c, 1.0);',
@@ -205,15 +232,17 @@
       'float pat(vec2 p, float t){',
       '  float r = length(p);',
       '  float a = atan(p.y, p.x);',
-      '  float seg = 6.2831853/6.0;',
+      '  float seg = 6.2831853/floor(4.0 + 8.0*u_v.x);',
       '  a = abs(mod(a, seg) - 0.5*seg);',
       '  vec2 q = r*vec2(cos(a), sin(a));',
-      '  float v = sin(q.x*9.0 + t) + sin(q.y*11.0 - t*1.3) + sin(r*14.0 - t*2.0);',
+      '  float sc = 0.7 + 0.6*u_v.y;',
+      '  float v = sin(q.x*9.0*sc + t) + sin(q.y*11.0*sc - t*1.3) + sin(r*14.0*sc - t*2.0);',
       '  return 0.5 + 0.5*sin(v*2.0 + u_mid*4.0);',
       '}',
       'void main(){',
       '  vec2 p = uvc();',
-      '  float s = sin(u_time*0.15), c0 = cos(u_time*0.15);',
+      '  float dr = u_v.z < 0.5 ? -0.15 : 0.15;',
+      '  float s = sin(u_time*dr), c0 = cos(u_time*dr);',
       '  p = mat2(c0, -s, s, c0) * p;',
       '  p *= 1.0 + 0.25*u_beat - 0.1*u_build;',
       '  float off = 0.01 + 0.03*u_treb + 0.02*u_beat;',
@@ -247,7 +276,7 @@
       '  vec2 p = (uv - 0.5) * vec2(asp, 1.0);',
       // Verzerren (wie Milkdrops Warp: Zoom, Drehung, Wellen)
       '  float zoom = 1.012 + 0.035*u_bass + 0.03*u_build;',
-      '  float rot = 0.004*sin(u_time*0.21) + 0.014*(u_mid - 0.5);',
+      '  float rot = 0.004*sin(u_time*0.21) + 0.014*(u_mid - 0.5) + (u_w.x - 0.5)*0.01;',
       '  float cs = cos(rot), sn = sin(rot);',
       '  vec2 q = mat2(cs, -sn, sn, cs) * p / zoom;',
       '  float wa = 0.003 + 0.006*u_treb;',
@@ -259,8 +288,8 @@
       // Neuer Ring (nachgebaut nach Milkdrops Kreis-Welle)
       '  float r = length(p);',
       '  float a = atan(p.y, p.x);',
-      '  float wob = 0.06*(0.4 + u_mid)*sin(a*5.0 + u_time*2.0) + 0.03*u_treb*sin(a*13.0 - u_time*5.0);',
-      '  float rad = 0.16 + 0.12*u_bass + wob;',
+      '  float wob = 0.06*(0.4 + u_mid)*sin(a*floor(3.0 + 6.0*u_v.x) + u_time*(u_v.z < 0.5 ? -2.0 : 2.0)) + 0.03*u_treb*sin(a*floor(9.0 + 8.0*u_v.y) - u_time*5.0);',
+      '  float rad = 0.11 + 0.1*u_v.w + 0.12*u_bass + wob;',
       '  float w = 0.004 + 0.010*u_beat;',
       '  float line = smoothstep(w, 0.0, abs(r - rad));',
       '  vec3 ink = hsv(u_hue + u_time*0.03 + a*0.08, 0.85, 1.0) * line * (0.7 + 0.6*u_beat);',
@@ -325,6 +354,7 @@
   /* ---------- Mini-Spieler: eigene Fläche, ein Shader aktiv ---------- */
   var VERT = 'attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }';
   var NAMES = ['u_time','u_res','u_bass','u_mid','u_treb','u_beat','u_bar','u_build','u_hue','u_flash'];
+  var HALF = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];                 // Variante ohne Angabe (Build 116)
 
   // opts.fast: true (Standard) = Spar-Tricks an; false = genau wie Build 30 (zum Vergleichen)
   function AcidShaderPlayer(canvas, opts) {
@@ -368,7 +398,8 @@
     gl.bindAttribLocation(p, 0, 'a');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex'), u_glow: gl.getUniformLocation(p, 'u_glow'), u_noise: gl.getUniformLocation(p, 'u_noise') };
+    var loc = { u_tex: gl.getUniformLocation(p, 'u_tex'), u_glow: gl.getUniformLocation(p, 'u_glow'), u_noise: gl.getUniformLocation(p, 'u_noise'),
+      u_v: gl.getUniformLocation(p, 'u_v'), u_w: gl.getUniformLocation(p, 'u_w') };
     for (i = 0; i < NAMES.length; i++) loc[NAMES[i]] = gl.getUniformLocation(p, NAMES[i]);
     return { p: p, loc: loc };
   };
@@ -449,6 +480,9 @@
     gl.uniform1f(L.u_build, s.build || 0);
     gl.uniform1f(L.u_hue, s.hue || 0);
     gl.uniform1f(L.u_flash, s.flash == null ? 1 : s.flash);
+    var v = s.v || HALF;
+    if (L.u_v) gl.uniform4f(L.u_v, v[0], v[1], v[2], v[3]);
+    if (L.u_w) gl.uniform4f(L.u_w, v[4], v[5], v[6], v[7]);
     if (L.u_tex) gl.uniform1i(L.u_tex, 0);
     if (L.u_glow) gl.uniform1i(L.u_glow, 1);
     if (L.u_noise) gl.uniform1i(L.u_noise, 2);

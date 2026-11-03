@@ -25,6 +25,7 @@ self.AM_FILES = [
   "js/08b-klangrollen.js",
   "js/09-schleife.js",
   "js/10-bedienung.js",
+  "js/10b-mix.js",
   "js/11-ton-sicherheit.js",
   "js/12-erkennung.js",
   "js/12b-mischpult.js",

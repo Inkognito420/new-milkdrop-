@@ -99,8 +99,8 @@ const SZ = {
       const nachKlick = handSet().length; $('allAuto').click();
       return { schalter: ids.length, tabelle: TOGGLES.length, nachKlick, nachAuto: handSet().length, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
     });
-    check('Bedienung: 16 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 16 && r.tabelle === 16, JSON.stringify(r));
-    check('Bedienung: alle Schalter umgelegt = 16 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 16 && r.nachAuto === 0, JSON.stringify(r));
+    check('Bedienung: 17 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 17 && r.tabelle === 17, JSON.stringify(r));
+    check('Bedienung: alle Schalter umgelegt = 17 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 17 && r.nachAuto === 0, JSON.stringify(r));
     check('Bedienung: keine Fehler im Protokoll, keine Seitenfehler', r.fehler.length === 0 && errs.length === 0, r.fehler.concat(errs).join(' | '));
     await close();
   },
@@ -327,7 +327,7 @@ const SZ = {
       const had = toggles.spark; toggles.spark = !had; dSettings(JSON.parse(txt).settings); o.einstellungen = toggles.spark === had;
       o.schalter = Object.keys(JSON.parse(txt).settings.toggles).length; return o;
     });
-    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 16 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 16, JSON.stringify(r));
+    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 17 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 17, JSON.stringify(r));
     await close();
   },
   async fehlermeldungen() {
@@ -607,7 +607,7 @@ const SZ = {
     check('ak_drop_strength: schon im Break vor dem Drop die Stärke des kommenden Drops (über 0), im Drop dieselbe (gleicher Wert ±0,02)', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop > 0 && Math.abs(sc.break.drop - sc.drop.drop) < 0.02, JSON.stringify(sc));
     const ml = await page.evaluate(() => { akM.n = 1800; akM.t = 1; akMeasure(1e6); return LOG.map(l => l.x).filter(x => /Klangrollen-Messung/.test(x)).pop() || ''; });
     check('Klangrollen-Messzeile: enthält Pads-Gehaltenheit, Stereo und die Lage der Kick-Treffer am Raster', /Gehaltenheit/.test(ml) && /Stereo: \|Position\|/.test(ml) && /Kick-Treffer am Raster: \d+ von \d+/.test(ml), ml.slice(-260));
-    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
+    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 17 Schalter bleiben 17', d.an && /BPM/.test(d.text) && d.schalter === 17, JSON.stringify(d));
     await close();
   },
   async schaltzentrale() {
@@ -711,6 +711,37 @@ const SZ = {
     check('Stereo live: Mono-Track (Test-Track): Position bleibt in der Mitte (unter 0,25), Breite unter 0,25', c.max < 0.25 && c.w < 0.25, JSON.stringify(c));
     check('Stereo live: keine Seitenfehler', errs.length === 0 && m.errs.length === 0, errs.concat(m.errs).join(' | '));
     await m.close();
+  },
+  async mix() {
+    // Mix (Build 115): zwei Favoriten kreuzen, unsichtbar prüfen, zeigen; Stern = Rezept, nach Neuladen wieder da. Mit der echten Butterchurn-Kopie.
+    const { page, errs, close } = await open({ real: true });
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    await page.evaluate(() => { audio.currentTime = 20; auto = false; for (const n of names.slice(0, 40)) favs.add(n); store.set('am-favs', [...favs]); });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(async () => {
+      const out = { knopf: !$('mixBtn').hidden, mixe: [] };
+      for (let i = 0; i < 3; i++) { const t0 = performance.now(); const ok = await mixNow(); out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0) }); }
+      // q-Werte: B's Comp braucht q2 → B's Formeln laufen mit, q2 wird gesichert und zurückgeschrieben; liest A's Warp q2 → passt nicht
+      presets['T·A'] = { baseVals: { zoom: 1.1 }, init_eqs_str: '', frame_eqs_str: 'a.q2=5;a.zoom=1.2;', pixel_eqs_str: '', warp: '', comp: '', shapes: [], waves: [] };
+      presets['T·B'] = { baseVals: { gammaadj: 1.7, zoom: 0.9 }, init_eqs_str: 'a.k=1;', frame_eqs_str: 'a.q2=a.k*3;', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(q2); }', shapes: [], waves: [] };
+      presets['T·C'] = Object.assign({}, presets['T·A'], { warp: ' shader_body { ret = vec3(q2); }' });
+      const m = mixBuild({ a: 'T·A', b: 'T·B', f: 'a' }), bad = mixBuild({ a: 'T·C', b: 'T·B', f: 'a' });
+      const run = m && new Function('a', m.init_eqs_str + ';' + m.frame_eqs_str + ' return a;')({});
+      out.q = { gebaut: !!m, zoomA: m && m.baseVals.zoom, gammaB: m && m.baseVals.gammaadj, q2: run && run.q2, zoomFormel: run && run.zoom, konflikt: bad === null };
+      delete presets['T·A']; delete presets['T·B']; delete presets['T·C'];
+      out.log = LOG.filter(l => /^Mix/.test(l.x)).map(l => l.x).slice(-6); out.st = window.__MIX.st;
+      return out; });
+    console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
+    const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
+    check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
+    check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
+    const star = await page.evaluate(() => { if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; });
+    await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
+    const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
+    check('Mix: Stern speichert das Rezept (nmd:mixe), nach dem Neuladen ist der Mix wieder da, hat seinen Stern und lässt sich laden', star && star.saved.includes(star.n) && back.da && back.fav && back.laden, JSON.stringify({ star, back }));
+    check('Mix: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
   },
   async echtbutterchurn() {
     // Mit der echten Butterchurn-Kopie (vendor/) statt Attrappe: Start, Presets, die neuen Werte kommen im Renderer an
