@@ -43,6 +43,7 @@ function fxFrame(t) {
     if (morphOn) { morphOn = false; mxTransition(blender ? blender.state.blendDuration / 1000 : 2); }
     tr = mxFrame(t, dt);
   } else tr = oldBody(t, b);
+  if (mdFlip && !shCur) tr = (tr || '') + mdFlip;    // Build 116: Milkdrop-Bild gespiegelt (links/rechts, oben/unten oder beides)
   if (tr !== lastTr) { canvas.style.transform = tr; shEl.style.transform = tr; lastTr = tr; }
   shBar *= Math.exp(-dt / 250);
   flashEl.style.opacity = flash > 0.01 ? flash.toFixed(3) : '0';

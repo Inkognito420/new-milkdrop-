@@ -102,8 +102,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 115;
-const BUILD = 'Build ' + BUILD_NO + ' · Mix-Knopf: zwei Favoriten kreuzen';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 116;
+const BUILD = 'Build ' + BUILD_NO + ' · Mix-Knopf, eigene Shader in Varianten, Spiegeln';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -239,6 +239,7 @@ const TOGGLES = [
   ["mood", "Bildwechsel", "Stimmungs-Presets", true, "Presets passend zu Klang, Abschnitt und Stimmung"],
   ["phrase", "Bildwechsel", "Phrasen-Sync", true, "Wechsel auf Phrasen und Abschnitten im Takt"],
   ["drop", "Bildwechsel", "Drop-Cut", true, "Harter Schnitt mit Blitz im Drop"],
+  ["flip", "Bildwechsel", "Spiegeln", true, "Jedes Milkdrop-Bild wird beim Einblenden zufällig gespiegelt (links/rechts, oben/unten), damit dasselbe Preset nicht jedes Mal gleich aussieht"],
   ["own", "Bildwechsel", "Eigene Shader", true, "Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt"],
   ["build", "Effekte", "Build-up", true, "Spannung vor dem Drop: Zoom, Vignette, Funken"],
   ["pulse", "Effekte", "Kick-Puls", !reduceMotion, "Bild pumpt mit dem Kick"],

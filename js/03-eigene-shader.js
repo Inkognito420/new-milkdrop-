@@ -9,6 +9,10 @@ const shEl = $('sh'), SH = {};
 try { (window.ACID_SHADERS || []).forEach(d => { SH['Eigen · ' + d.name] = d; }); } catch (e) {}
 let shPlayer = null, shCur = null, shOp = 0, shFrom = 0, shTo = 0, shT0 = 0, shDur = 0;
 let shTime = 0, shLastT = 0, shBar = 0, shHue0 = 0, lastShStyle = '';
+// Build 116: Variante je Vorstellung (8 Zufallszahlen → u_v, u_w in acid-shader.js): Säulen, Segmente, Spiegelung, Muster, Farbspanne …
+// Emmo: „das Bild sieht jedes Mal gleich aus“. Jetzt ist jede Vorstellung eines eigenen Shaders anders.
+const shVar = new Float32Array(8).fill(0.5);
+const SH_MUSTER = ['Plasma', 'Streifen', 'Ring', 'Funkeln', 'Wasser'], SH_AUFBAU = ['von unten', 'von der Mitte', 'Bass in der Mitte'];
 const shLv = { b: 0, m: 0, h: 0, pb: 1e-4, pm: 1e-4, ph: 1e-4 };
 // Grafik-Verlust (Build 48): Holt sich das System den WebGL-Speicher zurück (iOS z. B. im Hintergrund), meldet die Fläche "webglcontextlost".
 // Ohne preventDefault kommt sie nie wieder: die Shader blieben bis zum Neuladen schwarz, und jeder neue Versuch sperrte einen weiteren als "kaputt".
@@ -44,7 +48,12 @@ function shShow(n, blend) {
   if (!shEnsure()) return false;
   const d = SH[n];
   if (!shPlayer.use(d.id)) { err('Eigener Shader kaputt: ' + n + ' · ' + (shPlayer.errors[d.id] || '')); broken.add(n); return false; }
-  if (shCur !== n) shHue0 = Math.random();
+  if (shCur !== n) {
+    shHue0 = Math.random(); for (let i = 0; i < 8; i++) shVar[i] = Math.random();
+    const v = shVar, info = d.id === 'peak-lichtwand' ? Math.floor(12 + 20 * v[0]) + ' Säulen, ' + Math.floor(14 + 34 * v[1]) + ' Segmente, ' + SH_AUFBAU[Math.floor(v[2] * 2.999)] + ', Muster ' + SH_MUSTER[Math.floor(v[3] * 4.999)]
+      : Array.from(v.slice(0, 4), x => Math.round(x * 100)).join('/');
+    rea('Eigener Shader · Variante: ' + info);
+  }
   shCur = n; shFade(1, blend); return true;
 }
 // Stil aus dem Abschnitt und der Stimmung: Drop = Peak Time, viel 303 = Acid, ruhige Teile = Driving
@@ -93,7 +102,7 @@ function shFrame(t) {
   shSize();
   try {
     const S = { time: shTime, bass: shLv.b, mid: shLv.m, treb: shLv.h, beat: kickGlow, bar: shBar,
-      build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1 };
+      build: toggles.build ? build : 0, hue: (shHue0 + shTime * 0.003) % 1, flash: reduceMotion ? 0.3 : 1, v: shVar };
     shPlayer.draw(S);
   } catch (e) { if (shCur) { err('Eigener Shader Fehler: ' + e.message); broken.add(shCur); nextPreset(0.5, undefined, false, 'g'); } }
 }

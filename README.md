@@ -95,6 +95,15 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
 
+## Abwechslung: Varianten und Spiegeln (ab Build 116)
+
+Emmo: „es wiederholt sich oft, das Bild sieht jedes Mal gleich aus“.
+- **Eigene Shader** (`acid-shader.js`) bekommen bei jedem Einblenden eine Variante: 8 Zufallszahlen (`u_v`, `u_w`, in `js/03` `shVar`). Jeder der 7 Shader nutzt sie
+  (Zahl der Strahlen/Segmente/Wellen, Verdrehung, Größe, Drehrichtung, zweite Farbe). Die **Lichtwand** ändert Säulenzahl (12–31), Segmente (14–47), Aufbau
+  (von unten / von der Mitte / Bass in der Mitte), Farbspanne, Lücken, Bogen, und in jedem Kästchen läuft ein Muster mit der Musik: Plasma (Mitten),
+  Streifen im Tempo (Höhen), Ring (Kick), Funkeln (Hi-Hats, höchstens 3 Wechsel pro Sekunde), Wasser (Bass). Protokoll: „Eigener Shader · Variante: …“.
+- **Milkdrop-Presets** werden beim Einblenden zufällig gespiegelt (30 % links/rechts, 12 % oben/unten, 8 % beides; CSS, kostet nichts). Schalter „Spiegeln“ in der Werkstatt.
+
 ## Mix: neue Bilder aus zwei Favoriten (ab Build 115)
 
 Der Knopf **Mix** (neben dem Stern) kreuzt zwei Favoriten zu einem Bild, das es so noch nicht gab, wie die „mash“-Presets der Milkdrop-Szene:

@@ -99,8 +99,8 @@ const SZ = {
       const nachKlick = handSet().length; $('allAuto').click();
       return { schalter: ids.length, tabelle: TOGGLES.length, nachKlick, nachAuto: handSet().length, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
     });
-    check('Bedienung: 16 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 16 && r.tabelle === 16, JSON.stringify(r));
-    check('Bedienung: alle Schalter umgelegt = 16 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 16 && r.nachAuto === 0, JSON.stringify(r));
+    check('Bedienung: 17 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 17 && r.tabelle === 17, JSON.stringify(r));
+    check('Bedienung: alle Schalter umgelegt = 17 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 17 && r.nachAuto === 0, JSON.stringify(r));
     check('Bedienung: keine Fehler im Protokoll, keine Seitenfehler', r.fehler.length === 0 && errs.length === 0, r.fehler.concat(errs).join(' | '));
     await close();
   },
@@ -327,7 +327,7 @@ const SZ = {
       const had = toggles.spark; toggles.spark = !had; dSettings(JSON.parse(txt).settings); o.einstellungen = toggles.spark === had;
       o.schalter = Object.keys(JSON.parse(txt).settings.toggles).length; return o;
     });
-    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 16 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 16, JSON.stringify(r));
+    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 17 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 17, JSON.stringify(r));
     await close();
   },
   async fehlermeldungen() {
@@ -607,7 +607,7 @@ const SZ = {
     check('ak_drop_strength: schon im Break vor dem Drop die Stärke des kommenden Drops (über 0), im Drop dieselbe (gleicher Wert ±0,02)', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop > 0 && Math.abs(sc.break.drop - sc.drop.drop) < 0.02, JSON.stringify(sc));
     const ml = await page.evaluate(() => { akM.n = 1800; akM.t = 1; akMeasure(1e6); return LOG.map(l => l.x).filter(x => /Klangrollen-Messung/.test(x)).pop() || ''; });
     check('Klangrollen-Messzeile: enthält Pads-Gehaltenheit, Stereo und die Lage der Kick-Treffer am Raster', /Gehaltenheit/.test(ml) && /Stereo: \|Position\|/.test(ml) && /Kick-Treffer am Raster: \d+ von \d+/.test(ml), ml.slice(-260));
-    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 16 Schalter bleiben 16', d.an && /BPM/.test(d.text) && d.schalter === 16, JSON.stringify(d));
+    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 17 Schalter bleiben 17', d.an && /BPM/.test(d.text) && d.schalter === 17, JSON.stringify(d));
     await close();
   },
   async schaltzentrale() {
