@@ -739,8 +739,10 @@ const SZ = {
       const out = { gewechselt: curName !== 'T·Leer', gemerkt: LEER.has('T·Leer'), nichtMehr: !usable('T·Leer'), log: LOG.some(l => /^Bild-Wächter: „T·Leer“ war/.test(l.x)) };
       // Bewegung im Vorschaubild: gespiegelt sieht es anders aus als ungespiegelt (bbXf liest die CSS-Bewegung)
       const c = document.createElement('canvas'); c.width = 64; c.height = 30; const x = c.getContext('2d'), px = () => Array.from(x.getImageData(0, 0, 64, 30).data);
+      presets['T·Links'] = { baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(uv.x); }', shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] };
+      loadByName('T·Links', 0); for (let i = 0; i < 5; i++) viz.render();                    // festes Bild: Verlauf links dunkel, rechts hell (gespiegelt eindeutig anders)
       const tr0 = canvas.style.transform; canvas.style.transform = ''; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const a = px();
-      canvas.style.transform = 'scale(-1,1)'; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const b = px(); canvas.style.transform = tr0;
+      canvas.style.transform = 'scale(-1,1)'; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const b = px(); canvas.style.transform = tr0; delete presets['T·Links'];
       let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); out.spiegelDiff = +(d / a.length).toFixed(2);
       // Build 124: blinkt schwarz (2 s schwarz, 3 s ein kleiner heller Fleck) und flache Pastellfläche, nachgebaut nach dem Test ohne Eingreifen
       const mk = comp => ({ baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, decay: 0.5, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp, shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] });
@@ -755,7 +757,7 @@ const SZ = {
       Object.assign(LEERCFG, cfg0); guard = g0; delete presets['T·Leer']; delete presets['T·Blink']; delete presets['T·Flach']; return out; });
     console.log('       (Info) Leer-Wächter: ' + JSON.stringify(lw));
     check('Bild-Wächter (Build 124): Bild, das immer wieder kurz schwarz wird („blinkt schwarz“), und flache Pastellfläche („flach“) werden gewechselt und gemerkt', lw['T·Blink'].weg && lw['T·Blink'].gemerkt && /blinkt schwarz/.test(lw['T·Blink'].log) && lw['T·Flach'].weg && lw['T·Flach'].gemerkt && /flach/.test(lw['T·Flach'].log), JSON.stringify(lw));
-    check('Leer-Wächter (Build 123): schwarzes Bild bei Musik wird nach ca. 2,5 s gewechselt, gemerkt und nicht wieder gewählt; Vorschaubild/Video übernimmt die Bewegung (gespiegelt ≠ ungespiegelt)', lw.gewechselt && lw.gemerkt && lw.nichtMehr && lw.log && lw.spiegelDiff > 1, JSON.stringify(lw));
+    check('Leer-Wächter (Build 123): schwarzes Bild bei Musik wird nach ca. 2,5 s gewechselt, gemerkt und nicht wieder gewählt; Vorschaubild/Video übernimmt die Bewegung (gespiegelt ≠ ungespiegelt)', lw.gewechselt && lw.gemerkt && lw.nichtMehr && lw.log && lw.spiegelDiff > 20, JSON.stringify(lw));
     check('Mitschnitt: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
   },
