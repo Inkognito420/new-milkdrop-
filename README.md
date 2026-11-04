@@ -115,6 +115,13 @@ Schirms; ist das Bild bei Musik (Klangrollen zusammen über 0,15) länger als 2,
 (`LEER`). Dunkle Bilder mit hellen Punkten zählen nicht (Kontrast). Nur mit echter Grafik und Auto-Wechsel. Protokoll: „Leer-Wächter: … s leer …“.
 Jede Minute steht im Protokoll „Mitschnitt (letzte Minute): … Bilder/s ins Video, Zeichnen Ø … ms · App Ø … fps“ (im ersten Mitschnitt kamen nur 15–21 Bilder/s an).
 
+**Bild-Wächter (ab Build 124):** Der Test ohne Eingreifen (Build 123) zeigte zwei Drop-Mixe, die in der Prüfung (erste 1,3 s) gut aussahen und danach
+kippten: einer fiel alle ~5 s für 1,5–2,5 s auf Schwarz (35 % leer, Helligkeit Ø 9), einer wurde fast eine Minute Pastellfläche (Kontrast-Median 10).
+Zusätzlich zur 2,5-s-Regel gilt jetzt: in 8 s mindestens 30 % leer und im Schnitt dunkel → „blinkt schwarz“; in 10 s mindestens 60 % mit Kontrast unter 14
+(bei Helligkeit ab 40) → „flach“. Beides wechselt und merkt das Bild für die Sitzung (bei Mixen auch das Paar). Dunkle Bilder mit Inhalt bleiben.
+**Mitschnitt schont das iPhone (ab Build 124):** 15 statt 30 Bilder/s (im Test: 23 ms pro Videobild, App fiel von 56 auf 35 fps, im Video kamen nur 17 Bilder/s an);
+läuft die App unter 45 fps, nur 8 Bilder/s. Die Lastbremse fängt frisch an (`am-brake-v3`), weil sie während des teuren Mitschnitts Favoriten falsch heruntergestuft hat.
+
 ## Bildbogen: sehen, was auf dem Schirm war (ab Build 117)
 
 Das Protokoll sagt, welches Bild lief, der Bildbogen zeigt, wie es aussah. Während Musik läuft, entsteht alle 5 s ein Vorschaubild (192 px breit, im Hochformat 112),

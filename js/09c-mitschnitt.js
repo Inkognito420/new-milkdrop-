@@ -15,7 +15,9 @@ if (typeof bbScreen !== 'function') throw new Error('new-milkdrop-: Teil 9c (mit
 // ohne Filter in eine Zwischenfläche, und eine kleine WebGL-Fläche rechnet den Farbfilter als Matrix (bbMatrix) und legt Funken/Blitz darüber.
 const MSCFG = {
   long: 640,             // lange Seite des Videos in Pixeln
-  fps: 30,               // Bilder pro Sekunde im Video (die App zeichnet 60, jedes zweite kommt ins Video)
+  fps: 15,               // Bilder pro Sekunde im Video. Build 124: 30 → 15. Im Test (Build 123) kostete jedes Videobild Ø 23 ms (Safari liest das WebGL-Bild aus),
+                         // bei 25 Bildern/s fiel die App von 56 auf 35 fps; im Video kamen trotzdem nur 17 Bilder/s an
+  fpsSlow: 8, slowBelow: 45,   // läuft die App (Mittel der letzten 10 s) unter slowBelow fps, nur noch fpsSlow Bilder/s ins Video: die Show geht vor
   vbps: 700000, abps: 96000,     // gewünschte Bitraten (der Browser hält sich nicht immer daran, darum wird die Größe mitgezählt). Build 123: erster Mitschnitt
                                  // vom iPhone mit 1,2 M + 128 k ergab 1,6 Mbit/s = nur 2:20 min pro 27-MB-Datei; jetzt ca. 4 min
   maxFileMB: 27,         // ab dieser Größe beginnt ein neuer Teil (bleibt sicher unter 29 MB, auch mit dem letzten Datenpaket)
@@ -24,7 +26,7 @@ const MSCFG = {
   keepMB: 140,           // so viel Video wird höchstens behalten (die ältesten Teile fallen weg), bei ca. 6 MB/min etwa 20 Minuten
   forceGL: false         // nur zum Testen: Farbe über WebGL wie auf dem iPhone, auch wenn der Browser ctx.filter kann
 };
-const MS = { st: { n: 0, ms: 0, max: 0, t: performance.now() }, ok: false, mime: '', ext: '', segs: [], cur: null, n: 0, tap: null, dest: null, cv: null, cx: null, a: null, ax: null, b: null, bx: null, gl: null, lastF: 0, err: '' };
+const MS = { slow: false, st: { n: 0, ms: 0, max: 0, msA: 0, slowN: 0, t: performance.now() }, ok: false, mime: '', ext: '', segs: [], cur: null, n: 0, tap: null, dest: null, cv: null, cx: null, a: null, ax: null, b: null, bx: null, gl: null, lastF: 0, err: '' };
 { const cand = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
   try {
     if (typeof MediaRecorder !== 'undefined' && HTMLCanvasElement.prototype.captureStream && ctx.createMediaStreamDestination) {
@@ -69,7 +71,10 @@ function msSetup(w, h) {
 }
 // Ein Bild ins Video (aus der Schleife, js/09, direkt nach dem Zeichnen)
 function msFrame(t) {
-  const c = MS.cur; if (!c || c.state !== 'rec' || frozen || t - MS.lastF < 1000 / MSCFG.fps - 4) return;
+  const c = MS.cur; if (!c || c.state !== 'rec' || frozen) return;
+  const now = performance.now(), recent = fpsHist.filter(h => now - h[0] <= 10000), app = recent.length >= 5 ? recent.reduce((s, h) => s + h[1], 0) / recent.length : 60;
+  MS.slow = app < MSCFG.slowBelow; if (MS.slow) MS.st.slowN++;
+  if (t - MS.lastF < 1000 / (MS.slow ? MSCFG.fpsSlow : MSCFG.fps) - 4) return;
   MS.lastF = t; const t0 = performance.now();
   try { msDraw(); } finally { const ms = performance.now() - t0; MS.st.n++; MS.st.ms += ms; if (ms > MS.st.max) MS.st.max = ms; }
 }
@@ -77,8 +82,10 @@ function msDraw() {
   const w = MS.cv.width, h = MS.cv.height;
   try {
     if (!MS.gl) { bbScreen(MS.cx, w, h, { base: true, color: true, fx: true }); return; }
+    const ta = performance.now();
     bbScreen(MS.ax, w, h, { base: true, color: false, fx: false });
     bbScreen(MS.bx, w, h, { base: false, fx: true, flash: false });
+    MS.st.msA += performance.now() - ta;
     const G = MS.gl, g = G.g, m = (window.bbMatrix ? bbMatrix(canvas.style.filter) : { M: [1, 0, 0, 0, 1, 0, 0, 0, 1], o: [0, 0, 0] });
     g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, G.ta); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, MS.a);
     g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, G.tb); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, MS.b);
@@ -89,9 +96,9 @@ function msDraw() {
 }
 window.msFrame = msFrame;
 // Protokoll: einmal pro Minute, wie viele Bilder ins Video gingen und was das Zeichnen kostet (Build 123: im ersten iPhone-Mitschnitt kamen nur 15-21 Bilder/s an)
-setInterval(() => { const S = MS.st, now = performance.now(), sec = (now - S.t) / 1000; MS.st = { n: 0, ms: 0, max: 0, t: now }; if (!S.n) return;
+setInterval(() => { const S = MS.st, now = performance.now(), sec = (now - S.t) / 1000; MS.st = { n: 0, ms: 0, max: 0, msA: 0, slowN: 0, t: now }; if (!S.n) return;
   const fa = fpsHist.filter(h => now - h[0] <= 60000), app = fa.length ? Math.round(fa.reduce((s, h) => s + h[1], 0) / fa.length) : 0;
-  erg('Mitschnitt (letzte Minute): ' + (S.n / sec).toFixed(1).replace('.', ',') + ' Bilder/s ins Video, Zeichnen Ø ' + (S.ms / S.n).toFixed(1).replace('.', ',') + ' ms (max ' + S.max.toFixed(0) + ' ms) · App Ø ' + app + ' fps · ' + (MS.gl ? 'Farbe über WebGL' : 'Farbe direkt') + ' · Teil ' + (MS.cur ? MS.cur.n + ' (' + (MS.cur.bytes / 1048576).toFixed(1).replace('.', ',') + ' MB)' : '–') + ' · gespeichert ' + MS.segs.length + ' Teile, ' + (MS.segs.reduce((s, x) => s + x.blob.size, 0) / 1048576).toFixed(0) + ' MB'); }, 60000);
+  erg('Mitschnitt (letzte Minute): ' + (S.n / sec).toFixed(1).replace('.', ',') + ' Bilder/s ins Video, Zeichnen Ø ' + (S.ms / S.n).toFixed(1).replace('.', ',') + ' ms (max ' + S.max.toFixed(0) + ' ms' + (MS.gl ? ', davon Bild abholen Ø ' + (S.msA / S.n).toFixed(1).replace('.', ',') + ' ms' : '') + ') · App Ø ' + app + ' fps' + (S.slowN ? ' · gebremst (App unter ' + MSCFG.slowBelow + ' fps)' : '') + ' · ' + (MS.gl ? 'Farbe über WebGL' : 'Farbe direkt') + ' · Teil ' + (MS.cur ? MS.cur.n + ' (' + (MS.cur.bytes / 1048576).toFixed(1).replace('.', ',') + ' MB)' : '–') + ' · gespeichert ' + MS.segs.length + ' Teile, ' + (MS.segs.reduce((s, x) => s + x.blob.size, 0) / 1048576).toFixed(0) + ' MB'); }, 60000);
 
 // ===== Teile aufnehmen =====
 function msTap() {                                                     // Ton der aktuellen Quelle in die Aufnahme (wechselt mit Track, Mikro, Sicherheits-Modus)

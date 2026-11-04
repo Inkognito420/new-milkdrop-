@@ -478,7 +478,7 @@ const SZ = {
     const sw = await page.evaluate(() => { const K = curAnalysis.km, v = Array.from(K.sweep || []); return { n: K.n, len: v.length, max: Math.max(0, ...v.map(Math.abs)), ok: v.every(x => x >= -1 && x <= 1) }; });
     check('Filterfahrt: pro Takt ein Wert zwischen -1 und +1, im Test-Track mit wandernder Filterfrequenz nicht überall 0', sw.len === sw.n && sw.ok && sw.max > 0.1, JSON.stringify(sw));
     const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), ton: TON_MIN, bk: BRAKE_KEY }; });
-    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10; Lastbremse-Speicher v2', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10 && q.bk === 'am-brake-v2', JSON.stringify(q));
+    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10; Lastbremse-Speicher v3 (Build 124 fängt frisch an)', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10 && q.bk === 'am-brake-v3', JSON.stringify(q));
     await close();
   },
   async klangrollen() {
@@ -736,14 +736,25 @@ const SZ = {
       presets['T·Leer'] = { baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, decay: 0.5, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(0.0); }', shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] };
       const g0 = guard; guard = false; auto = true; audio.currentTime = 30; await w(500); loadByName('T·Leer', 0); lastSwitch = performance.now() - 3100;   // Leistungs-Wächter aus: in der Sandbox ist alles „zu langsam“
       for (let i = 0; i < 30 && curName === 'T·Leer'; i++) await w(250);
-      const out = { gewechselt: curName !== 'T·Leer', gemerkt: LEER.has('T·Leer'), nichtMehr: !usable('T·Leer'), log: LOG.some(l => /^Leer-Wächter: „T·Leer“/.test(l.x)) }; guard = g0;
+      const out = { gewechselt: curName !== 'T·Leer', gemerkt: LEER.has('T·Leer'), nichtMehr: !usable('T·Leer'), log: LOG.some(l => /^Bild-Wächter: „T·Leer“ war/.test(l.x)) };
       // Bewegung im Vorschaubild: gespiegelt sieht es anders aus als ungespiegelt (bbXf liest die CSS-Bewegung)
       const c = document.createElement('canvas'); c.width = 64; c.height = 30; const x = c.getContext('2d'), px = () => Array.from(x.getImageData(0, 0, 64, 30).data);
       const tr0 = canvas.style.transform; canvas.style.transform = ''; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const a = px();
       canvas.style.transform = 'scale(-1,1)'; viz.render(); bbScreen(x, 64, 30, { base: true, color: false, fx: false }); const b = px(); canvas.style.transform = tr0;
       let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); out.spiegelDiff = +(d / a.length).toFixed(2);
-      delete presets['T·Leer']; return out; });
+      // Build 124: blinkt schwarz (2 s schwarz, 3 s ein kleiner heller Fleck) und flache Pastellfläche, nachgebaut nach dem Test ohne Eingreifen
+      const mk = comp => ({ baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, decay: 0.5, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp, shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] });
+      presets['T·Blink'] = mk(' shader_body { vec2 p = uv - 0.5; float on = step(0.4, fract(time*0.2)); ret = vec3(on * step(length(p), 0.12) * 0.9); }');
+      presets['T·Flach'] = mk(' shader_body { ret = vec3(0.70, 0.74, 0.66) + 0.02*sin(uv.x*6.0 + time); }');
+      const cfg0 = Object.assign({}, LEERCFG); LEERCFG.win = 5000; LEERCFG.flatWin = 5000;   // kürzere Fenster: der Test-Track wechselt sonst vorher den Abschnitt
+      for (const n of ['T·Blink', 'T·Flach']) {
+        audio.currentTime = 22; await w(600); loadByName(n, 0); lastSwitch = performance.now() - 3100;   // ruhige Groove-Stelle des Test-Tracks (Break erst ab ca. 69 s)
+        for (let i = 0; i < 60 && curName === n; i++) await w(250);
+        out[n] = { weg: curName !== n, gemerkt: LEER.has(n), log: (LOG.filter(l => l.x.indexOf('Bild-Wächter: „' + n + '“') === 0).pop() || {}).x || '' };
+      }
+      Object.assign(LEERCFG, cfg0); guard = g0; delete presets['T·Leer']; delete presets['T·Blink']; delete presets['T·Flach']; return out; });
     console.log('       (Info) Leer-Wächter: ' + JSON.stringify(lw));
+    check('Bild-Wächter (Build 124): Bild, das immer wieder kurz schwarz wird („blinkt schwarz“), und flache Pastellfläche („flach“) werden gewechselt und gemerkt', lw['T·Blink'].weg && lw['T·Blink'].gemerkt && /blinkt schwarz/.test(lw['T·Blink'].log) && lw['T·Flach'].weg && lw['T·Flach'].gemerkt && /flach/.test(lw['T·Flach'].log), JSON.stringify(lw));
     check('Leer-Wächter (Build 123): schwarzes Bild bei Musik wird nach ca. 2,5 s gewechselt, gemerkt und nicht wieder gewählt; Vorschaubild/Video übernimmt die Bewegung (gespiegelt ≠ ungespiegelt)', lw.gewechselt && lw.gemerkt && lw.nichtMehr && lw.log && lw.spiegelDiff > 1, JSON.stringify(lw));
     check('Mitschnitt: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();

@@ -93,25 +93,47 @@ function bbGrab(name, tag) {
 // Erster Mitschnitt vom iPhone (4 Videos, ca. 9 Minuten): das Bild war 4-8 % der Zeit wirklich leer (Helligkeit unter 8 und kaum Kontrast), in Strecken
 // von 2 bis 6,4 s, während Musik lief. Ist das Bild bei Musik länger als LEERCFG.ms leer, wird gewechselt; das Bild kommt in dieser Sitzung nicht wieder.
 // Dunkle Bilder mit Inhalt (wenige helle Punkte) zählen nicht als leer (Kontrast). Gemessen auf einer 32×15-Fläche (bbScreen), alle LEERCFG.every ms.
-const LEERCFG = { ms: 2500, every: 250, luma: 8, std: 6, afterSwitch: 3000, music: 0.15 };
-const LEER = new Set(), LW = { cv: null, x: null, since: 0, lastT: 0, n: 0 };
+// Build 124 (Bild-Wächter): der Test ohne Eingreifen (Build 123) zeigte zwei Fälle, die die 2,5-s-Regel nicht fängt, beide bei Drop-Mixen:
+//  - blinkt schwarz: „another kind of groove × fancy“ war fast 50 s lang dunkel (Helligkeit Ø 9) und fiel alle ~5 s für 1,5-2,5 s auf Schwarz (35 % leer)
+//  - flach: „Neverending Explosion × fruit machine“ war fast eine Minute Pastellfläche (Helligkeit 175, Kontrast-Median 10, 67 % unter 14)
+// Darum zusätzlich über ein Zeitfenster: in den letzten win ms mindestens leerShare leer UND im Schnitt dunkel (darkMean) → Wechsel;
+// in den letzten flatWin ms mindestens flatShare mit Kontrast unter flatStd (bei Helligkeit ab flatLuma) → Wechsel.
+// Dunkle Bilder mit Inhalt bleiben (Tunnel mit Ringen danach: 10 % leer, Helligkeit 21). Die Prüfung beim Mischen sieht nur die ersten 1,3 s,
+// darum braucht es diesen Blick auf das echte Bild.
+const LEERCFG = { ms: 2500, every: 500, luma: 8, std: 6, afterSwitch: 3000, music: 0.15,
+  win: 8000, leerShare: 0.3, darkMean: 15, flatWin: 10000, flatShare: 0.6, flatStd: 14, flatLuma: 40 };
+const LEER = new Set(), LW = { cv: null, x: null, since: 0, lastT: 0, n: 0, hist: [], name: '' };
 { const usable0 = usable; usable = n => usable0(n) && !LEER.has(n); }
+function bbLeerAct(why, info) {
+  const n = curName; LW.since = 0; LW.n++; LW.hist = [];
+  if (n) LEER.add(n);
+  if (window.__MIX && n && n.indexOf('Mix · ') === 0 && presets[n] && presets[n].mix) __MIX.bad.add(presets[n].mix.a + '|' + presets[n].mix.b);
+  rea('Bild-Wächter: „' + n + '“ ' + why + ' (' + info + ') → Wechsel, kommt in dieser Sitzung nicht wieder');
+  nextPreset(1.0, undefined, false, 'l');
+}
 function bbLeer(t) {
   if (t - LW.lastT < LEERCFG.every) return; LW.lastT = t;
+  if (curName !== LW.name) { LW.name = curName; LW.hist = []; LW.since = 0; }
   const music = (AKV.kick_env || 0) + (AKV.acid_env || 0) + (AKV.hats_env || 0) + (AKV.pads_env || 0);
   if (!viz || !viz.renderer || !viz.renderer.gl || !auto || !(micOn || (curFile && !audio.paused)) || t - lastSwitch < LEERCFG.afterSwitch || music < LEERCFG.music) { LW.since = 0; return; }
   if (!LW.cv) { LW.cv = document.createElement('canvas'); LW.cv.width = 32; LW.cv.height = 15; LW.x = LW.cv.getContext('2d', { willReadFrequently: true }); }
   let l = 0, l2 = 0;
   try { bbScreen(LW.x, 32, 15, { base: true, color: false, fx: true }); const d = LW.x.getImageData(0, 0, 32, 15).data;
     for (let i = 0; i < d.length; i += 4) { const y = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; l += y; l2 += y * y; } } catch (e) { return; }
-  l /= 480; const sd = Math.sqrt(Math.max(0, l2 / 480 - l * l));
-  if (!(l < LEERCFG.luma && sd < LEERCFG.std)) { LW.since = 0; return; }
-  if (!LW.since) { LW.since = t; return; }
-  if (t - LW.since < LEERCFG.ms) return;
-  const n = curName, dur = t - LW.since; LW.since = 0; LW.n++;
-  if (n) LEER.add(n);
-  rea('Leer-Wächter: „' + n + '“ war ' + (dur / 1000).toFixed(1).replace('.', ',') + ' s leer, während Musik lief (Helligkeit ' + l.toFixed(1) + ', Kontrast ' + sd.toFixed(1) + ') → Wechsel, kommt in dieser Sitzung nicht wieder');
-  nextPreset(1.0, undefined, false, 'l');
+  l /= 480; const sd = Math.sqrt(Math.max(0, l2 / 480 - l * l)), C = LEERCFG, leer = l < C.luma && sd < C.std;
+  LW.hist.push({ t, l, sd, leer }); while (LW.hist.length && t - LW.hist[0].t > Math.max(C.win, C.flatWin)) LW.hist.shift();
+  const f = v => v.toFixed(0);
+  if (leer) { if (!LW.since) LW.since = t; else if (t - LW.since >= C.ms) return bbLeerAct('war ' + ((t - LW.since) / 1000).toFixed(1).replace('.', ',') + ' s leer, während Musik lief', 'Helligkeit ' + l.toFixed(1) + ', Kontrast ' + sd.toFixed(1)); }
+  else LW.since = 0;
+  const W = LW.hist.filter(h => t - h.t <= C.win), FW = LW.hist.filter(h => t - h.t <= C.flatWin);
+  if (W.length >= C.win / C.every * 0.8) {
+    const share = W.filter(h => h.leer).length / W.length, mean = W.reduce((s, h) => s + h.l, 0) / W.length;
+    if (share >= C.leerShare && mean < C.darkMean) return bbLeerAct('blinkt schwarz', f(share * 100) + ' % leer in ' + C.win / 1000 + ' s, Helligkeit Ø ' + mean.toFixed(1));
+  }
+  if (FW.length >= C.flatWin / C.every * 0.8) {
+    const flat = FW.filter(h => h.sd < C.flatStd && h.l >= C.flatLuma).length / FW.length;
+    if (flat >= C.flatShare) return bbLeerAct('ist flach (kaum Kontrast)', f(flat * 100) + ' % flach in ' + C.flatWin / 1000 + ' s, Helligkeit ' + f(l) + ', Kontrast ' + sd.toFixed(1));
+  }
 }
 // Am Ende jedes Bilds aus der Schleife (js/09): Wechsel erkennen, Bilder nehmen
 function bbFrame(t) {
