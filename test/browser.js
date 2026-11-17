@@ -635,10 +635,13 @@ const SZ = {
     await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
     await page.evaluate(() => { audio.currentTime = 24; }); await page.waitForTimeout(3500);
-    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now();
+    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now(); let lf = -1;
       const step = () => { const s = window.__SZ, now = performance.now(); o.x.push(s.x); o.k.push(s.skew); o.act.push(s.act); if (/skewX/.test(canvas.style.transform)) o.tr++;
-        H.push([now, s.x, s.skew, s.bright]); while (H.length > 1 && now - H[1][0] >= 120) H.shift();   // Änderung über ein Fenster von mindestens 120 ms (bildratenunabhängig, ohne Zählfehler durch versetzte Bilder)
-        if (now - H[0][0] >= 120) { const ds = (now - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); }
+        // Änderung über ein Fenster von mindestens 120 ms auf der Uhr der App (lastFx = Zeit des Bildes, für das die Werte gerechnet sind), nur bei neuen Bildern.
+        // Build 125: vorher performance.now() hier, nach der Arbeit des Bildes: nach einem schweren Bild wirkte das Fenster kürzer, als die App gerechnet hatte
+        // (Sandbox mit abwechselnd schweren Bildern: Test-Uhr 8,0, App-Uhr 6,1 %/s; GitHub 9,2-9,6 %/s; Auslegung höchstens 1,3 × (5 + 1/0,9) = 7,9 %/s)
+        if (lastFx !== lf) { lf = lastFx; H.push([lf, s.x, s.skew, s.bright]); while (H.length > 1 && lf - H[1][0] >= 120) H.shift();
+        if (lf - H[0][0] >= 120) { const ds = (lf - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); } }
         if (now - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
     const A = await run(4000), mx = a => Math.max(...a.map(Math.abs));
     console.log('       (Info) Raum bei Ping-Pong: Aktivität bis ' + mx(A.act).toFixed(2) + ', Verschiebung bis ' + mx(A.x).toFixed(2) + ' %, Verzerrung bis ' + mx(A.k).toFixed(2) + '°, Bilder mit skewX ' + A.tr + ' von ' + A.x.length + ' · größte Änderung pro Sekunde (über 120 ms): ' + A.dx.toFixed(2) + ' % / ' + A.dk.toFixed(2) + '°');
@@ -712,8 +715,8 @@ const SZ = {
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
     const { page, errs, close } = await open();
-    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [], hs: [] }; const t0 = performance.now(); const iv = setInterval(() => { v.hs.push(AKSIDE.hats_side); v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); res(v); } }, 40); }), ms);
-    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2), hsMin: +Math.min(...v.hs).toFixed(2), hsMax: +Math.max(...v.hs).toFixed(2) });
+    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [], hs: [] }; const t0 = performance.now(); let nF = 0, on = true; const cnt = () => { nF++; if (on) requestAnimationFrame(cnt); }; requestAnimationFrame(cnt); const iv = setInterval(() => { v.hs.push(AKSIDE.hats_side); v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); on = false; v.fps = nF * 1000 / (performance.now() - t0); res(v); } }, 40); }), ms);
+    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2), hsMin: +Math.min(...v.hs).toFixed(2), hsMax: +Math.max(...v.hs).toFixed(2), fps: +v.fps.toFixed(1) });
     await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
     await page.evaluate(() => { audio.currentTime = 12; }); await page.waitForTimeout(2500);    // Ping-Pong 1/Schlag
