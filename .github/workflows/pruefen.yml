@@ -1,8 +1,11 @@
 name: Prüfen
 on: [push, pull_request]
+# Fest auf Ubuntu 24.04 (Build 125): „ubuntu-latest“ war am 17.11.2026 Ubuntu 26.04, das Playwright 1.56.1 nicht kennt („Playwright does not support
+# chromium on ubuntu26.04-x64“, die Prüfung brach schon beim Installieren ab). Wechsel auf 26.04 erst zusammen mit einem neueren Playwright (1.65.1 kennt es)
+# und einem Vergleichslauf der Zeitgrenzen in test/browser.js.
 jobs:
   pruefen:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,7 +22,7 @@ jobs:
       - name: Klangrollen-Namen kollidieren mit keinem der 367 Standard-Presets
         run: node test/klangrollen-namen.test.js
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +36,7 @@ jobs:
       - name: Browser-Prüfung (Start, Bedienung, Shader, Scan, Warteschlange, Grafik-Verlust, Mikrofon, Offline, Klangrollen, echte Butterchurn-Kopie)
         run: node test/browser.js
   butterchurn:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
