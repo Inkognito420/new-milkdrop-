@@ -745,10 +745,11 @@ const SZ = {
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
     // Build 125: Voreinstellung aus. Ohne den Schalter läuft keine Aufnahme und der Knopf heißt „Bildbogen“; erst der Schalter in der Werkstatt startet sie
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(3000);                                          // mehrere Takte des Halbsekunden-Zeitgebers (js/09c): ohne Schalter startet nichts
     const aus = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, teile: __MS.n, knopf: $('logBild').textContent }));
     await page.evaluate(() => { $('t-rec').click(); });
-    await page.waitForTimeout(1200);
+    // auf den Start warten statt fest 1,2 s: auf einem langsamen GitHub-Rechner kam der Zeitgeber später (Lauf 44054329613: Schalter an, Aufnahme noch nicht gestartet)
+    await page.waitForFunction(() => !!__MS.cur, null, { timeout: 15000, polling: 200 }).catch(() => {});
     const an = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, knopf: $('logBild').textContent }));
     check('Mitschnitt: Voreinstellung aus (keine Aufnahme, Knopf „Bildbogen“), der Schalter in der Werkstatt startet ihn (Knopf „Mitschnitt“)', aus.schalter === false && !aus.laeuft && aus.teile === 0 && aus.knopf === 'Bildbogen' && an.schalter === true && an.laeuft && an.knopf === 'Mitschnitt', JSON.stringify({ aus, an }));
     await page.evaluate(() => { MSCFG.maxSegMin = 0.1; audio.currentTime = 20; });
