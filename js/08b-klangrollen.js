@@ -552,7 +552,7 @@ function rollenFrame(t) {
   return AKV;
 }
 
-// ===== Debug-Anzeige (Schalter in der Werkstatt unter „Anzeige“ oder ?debug in der Adresse). Aus = keine Rechenlast =====
+// ===== Debug-Anzeige (nur mit ?debug in der Adresse; Build 126: kein Knopf mehr). Aus = keine Rechenlast =====
 const akDbg = { on: false, el: null, bars: {}, txt: null, flash: null, flashT: 0 };
 function akDbgBuild() {
   const d = document.createElement('div'); d.id = 'akDebug';
@@ -573,7 +573,6 @@ function akDbgSet(on) {
   akDbg.on = !!on;
   if (on && !akDbg.el) akDbgBuild();
   if (akDbg.el) akDbg.el.hidden = !on;
-  const b = $('akDbgBtn'); if (b) b.classList.toggle('hot', akDbg.on);
 }
 function akDbgFlash(n) { akDbg.flash.textContent = n.toUpperCase() + ' NEU'; akDbg.flashT = performance.now(); }
 function akDbgFrame() {
@@ -582,12 +581,6 @@ function akDbgFrame() {
   if (akDbg.txt.textContent !== s) akDbg.txt.textContent = s;
   if (akDbg.flashT && performance.now() - akDbg.flashT > 800) { akDbg.flash.textContent = ''; akDbg.flashT = 0; }
 }
-{ const box = [...document.querySelectorAll('#werk .grp')].find(g => g.querySelector('.gl').textContent === 'Anzeige');
-  const b = document.createElement('button'); b.id = 'akDbgBtn'; b.type = 'button'; b.textContent = 'Klangrollen-Anzeige';
-  b.title = 'Zeigt unten links, was die Klangrollen-Analyse hört: Balken für Kick, Acid, Hats, Pads, „NEU“ beim Einsatz, Tempo und Abschnitt. Nur zum Prüfen.';
-  b.addEventListener('click', () => akDbgSet(!akDbg.on));
-  if (box) box.appendChild(b);
-  if (/[?&]debug\b/.test(location.search)) akDbgSet(true);
-}
+if (/[?&]debug\b/.test(location.search)) akDbgSet(true);
 // Alle 5 Minuten ins Protokoll: wie viel Rechenzeit die Analyse braucht
 setInterval(() => { if (akN > 600) { erg('Klangrollen: ' + (akMs / akN).toFixed(2).replace('.', ',') + ' ms pro Bild im Schnitt · ' + Math.round(AKV.ak_bpm) + ' BPM · Abschnitt ' + AK_SECTION[AKV.ak_section]); akMs = 0; akN = 0; } }, 300000);

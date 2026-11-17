@@ -36,6 +36,8 @@ try { Object.assign(presets, window.butterchurnPresetsExtra2.getPresets()); } ca
 // Eigene Acid-Techno-Presets (acid-presets.js); fehlt die Datei, läuft alles ohne sie weiter
 const ACID = new Set();
 try { const ap = window.ACID_PRESETS || {}; for (const k in ap) { presets[k] = ap[k]; ACID.add(k); } } catch (e) {}
+// Build 126: Emmos sieben eigene Visuals (eigene-visuals.js) sind echte Presets, gehören zu ACID (Lastbremse, kein Reaktions-Angleich) und haben einen eigenen Topf in der Auswahl
+const EIGEN = new Set(Object.keys(window.EIGENE_VISUALS || {}));
 const names = Object.keys(presets);
 if (!names.length) { say('Keine Presets geladen. Lade die Seite neu.'); throw new Error('Acid Milkdrop: Start abgebrochen'); }
 const broken = new Set(), slow = new Set(), suspect = new Set();   // suspect: Bilder, bei denen der letzte Lauf hängen blieb (Hänger-Wächter in 16)
@@ -105,8 +107,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 125;
-const BUILD = 'Build ' + BUILD_NO + ' · Start wartet nicht mehr auf Google-Schriften, fps-Messung nach dem Hintergrund, Mitschnitt nur noch zum Testen, Messung „Bild laden“, Stereo auch bei langsamen Bildern';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 126;
+const BUILD = 'Build ' + BUILD_NO + ' · Aufgeräumt: keine Werkstatt mehr, eigene Visuals sind Butterchurn-Presets, Bild ohne Drehen und Funken, Bildgröße bei Höhe 0';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -147,7 +149,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pageshow', e => { if (e.persisted) rea('Seite aus dem Zwischenspeicher zurück'); });
 
-// Testtöne: Welcher Weg ist hörbar?
+// WAV-Ton erzeugen (für den stillen Player beim Lautlos-Schalter-Trick; die Testton-Knöpfe sind seit Build 126 entfernt)
 function makeWav(sec, freq, amp) {
   const rate = 22050, n = Math.floor(rate * sec), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
@@ -156,21 +158,6 @@ function makeWav(sec, freq, amp) {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * freq * i / rate) * amp * 32767), true);
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
-$('beepA').addEventListener('click', async () => {
-  trg('Testton 1 (über die Audio-Engine, so wie der Track)');
-  try {
-    await ctx.resume();
-    const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 440; g.gain.value = 0.25;
-    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.6);
-    rea('Ton gesendet, Engine ' + ctx.state); erg('Hörst du den Ton? Ja/Nein merken');
-  } catch (e) { err('Testton 1: ' + e.message); }
-});
-$('beepB').addEventListener('click', async () => {
-  trg('Testton 2 (über den normalen Player, ohne Audio-Engine)');
-  try { const a = new Audio(makeWav(0.6, 660, 0.4)); await a.play(); rea('Player-Ton gestartet'); erg('Hörst du den Ton? Ja/Nein merken'); }
-  catch (e) { err('Testton 2: ' + e.message); }
-});
-
 // Lautlos-Schalter-Trick: ein stiller Player zwingt iOS in den Wiedergabe-Modus, damit die Audio-Engine nicht stumm bleibt.
 // Er startet erst, wenn der Track schon läuft, und der Track wird danach wieder angeschoben, falls iOS ihn dabei pausiert.
 let silentEl = null, wantPlay = false, resumeTries = 0;
@@ -227,85 +214,32 @@ let viz = null, srcNode = null, fileNode = null, W = 0, H = 0, fxScale = 1;
 // Lastbremse (Build 35): schwere Favoriten laufen in kleinerer Auflösung statt gesperrt zu werden. Stufe 0 = volle Auflösung.
 const BRAKE_STEPS = [1, 0.8, 0.65, 0.5];
 let curStep = 0;
-let micOn = false, micStream = null, micNode = null, micGainSaved = 1;
+let micOn = false, micStream = null, micNode = null;
 let auto = true, lastSwitch = performance.now(), presetStart = performance.now(), curName = null;
 let guard = true, maxHz = 0, slowSecs = 0, sixtySecs = 0, hintShown = false;
 const slowMarks = [];
 let frozen = false;
 let bpm = 140;
-const savedToggles = store.get('am-toggles', null);
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-// Build 37: so ist alles gedacht (Automatik). Werkstatt-Schalter weichen davon ab, „Alles auf Auto“ setzt zurück.
-// Alle Schalter an EINER Stelle: [Name, Gruppe in der Werkstatt, Beschriftung (auch für die Automatik-Karte), Standard, Hinweistext].
-// Die Knöpfe t-<Name> entstehen daraus (index.html hat nur die leeren Gruppen).
-const TOGGLES = [
-  ["mood", "Bildwechsel", "Stimmungs-Presets", true, "Presets passend zu Klang, Abschnitt und Stimmung"],
-  ["phrase", "Bildwechsel", "Phrasen-Sync", true, "Wechsel auf Phrasen und Abschnitten im Takt"],
-  ["drop", "Bildwechsel", "Drop-Cut", true, "Harter Schnitt mit Blitz im Drop"],
-  ["flip", "Bildwechsel", "Spiegeln", true, "Jedes Milkdrop-Bild wird beim Einblenden zufällig gespiegelt (links/rechts, oben/unten), damit dasselbe Preset nicht jedes Mal gleich aussieht"],
-  ["own", "Bildwechsel", "Eigene Shader", true, "Ab und zu kommt einer der eigenen Shader (Peak Time, Driving, Acid) statt eines Milkdrop-Presets, passend zum Abschnitt"],
-  ["build", "Effekte", "Build-up", true, "Spannung vor dem Drop: Zoom, Vignette, Funken"],
-  ["pulse", "Effekte", "Kick-Puls", !reduceMotion, "Bild pumpt mit dem Kick"],
-  ["spark", "Effekte", "Hats & Snares", !reduceMotion, "Funken und Ringe auf Hi-Hats und Snares"],
-  ["morph", "Effekte", "Übergangs-Verformung", true, "Beim Bildwechsel verformt sich das Bild kurz mit dem Klang. Mit Mischpult: Drehen mit der 303, Schwanken im Takt, Stoß beim Bildwechsel"],
-  ["mix", "Effekte", "Mischpult", true, "Körper & Funken: Das Bild hängt an Federn, die auf das Tempo gestimmt sind. Funken kosten Energie aus einem Konto, vor dem Drop wird gespart. Aus = Effekte wie vor Build 46 (zum Vergleichen)"],
-  ["acid", "Farbe", "Acid-Farbe", true, "Farbe folgt der 303-Filterfahrt"],
-  ["bar", "Farbe", "Takt-Farbe", true, "Farbton springt auf jeder Takt-Eins ein Stück weiter: im Groove leicht, im Drop kräftig, im Break steht er"],
-  ["auto", "Hören", "Auto-Pegel", true, "Gleicht leise und laute Tracks für den Visualizer an (der Ton bleibt unverändert)"],
-  ["instr", "Hören", "Instrumente hören", true, "Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche."],
-  ["tune", "Hören", "Reaktions-Angleich", true, "Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)"],
-  ["name", "Anzeige", "Name oben rechts", true, "Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)"],
-  ["rec", "Anzeige", "Mitschnitt", false, "Nur zum Testen (kostet Leistung): nimmt während der Musik ein kleines Video mit Ton auf (nur im Speicher, nichts wird gespeichert). Teilen über „Mitschnitt“ im Protokoll, zusammen mit dem ganzen Protokoll. Aus = der Knopf teilt den Bildbogen"],   // Build 125: Voreinstellung aus (Build 123 gemessen: 35 statt 56 fps). Wer den Schalter schon gespeichert hat, behält seinen Stand
-  ["journal", "Anzeige", "Mitschreiben", true, "Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet."]
-];
-const TOG_DEFAULT = {}, TOG_LABEL = {}, togIds = {};
-for (const [k, grp, label, def, tip] of TOGGLES) {
-  TOG_DEFAULT[k] = def; TOG_LABEL[k] = label; togIds[k] = "t-" + k;
-  const box = [...document.querySelectorAll("#werk .grp")].find(g => g.querySelector(".gl").textContent === grp);
-  const b = document.createElement("button"); b.id = "t-" + k; b.type = "button"; b.title = tip; b.textContent = label;
-  box.appendChild(b);
-}
-const toggles = Object.assign({}, TOG_DEFAULT, savedToggles || {});
-delete toggles.flug;                              // Build 48: der Track-Flug ist entfernt, ein alter gespeicherter Schalterstand dazu fällt weg
+// Build 126 (Emmo: „ich möchte die nicht an- oder ausklicken können“): keine Werkstatt, keine Schalter. Was bleibt, läuft fest so, wie es gedacht ist.
+// Gespeicherte Werkstatt-Werte (nmd:am-toggles, nmd:am-gain2, nmd:sz-gain, nmd:mix-anteil) bleiben im Speicher liegen, werden aber weder gelesen noch geändert.
+// Raus sind: Funken und Ringe (spark), Übergangs-Verformung und Drehen/Schwanken (morph), Acid- und Takt-Farbe (acid, bar), Mitschreiben (journal),
+// eigene Shader auf zweiter Fläche (own: jetzt Presets). Der Mitschnitt läuft nur über die Test-Adresse …/?mitschnitt.
+const TEST_REC = /[?&]mitschnitt\b/.test(location.search);
+const toggles = Object.freeze({ mood: true, phrase: true, drop: true, flip: true, build: true, pulse: !reduceMotion, mix: true, auto: true, instr: true, tune: true, name: true,
+  rec: TEST_REC, own: false, spark: false, morph: false, acid: false, bar: false, journal: false });
 
 const beat = { t: performance.now(), n: 0, state: 'warten', lastKick: 0, kickStreak: 0, breakStart: 0, iois: [] };
 let levelAvg = 0, lastT = performance.now(), sectionChangeT = 0, sectionBeat0 = 0;
 const PHRASE_BEATS = 16 * 4;                     // Phrase = 16 Takte, wird ab Abschnittsbeginn gezählt, nicht mehr nach festem Zähler
 const MIN_REST_BEATS = 8 * 4;                    // kurz vor einem Abschnittsende kein Extra-Wechsel: der Wechsel kommt dann mit dem Abschnitt
-let swLive = 0;                                   // Build 53: geglättete Filterfahrt (-1..+1) des aktuellen Takts
-let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0, hue = 0, lastHue = 0;
-// Takt-Farbe: eigener Farbton-Anteil, springt auf der Takt-Eins weiter (hue = Acid-Anteil, barHue = Takt-Anteil)
-const TON_HALT = 3;                              // Build 54: so viele Takte nach dem ersten muss ein neuer Ton bleiben (Build 51: 1, bei Protokoll 03:05/03:08 sprang A→E→A nach zwei Takten)
-const TON_MIN = 0.10;                            // Build 52: Ton-Sicherheit ab 10 % (vorher 15 %): in dichten Techno-Takten liegt sie bei 0,15-0,18, ein Track mit 17 % löste in 7 Minuten keinen einzigen Farbsprung aus
-let barHue = 0, barHueTarget = 0, barSteps = 0, tonLast = -1;   // tonLast: zuletzt angewendeter Grundton (Build 51: Pendeln zwischen zwei Tönen löst keinen Farbsprung mehr aus)
+let kickGlow = 0, pulse = 0, flash = 0, build = 0, vign = 0;
 // Drop-Aufbau: dropPre 0..1 = wie nah der nächste Drop ist (mit Scan ab 8 Takten vorher), bang = Aufknallen im Drop
 let dropPre = 0, bang = 0, sat = 1, lastSat = 1, preLogT = -1;
 const PRE_BARS = 8;
-const BAR_STEP = { groove: 20, drop: 45 };      // Grad pro Takt; Intro, Break, Build-up, Outro: Farbe bleibt stehen
+// Takt-Eins. Build 126: die Takt-Farbe (Farbton springt auf jeder Eins) ist entfernt, die Presets zeigen ihre eigenen Farben.
 function onBar(type) {
-  shBar = 1;                                     // eigene Shader: Takt-Eins
   AMI.bar = 1;                                   // Instrumente hören: Kick auf der Eins etwas stärker
-  if (!toggles.bar || frozen || dropPre > 0.05) return;   // vor dem Drop bleibt die Farbe stehen
-  let st = BAR_STEP[type] || 0; if (!st) return;
-  if (window.szBarStep) st = window.szBarStep(st);   // Build 106 Schaltzentrale: mit Pads kleiner, ohne Pads größer (mit Obergrenze)
-  const kw = kmNow(); if (kw && kw.sweep > 0) st = Math.round(st * (1 + 0.5 * kw.sweep));   // Build 53: öffnet sich der Filter, dreht die Farbe schneller
-  // Build 43: mit Klangmesser kommt zum Takt-Schritt ein Farbsprung, wenn der Grundton des Takts wechselt (jeder der 12 Töne ist 30° auf dem Farbkreis, kürzester Weg).
-  // Bleibt der Ton gleich, ändert sich nichts gegenüber vorher. Schwelle 0,15: in lauten Takten liegt die Ton-Sicherheit bei 0,15-0,18 (Build 44 mit 0,20 sprang nie).
-  const KB = curAnalysis && curAnalysis.km, kj = KB && scanActive() ? Math.floor(beat.n / 4) : -1;
-  let tonJump = 0, tonTxt = '';
-  if (kj >= 1 && kj < KB.n && KB.tk[kj] >= TON_MIN) {
-    if (tonLast < 0 || kj === 1) tonLast = KB.ton[kj - 1];
-    // Build 51/54: der neue Ton muss auch in den nächsten 3 Takten gelten (zusammen 4 Takte) (sonst pendelt A↔E mit ±150° im Takt); verglichen wird mit dem zuletzt angewendeten Ton
-    let hält = kj + TON_HALT < KB.n; for (let q = 1; q <= TON_HALT && hält; q++) hält = KB.tk[kj + q] >= TON_MIN && KB.ton[kj + q] === KB.ton[kj];
-    if (KB.ton[kj] !== tonLast && hält) {
-      const dn = ((KB.ton[kj] - tonLast + 18) % 12) - 6;     // -6 .. +5 Halbtöne
-      tonJump = dn * 30; tonTxt = ' · Ton ' + KM_NOTES[tonLast] + ' → ' + KM_NOTES[KB.ton[kj]] + ': ' + (tonJump > 0 ? '+' : '') + tonJump + '°';
-      tonLast = KB.ton[kj];
-    }
-  }
-  barHueTarget += st + tonJump; barSteps++;
-  if (tonJump) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + ')' + tonTxt + ', jetzt ' + Math.round(((barHueTarget % 360) + 360) % 360) + '°');
-  else if (barSteps % 32 === 1) rea('Takt-Farbe: +' + st + '° auf der Eins (' + type + '), jetzt ' + Math.round(barHueTarget % 360) + '°');
 }
 let hiFast = 0, hiAtBreak = 0, buildStart = 0;
 let rFast = 0, rSlow = 0, acidAct = 0;

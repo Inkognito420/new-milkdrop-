@@ -88,7 +88,7 @@ function jrStart(name, why) {
   const sv = soundTarget();
   JR.run = {
     ts: Math.floor(Date.now() / 1000), name, act: 0, fz: 0, tc: 0, st: why || 'a', sec: SEC1[sectionKey()] || 'g',
-    fl: (SH[name] ? 8 : 0) | (favs.has(name) ? 16 : 0) | (scanActive() ? 32 : 0) | (micOn ? 64 : 0) | (curStep && !SH[name] ? 128 : 0),
+    fl: (EIGEN.has(name) ? 8 : 0) | (favs.has(name) ? 16 : 0) | (scanActive() ? 32 : 0) | (micOn ? 64 : 0) | (curStep ? 128 : 0),
     tk: micOn ? 'mic' : (curFile ? jrTid(curFile) : ''), pos: micOn || !curFile ? -1 : Math.round(audio.currentTime),
     v: sv ? sv.map(x => Math.round(x * 100)) : null, m: jrPct3(trackMood()), bpm
   };

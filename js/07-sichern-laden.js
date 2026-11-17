@@ -23,7 +23,7 @@ function dPack() {
     standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
     favs: [...favs],
     profiles: slimProfiles(true),
-    settings: { toggles, gain: store.get('am-gain2', null), lat: store.get('am-lat', null), quality: store.get('am-quality', null), color: store.get('am-color', null) },
+    settings: { toggles: store.get('am-toggles', null), gain: store.get('am-gain2', null), lat: store.get('am-lat', null), quality: store.get('am-quality', null), color: store.get('am-color', null) },
     journal: { cols: JR_COLS, runs: JR.runs, tracks: JR.tracks, sess: JR.sess }
   };
 }
@@ -38,7 +38,7 @@ function jrMergeTrack(L, T) {                                          // ergän
 // Prüft eine Sicherung (apply = false: nur zählen) oder führt sie mit dem Stand hier zusammen (apply = true)
 function dMerge(o, apply) {
   const res = { favs: 0, prof: 0, runs: 0, runsAll: 0, tracks: 0, sess: 0 };
-  for (const n of (Array.isArray(o.favs) ? o.favs : [])) if (typeof n === 'string' && n.length < 300 && !favs.has(n) && (presets[n] || SH[n])) { res.favs++; if (apply) favs.add(n); }
+  for (const n of (Array.isArray(o.favs) ? o.favs : [])) if (typeof n === 'string' && n.length < 300 && !favs.has(n) && presets[n]) { res.favs++; if (apply) favs.add(n); }
   const pr = o.profiles && typeof o.profiles === 'object' ? o.profiles : {};
   for (const n in pr) {
     const Q = pr[n]; if (!presets[n] || !Q || typeof Q !== 'object') continue;
@@ -78,12 +78,8 @@ function dMerge(o, apply) {
 function dSettings(S) {                                                // Einstellungen aus einer Sicherung übernehmen (nur auf Wunsch)
   if (!S || typeof S !== 'object') return false;
   let did = false;
-  if (S.toggles && typeof S.toggles === 'object') {
-    for (const k in togIds) if (typeof S.toggles[k] === 'boolean') { toggles[k] = S.toggles[k]; $(togIds[k]).classList.toggle('hot', toggles[k]); did = true; }
-    store.set('am-toggles', toggles); showName(); if (typeof autoCard === 'function') autoCard();
-    if (!toggles.journal) jrEnd('x'); else if (!JR.run && curName) jrStart(curName, 'x');
-  }
-  for (const [el, v] of [[gainEl, S.gain], [latEl, S.lat]]) if (v !== null && v !== undefined && isFinite(+v)) { el.value = +v; el.dispatchEvent(new Event('input')); did = true; }
+  // Build 126: Schalter und Reaktion gibt es nicht mehr (fest), übernommen werden nur noch Latenz, Auflösung und Farbe
+  if (S.lat !== null && S.lat !== undefined && isFinite(+S.lat)) { latEl.value = +S.lat; latEl.dispatchEvent(new Event('input')); did = true; }
   for (const [el, v] of [[$('quality'), S.quality], [colorEl, S.color]]) if (typeof v === 'string' && [...el.options].some(o => o.value === v && !o.disabled)) { el.value = v; el.dispatchEvent(new Event('change')); did = true; }
   jrInfo();
   return did;

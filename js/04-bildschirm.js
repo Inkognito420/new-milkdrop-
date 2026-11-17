@@ -1,13 +1,21 @@
 // Acid Milkdrop · Teil 4 von 16: Größe, Auflösung und Farbe (P3, OLED-Schwarz)
 // Alle Teile teilen sich einen gemeinsamen Bereich (wie vorher der eine große Block in index.html).
 // Reihenfolge ist wichtig: index.html lädt sie nacheinander. Bricht ein Teil ab, starten die folgenden nicht.
-if (window.__AM_STEP !== 3) throw new Error('Acid Milkdrop: Teil 4 (bildschirm) nicht gestartet, ein früherer Teil ist abgebrochen');
+if (window.__AM_STEP !== 2) throw new Error('Acid Milkdrop: Teil 4 (bildschirm) nicht gestartet, ein früherer Teil ist abgebrochen');
 
 // ===== Größe =====
+// Sichtbare Fläche. Build 126: iOS meldete nach der Rückkehr aus dem Hintergrund und Drehen eine sichtbare Höhe von 0 oder sogar −59 px
+// (Protokoll: „Drehung: 852×393 (sichtbar 852×0)“, danach „Auflösung: 1920×2“: das Bild wurde aus 2 Pixelzeilen auf den ganzen Schirm gezogen = Streifen).
+// Unsinnige Werte (unter 100 px oder unter einem Drittel des Fensters) zählen nicht, dann gilt die Fenstergröße.
+function viewSize() {
+  const vv = window.visualViewport, iw = window.innerWidth, ih = window.innerHeight;
+  let w = vv ? vv.width : iw, h = vv ? vv.height : ih;
+  if (!(w >= 100 && w >= iw / 3)) w = iw;
+  if (!(h >= 100 && h >= ih / 3)) h = ih;
+  return [Math.round(w), Math.round(h)];
+}
 function targetSize(noBrake) {
-  const vv = window.visualViewport;
-  const cw = Math.round(vv ? vv.width : window.innerWidth);
-  const ch = Math.round(vv ? vv.height : window.innerHeight);
+  const [cw, ch] = viewSize();
   const dpr = window.devicePixelRatio || 1, long = Math.max(cw, ch), q = $('quality').value;
   let scale = dpr;
   if (q === '2k') scale = Math.min(dpr, 2560 / long);
@@ -23,7 +31,6 @@ function resize() {
   if (fxc.width !== fw || fxc.height !== fh) { fxc.width = fw; fxc.height = fh; }
   if (w === W && h === H) return;
   W = w; H = h; canvas.width = W; canvas.height = H;
-  if (shPlayer) shSize();
   if (viz) { try { viz.setRendererSize(W, H); } catch (e) {} }
   $('res').textContent = W + '×' + H;
 }
@@ -56,17 +63,13 @@ function applyColor() {
   filterBase = mode === 'p3oled' ? 'contrast(1.12) saturate(1.08)' : '';
   applyFilter(true);
 }
-let lastBright = 1;
+// Build 126: nur noch Farbdarstellung (P3/OLED) und die Sättigung um den Drop (vorher Farbe raus, im Drop kurz übersatt). Takt-Farbe, Acid-Farbe
+// und Pads-Farbe der Schaltzentrale sind entfernt: die Presets zeigen ihre eigenen Farben.
 function applyFilter(force) {
-  const tot = hue + barHue + (window.szHueAdd ? window.szHueAdd() : 0), br = window.szBright ? window.szBright() : 1;   // Build 106: Pads-Farbe der Schaltzentrale
-  if (!force && Math.abs(tot - lastHue) < 0.7 && Math.abs(sat - lastSat) < 0.02 && Math.abs(br - lastBright) < 0.01) return;
-  lastHue = tot; lastSat = sat; lastBright = br;
-  const a = ((tot % 360) + 360) % 360, hh = a > 180 ? a - 360 : a;
-  const h = Math.abs(hh) >= 0.7 ? ' hue-rotate(' + hh.toFixed(1) + 'deg)' : '';
+  if (!force && Math.abs(sat - lastSat) < 0.02) return;
+  lastSat = sat;
   const sv = Math.abs(sat - 1) >= 0.02 ? ' saturate(' + sat.toFixed(2) + ')' : '';
-  const bv = Math.abs(br - 1) >= 0.01 ? ' brightness(' + br.toFixed(3) + ')' : '';
-  canvas.style.filter = (filterBase + h + sv + bv).trim();
-  shEl.style.filter = canvas.style.filter;          // Takt-Farbe, Acid-Farbe und Drop-Entsättigung gelten auch für eigene Shader
+  canvas.style.filter = (filterBase + sv).trim();
 }
 colorEl.addEventListener('change', () => { store.set('am-color', colorEl.value); applyColor(); });
 

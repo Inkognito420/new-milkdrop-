@@ -12,12 +12,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <!-- Build 125: die Schriften dürfen den Start nicht aufhalten (media=print lädt nebenher; antwortet Google nicht, startet die App trotzdem mit den Ersatzschriften aus style.css) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap" media="print" onload="this.media='all'">
-<script>var B=125;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+<script>var B=126;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
 <canvas id="stage"></canvas>
-<canvas id="sh"></canvas>
 <canvas id="fx"></canvas>
 <div id="intro"><div><h1>NEW<br><span>MILKDROP</span></h1><p>Tracks aus der Dateien-App aufs Bild ziehen, gern mehrere auf einmal. Wischen: nächstes Preset · Halten: Freeze · Doppeltipp: Schnitt mit Blitz · Tippen: Leiste aus und an.</p></div></div>
 
@@ -65,10 +64,6 @@
     <div id="preset">–</div>
   </div>
   <div id="fine" hidden>
-    <div id="autoCard" class="card">
-      <div id="autoTxt">Alles läuft automatisch.</div>
-      <button id="allAuto" type="button" class="hot" hidden>Alles auf Auto</button>
-    </div>
     <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
     <div class="row">
       <label class="slider" for="latency" title="Lautsprecher am Kabel 0 ms, Bluetooth-Box oder AirPods etwa 150–250 ms. So einstellen, dass der Puls genau mit dem Kick kommt, den du hörst.">Bluetooth-Versatz<input id="latency" type="range" min="0" max="400" step="5" value="0"><output id="latOut">0 ms</output></label>
@@ -76,7 +71,6 @@
     <div class="row">
       <button id="dBtn" type="button" aria-expanded="false" aria-controls="dBox" title="Sterne, vermessene Presets und Mitschrift sichern oder laden (gleicht Safari und Icon ab)">Sichern/Laden</button>
       <button id="logBtn" type="button" aria-expanded="false" aria-controls="logbox">Protokoll</button>
-      <button id="werkBtn" type="button" aria-expanded="false" aria-controls="werk" title="Alle Einzelschalter zum Ausprobieren und Vergleichen. Normal brauchst du hier nichts.">Werkstatt</button>
     </div>
     <div id="dBox" hidden>
     <div class="row">
@@ -89,7 +83,7 @@
     <div id="dPane" hidden>
       <textarea id="dText" rows="3" placeholder="Hier den kopierten Sicherungstext einfügen" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Sicherungstext"></textarea>
       <div class="note" id="dSum"></div>
-      <label class="chk" for="dSet"><input id="dSet" type="checkbox"> Einstellungen auch übernehmen (Schalter, Reaktion, Latenz, Auflösung, Farbe)</label>
+      <label class="chk" for="dSet"><input id="dSet" type="checkbox"> Einstellungen auch übernehmen (Latenz, Auflösung, Farbe)</label>
       <div class="row">
         <button id="dApply" type="button" class="hot" disabled>Übernehmen</button>
         <button id="dClose" type="button">Schließen</button>
@@ -110,30 +104,12 @@
         <button id="logClear" type="button">Leeren</button>
       </div>
     </div>
-    <div id="werk" hidden>
-      <div class="note">Werkstatt: nur zum Ausprobieren und Vergleichen. Grün = an. Mit „Alles auf Auto“ oben ist alles wieder wie gedacht.</div>
-      <div class="grp"><span class="gl">Bildwechsel</span>
-      </div>
-      <div class="grp"><span class="gl">Effekte</span>
-      </div>
-      <div class="grp"><span class="gl">Farbe</span>
-      </div>
-      <div class="grp"><span class="gl">Hören</span>
-      </div>
-      <div class="grp"><span class="gl">Anzeige</span>
-      </div>
-      <div class="row">
-        <label class="slider" for="gain">Reaktion<input id="gain" type="range" min="0.3" max="4" step="0.1" value="1"><output id="gainOut">1.0×</output></label>
-      </div>
-      <div class="note" id="autoInfo"></div>
-      <div class="row">
-        <span class="stat">FPS <em id="fps">–</em></span>
-        <span class="stat">RES <em id="res">–</em></span>
-        <span class="stat">HZ <em id="hz">–</em></span>
-        <button id="beepA" type="button">Testton 1</button>
-        <button id="beepB" type="button">Testton 2</button>
-      </div>
+    <div class="row">
+      <span class="stat">FPS <em id="fps">–</em></span>
+      <span class="stat">RES <em id="res">–</em></span>
+      <span class="stat">HZ <em id="hz">–</em></span>
     </div>
+    <div class="note" id="autoInfo"></div>
   </div>
   <div id="msg"></div>
 </div>
