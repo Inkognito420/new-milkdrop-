@@ -148,7 +148,6 @@ async function startMic() {
   }
   wantPlay = false; audio.pause(); bufExit();
   micStream = stream; micNode = ctx.createMediaStreamSource(stream); micOn = true;
-  micGainSaved = +gainEl.value; if (micGainSaved !== 1) { gainEl.value = 1; applyGain(); }   // der Auto-Pegel regelt das Mikro; ein hoher Regler würde zusätzlich übersteuern
   curAnalysis = null; scanType = null; lastBi = null; $('timeline').hidden = true;
   resetBeat(); agcReset(); applyLat(); jrSplit('k');
   connect(micNode);                                  // nur in die Analyse, nie zu den Lautsprechern (sonst Rückkopplung)
@@ -166,7 +165,6 @@ function stopMic() {
   micNode = null; micStream = null;
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
   if (srcNode && srcNode !== fileNode) srcNode = null;
-  gainEl.value = micGainSaved; applyGain();
   resetBeat(); agcReset(); applyLat(); micUi(); jrSplit('k');
   setTrackInfo(); rea('Mikro aus');
   if (curFile) applyScanFor(curFile);

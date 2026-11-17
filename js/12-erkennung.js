@@ -27,7 +27,6 @@ const bM1 = band(300, 1000), bM2 = band(1000, 3000);
 
 let dropTimer = 0, reactiveErr = false;           // dropTimer: setzt nach einem Live-Drop den Zustand zurück; reactiveErr: Fehler der feinen Klang-Analyse nur einmal melden
 function resetBeat() {
-  tonLast = -1;
   clearTimeout(dropTimer);                        // ein Timer vom vorigen Track darf nicht in den neuen hineinfunken
   beat.state = 'warten'; beat.n = 0; beat.iois = []; beat.kickStreak = 0; beat.lastKick = 0;
   for (const k in det) Object.assign(det[k], { prev: 0, mean: 0, varr: 0, avg: 0 });
@@ -47,8 +46,8 @@ function beatFrame(t) {
 
     det.kick.minGap = Math.min(300, 60000 / bpm * 0.6);
     const kS = onsetStep(det.kick, t, dt); if (kS) onKick(t, kS);
-    const sS = onsetStep(det.snare, t, dt); if (sS && t - det.kick.last > 60) { onSnare(sS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.5 + 0.5 * sS); AMI.n.t++; amiEv('s'); } }
-    const hS = onsetStep(det.hat, t, dt); if (hS) { onHat(hS); if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * hS); AMI.n.t++; amiEv('h'); } }
+    const sS = onsetStep(det.snare, t, dt); if (sS && t - det.kick.last > 60) { if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.5 + 0.5 * sS); AMI.n.t++; amiEv('s'); } }
+    const hS = onsetStep(det.hat, t, dt); if (hS) { if (!scanActive()) { AMI.ht = Math.max(AMI.ht, 0.35 + 0.65 * hS); AMI.n.t++; amiEv('h'); } }
     const mS = onsetStep(det.mid, t, dt); if (mS && t - det.kick.last > 50 && !scanActive()) { AMI.hm = Math.max(AMI.hm, 0.4 + 0.6 * mS); AMI.n.m++; amiEv('m'); }
     hiFast = ema(hiFast, det.hat.e + det.snare.e, dt, 800);
     if (reactive) { try { feedBlender(reactive.update(), dt); } catch (e) { if (!reactiveErr) { reactiveErr = true; err('Feine Klang-Analyse (24 Bänder) fehlgeschlagen: ' + (e && e.message || e)); } } }
@@ -59,13 +58,9 @@ function beatFrame(t) {
 
     // Acid-Linie: Verschiebung zwischen tiefen und hohen Mitten = Filterfahrt der 303
     const m1 = bandE(bM1), m2 = bandE(bM2), r = m2 / (m1 + m2 + 1e-12);
-    if (shPlayer) shLevels(dt, det.kick.e, m1 + m2, det.hat.e);
     rFast = ema(rFast, r, dt, 40); rSlow = ema(rSlow, r, dt, 1500);
     const d = rFast - rSlow;
     acidAct = ema(acidAct, Math.abs(d), dt, 300);
-    const kn = kmNow();                                                    // Build 43: Filterfahrt des Takts aus dem Scan (0,6 ohne bis 1,4 mit starker Fahrt)
-    const hTarget = toggles.acid && (m1 + m2) > 1e-4 ? clamp(d * 300 * (kn ? 0.6 + 0.8 * kn.beweg : 1), -60, 60) : 0;
-    hue = ema(hue, hTarget, dt, 80);
 
     // Stimmung live mitschreiben (für Tracks ohne Scan)
     if (all > 1e-4) {
@@ -75,8 +70,6 @@ function beatFrame(t) {
       live.acid = ema(live.acid, clamp((acidAct - 0.01) / 0.04), dt, 8000);
       live.energy = ema(live.energy, clamp(0.5 * clamp((20 * Math.log10(all + 1e-9) + 30) / 20) + 0.5 * clamp((bpm - 118) / 30)), dt, 8000);
     }
-  } else {
-    hue = ema(hue, 0, dt, 200);
   }
 
   if (scanActive()) scanFrame(t);
@@ -161,14 +154,11 @@ function onSection(type, prev, P, t) {
   if (frozen) return;
   if (type === 'drop') {
     build = 0; vign = 0; dropPre = 0;
-    if (toggles.build && !reduceMotion) { bang = 1; if (toggles.bar) barHueTarget += 60; }   // Aufknallen: Farbe satt zurück + Farbsprung
+    if (toggles.build && !reduceMotion) bang = 1;                 // Aufknallen: Farbe satt zurück
     if (toggles.drop) {
       if (auto) nextPreset(0, moodTarget('drop'), false, 's');
-      if (window.__AMX && toggles.mix) mxDrop();                 // Build 46: Mischpult gibt das angesparte Funken-Konto auf einmal aus
-      else {
-        flash = reduceMotion ? 0.2 : 0.7;
-        burst(40);
-      }
+      if (window.__AMX && toggles.mix) mxDrop();                 // Teil 12b: Blitz und Zoom-Stoß
+      else flash = reduceMotion ? 0.2 : 0.7;
     }
     pulse = Math.max(pulse, 0.06);
     return;
@@ -205,7 +195,7 @@ function scanFrame(t) {
   if (!A._drops) A._drops = A.sections.filter(x => x.type === 'drop').map(x => x.t0);
   let nd = -1; for (const d of A._drops) if (d > ts) { nd = d; break; }
   const lead = PRE_BARS * 4 * A.beatS;
-  const szB = window.szBuild ? window.szBuild() : -1;   // Build 106 Dirigent: gemessener Aufbau statt fester 8 Takte (-1 = alte Regel)
+  const szB = A.aufbau ? Math.min(1, AKV.ak_build_strength || 0) : -1;   // Build 106 (seit 126 ohne Schaltzentrale): gemessener Aufbau (js/08b) statt fester 8 Takte; ohne Messung die alte Regel
   if (szB >= 0) {
     dropPre = type !== 'drop' && !audio.paused ? szB : 0;
     if (dropPre > 0.05 && preLogT !== nd) { preLogT = nd; rea('Aufbau (gemessen): Stärke ' + dropPre.toFixed(2) + ', nächster Drop bei ' + (nd > 0 ? nd.toFixed(1) + ' s' : 'unbekannt')); }

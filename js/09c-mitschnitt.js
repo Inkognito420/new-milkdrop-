@@ -5,7 +5,7 @@ if (window.__AM_STEP !== 9) throw new Error('new-milkdrop-: Teil 9c (mitschnitt)
 if (typeof bbScreen !== 'function') throw new Error('new-milkdrop-: Teil 9c (mitschnitt) braucht den Bildbogen (js/09b)');
 
 // ===== Idee (Emmo, Build 121): „statt Bildbogen ein Screen-Recorder, der nur auf Knopfdruck geteilt wird, Ton gleich dabei, über 29 MB gesplittet“ =====
-// Während Musik läuft (und der Schalter „Mitschnitt“ an ist), wird ein kleines Video aufgenommen: was auf dem Schirm ist (wie der Bildbogen:
+// Während Musik läuft (Build 126: nur mit der Test-Adresse …/?mitschnitt, vorher Schalter „Mitschnitt“), wird ein kleines Video aufgenommen: was auf dem Schirm ist (wie der Bildbogen:
 // Milkdrop gespiegelt und mit Farbfilter, eigener Shader, Funken, Blitz) und der Ton der Quelle (Datei, Sicherheits-Modus oder Mikro, genau was
 // man hört). Nichts wird gespeichert: die Teile liegen im Speicher, bis die App zu ist; behalten werden die letzten MSCFG.keepMB.
 // Jeder Teil ist eine eigene Videodatei unter MSCFG.maxFileMB (Claude nimmt höchstens 30 MB pro Datei): wird er zu groß oder zu lang, beginnt

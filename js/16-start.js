@@ -69,7 +69,7 @@ function panic(why) {
   tun(() => { viz = null; });                                         // die Schleife zeichnet nichts mehr
   tun(() => ctx.suspend());
   tun(() => { if (navigator.mediaSession) { navigator.mediaSession.playbackState = 'none'; navigator.mediaSession.metadata = null; } });
-  tun(() => { for (const c of [canvas, shEl, fxc]) c.style.display = 'none'; hud.style.display = 'none'; });
+  tun(() => { for (const c of [canvas, fxc]) c.style.display = 'none'; hud.style.display = 'none'; });
   tun(() => { $('panicBox').hidden = false; });
   tun(() => lastLogSave(true));
 }

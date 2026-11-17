@@ -9,7 +9,6 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--mono);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block;background:#000;touch-action:none;transform-origin:50% 50%;will-change:transform}
-#sh{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:0;transform-origin:50% 50%;will-change:transform,opacity}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
 #pname{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));max-width:62vw;text-align:right;font:500 11px/1.3 var(--mono);color:#fff;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;pointer-events:none;z-index:5;word-break:break-word;letter-spacing:.01em}
@@ -76,9 +75,4 @@ button.warn{background:#7a1f1f;border-color:#c0392b;color:#fff}
 .card{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(198,244,50,.07);font-size:12px;line-height:1.45}
 .card.hand{background:rgba(255,179,71,.09);border-color:rgba(255,179,71,.35)}
 .card #autoTxt{flex:1 1 220px;min-width:0}
-#werk{display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px dashed var(--line)}
-.grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.grp .gl{flex:0 0 100%;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
-#werk button{min-height:34px;padding:7px 10px;font-size:11px}
-#werk button:not(.hot){color:var(--dim)}
 @media (prefers-reduced-motion:reduce){#hud{transition:none}}

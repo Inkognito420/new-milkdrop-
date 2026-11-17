@@ -56,21 +56,17 @@ function bbXf(x, el, tw, th) {
   x.translate(tw / 2, th / 2); x.scale(tw / cw, th / ch); x.transform(M.a, M.b, M.c, M.d, M.e, M.f); x.scale(cw / tw, ch / th); x.translate(-tw / 2, -th / 2);
 }
 // Was auf dem Schirm ist, verkleinert in einen 2D-Kontext zeichnen (Build 122: auch für den Mitschnitt, js/09c).
-// o.base: Milkdrop (gespiegelt wie auf dem Schirm) und eigener Shader; o.color: deren Farbfilter (ctx.filter, sonst nachgerechnet); o.fx: Funken, Ringe, Blitz
+// o.base: das Preset (gespiegelt wie auf dem Schirm); o.color: sein Farbfilter (ctx.filter, sonst nachgerechnet); o.fx: Aufbau-Vignette und Blitz
 function bbScreen(x, tw, th, o) {
   x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.fillStyle = '#000'; x.fillRect(0, 0, tw, th);
   const useF = o.color && bbFilterOk;
   if (o.base) {
-    const shFull = shCur && shOp >= 0.999;
-    if (!shFull) {
-      x.save(); if (useF) { try { x.filter = canvas.style.filter || 'none'; } catch (e) {} }
-      bbXf(x, canvas, tw, th); x.drawImage(canvas, 0, 0, tw, th); x.restore();
-    }
-    if (shOp > 0.01) { x.save(); x.globalAlpha = Math.min(1, shOp); if (useF) { try { x.filter = shEl.style.filter || 'none'; } catch (e) {} } bbXf(x, shEl, tw, th); x.drawImage(shEl, 0, 0, tw, th); x.restore(); }
-    if (o.color && !bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Milkdrop und eigener Shader haben denselben Filter (applyFilter, js/04); Funken und Blitz nicht
+    x.save(); if (useF) { try { x.filter = canvas.style.filter || 'none'; } catch (e) {} }
+    bbXf(x, canvas, tw, th); x.drawImage(canvas, 0, 0, tw, th); x.restore();
+    if (o.color && !bbFilterOk) bbRecolor(x, tw, th, canvas.style.filter);     // Farbfilter des Presets (applyFilter, js/04); Vignette und Blitz nicht
   }
   if (o.fx) {
-    x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(fxc, 0, 0, tw, th); x.restore();
+    x.drawImage(fxc, 0, 0, tw, th);                  // Build 126: auf der Effekt-Fläche liegt nur noch die Aufbau-Vignette (dunkel, normal darüber)
     if (o.flash !== false && flash > 0.02) { x.fillStyle = 'rgba(255,255,255,' + Math.min(1, flash).toFixed(2) + ')'; x.fillRect(0, 0, tw, th); }
   }
 }

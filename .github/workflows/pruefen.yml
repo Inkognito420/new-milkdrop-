@@ -33,7 +33,7 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
-      - name: Browser-Prüfung (Start, Bedienung, Shader, Scan, Warteschlange, Grafik-Verlust, Mikrofon, Offline, Klangrollen, echte Butterchurn-Kopie)
+      - name: Browser-Prüfung (Start, Bedienung, eigene Visuals, Scan, Warteschlange, Puls, Mikrofon, Offline, Klangrollen, echte Butterchurn-Kopie)
         run: node test/browser.js
   butterchurn:
     runs-on: ubuntu-24.04

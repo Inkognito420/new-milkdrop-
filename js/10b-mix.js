@@ -28,12 +28,11 @@ const MIXCFG = {
   moveMin: 5,                  // mittlere Änderung zwischen Bild 20 und 40 (0-255): darunter steht das Bild. Build 119: 0,4 → 5 (gesternt bei Bewegung 15-74,
                                // die fast stehenden mit 0,5 und 4 sahen im Bildbogen wie ein Standbild aus)
   blend: 2,                    // Überblenden zum Mix in Sekunden
-  share: 0.35,                 // Auto-Mix (Build 118): so viele automatische Bildwechsel (Abschnitt, Phrase, Zeit) werden ein frischer Mix (Regler in der Werkstatt)
+  share: 0.35,                 // Auto-Mix (Build 118): so viele automatische Bildwechsel (Abschnitt, Phrase, Zeit) werden ein frischer Mix (Build 126: fest, kein Regler mehr)
   prepEveryMs: 3000,           // so oft wird nachgesehen, ob ein Mix vorbereitet werden muss
   prepAfterSwitchMs: 3500      // ... aber erst so lange nach einem Bildwechsel (Überblenden ist dann durch, das Prüfen stört nichts)
 };
 const MIX = { bad: new Set(), recipes: [], busy: false, viz: null, vizFail: false, ready: null, share: MIXCFG.share, st: { made: 0, rejected: 0, auto: 0, why: {} } };
-{ const v = store.get('mix-anteil', null); if (typeof v === 'number' && v >= 0 && v <= 1) MIX.share = v; }
 const isMix = n => typeof n === 'string' && n.indexOf('Mix · ') === 0;
 const mixQs = s => { const o = new Set(); String(s || '').replace(/\bq(\d+)\b/g, (m, d) => { o.add(+d); return m; }); return o; };
 const mixShort = n => { const s = String(n).replace(/^[_$\s]+/, '').split(/ - | · /).pop().replace(/\s*[\[(].*$/, '').trim() || String(n); return s.length > 22 ? s.slice(0, 21) + '…' : s; };
@@ -43,7 +42,7 @@ const mixFormsQ = p => [].concat(p.shapes || [], p.waves || []).filter(x => x &&
 // Ein Kind bauen. r = { a, b, f } (f: 'a' oder 'b' = woher die Formen kommen). Gibt null zurück, wenn das Paar nicht passt.
 function mixBuild(r) {
   const A = presets[r.a], B = presets[r.b];
-  if (!A || !B || r.a === r.b || isMix(r.a) || isMix(r.b) || SH[r.a] || SH[r.b]) return null;
+  if (!A || !B || r.a === r.b || isMix(r.a) || isMix(r.b) || EIGEN.has(r.a) || EIGEN.has(r.b)) return null;   // Build 126: eigene Visuals zeichnen ihr Bild ganz im Comp, als Mix-Partner taugen sie nicht
   if (!B.comp) return null;                                         // ohne eigenen Look bringt B nichts mit
   const need = mixQs(B.comp), aUse = mixQs((A.warp || '') + ';' + (A.pixel_eqs_str || ''));
   for (const q of need) if (aUse.has(q)) return null;               // A und B brauchen dieselben q-Werte: passt nicht zusammen
@@ -70,7 +69,7 @@ function mixName(r) {
 }
 // Eltern: Favoriten (Milkdrop-Presets, keine eigenen Shader, keine Mixe). Zu wenige Sterne: alle brauchbaren Presets.
 function mixParents() {
-  const ok = n => presets[n] && !SH[n] && !isMix(n) && usable(n);
+  const ok = n => presets[n] && !EIGEN.has(n) && !isMix(n) && usable(n);
   const fav = [...favs].filter(ok);
   return fav.length >= 2 ? { pool: fav, fav: true } : { pool: names.filter(ok), fav: false };
 }
@@ -181,18 +180,6 @@ async function mixNow() {
   finally { MIX.busy = false; if (btn) { btn.disabled = false; btn.textContent = 'Mix'; } }
 }
 
-// ===== Werkstatt: Regler „Mix-Anteil“ =====
-{ const werk = document.getElementById('werk');
-  if (werk) {
-    const box = document.createElement('div'); box.className = 'grp';
-    const lb = document.createElement('span'); lb.className = 'gl'; lb.textContent = 'Mix'; box.appendChild(lb);
-    const row = document.createElement('label'); row.style.cssText = 'flex:0 0 100%;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)';
-    const t = document.createElement('span'); t.style.cssText = 'flex:0 0 150px'; t.textContent = 'Auto-Mix (Anteil der Wechsel)';
-    const r = document.createElement('input'); r.type = 'range'; r.min = '0'; r.max = '100'; r.step = '5'; r.value = String(Math.round(MIX.share * 100)); r.id = 'mixShare'; r.style.flex = '1';
-    const v = document.createElement('span'); v.style.cssText = 'flex:0 0 40px;text-align:right'; v.textContent = r.value + ' %';
-    r.addEventListener('input', () => { MIX.share = +r.value / 100; v.textContent = r.value + ' %'; store.set('mix-anteil', MIX.share); });
-    row.appendChild(t); row.appendChild(r); row.appendChild(v); box.appendChild(row); werk.appendChild(box);
-  } }
 // Protokoll: einmal pro Minute, wenn Mixe kamen
 setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %' + (S.chkN ? ' · Prüfen hielt die Seite Ø ' + Math.round(S.chkSum / S.chkN) + ' ms an, längstes ' + Math.round(S.chkMax) + ' ms (' + S.chkN + ' Prüfungen)' : '')); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
 

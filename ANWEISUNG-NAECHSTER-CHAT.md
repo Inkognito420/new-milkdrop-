@@ -1,4 +1,4 @@
-# Anweisung für den nächsten Chat (Stand Build 125 auf Zweig `claude/where-we-left-off-s12p8z`; main = Build 124)
+# Anweisung für den nächsten Chat (Stand Build 126 auf Zweig `claude/where-we-left-off-s12p8z`; main = Build 125)
 
 Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neuen Chat einfach den Inhalt (ab „GRUNDREGEL“) einfügen oder sagen „Lies ANWEISUNG-NAECHSTER-CHAT.md im Repo new-milkdrop- und mach weiter“.
 
@@ -11,9 +11,44 @@ Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neue
 - Ehrlich berichten: was getestet wurde (Sandbox, Software-Grafik, künstliche Tracks, keine echten Handys) und was nicht. Immer klar sagen, was GEMESSEN und was eine FESTE REGEL ist. Nie „fertig“ melden, was nicht geprüft ist.
 - Speicher-Trennung (Acid und new-milkdrop- teilen sich die Adresse): new-milkdrop- speichert nur mit Vorsatz `nmd:` (`KEY_NS`), Offline-Speicher `nmd-<Build>`, Datenbanken `nmd-wd` (Hänger-Wächter), `nmd-partitur` (Partitur). Nie ändern, nie Acids Schlüssel (`am-...` ohne Vorsatz, `acid-<B>`, `acid-wd`) beschreiben oder löschen.
 - **Emmos Einstellungen nie überschreiben** (von Emmo bestätigt): Was er in der Werkstatt aus- oder umgestellt hat (Schalter in `nmd:am-toggles`, Regler wie `nmd:sz-gain`, `nmd:mix-anteil`), bleibt so. Keine Migration, kein „Zurücksetzen“, keine neue Voreinstellung, die gespeicherte Werte ersetzt. Neue Schalter/Regler dürfen nur dazukommen (mit Voreinstellung für den, der sie noch nie gestellt hat). Beispiel: „Hats & Snares“ ist bei ihm bewusst aus.
+  Seit Build 126 gibt es keine Werkstatt mehr (Emmos Entscheidung): die gespeicherten Werte bleiben unangetastet liegen (nicht lesen, nicht löschen, in Sicherungen mitnehmen), wirken aber nicht mehr.
 - Fremder Code nur mit passender Lizenz (MIT, BSD, Apache-2.0, ISC, zlib; Lizenztext und Herkunft in den Ordner, Eintrag im README unter „Lizenzen“). Kein GPL/AGPL/LGPL. Alles lokal im Repo, kein CDN.
 
-## AKTUELLER STAND (Build 125) – ZUERST LESEN, ältere Abschnitte unten sind Verlauf
+## AKTUELLER STAND (Build 126) – ZUERST LESEN, ältere Abschnitte unten sind Verlauf
+- **main = Build 125** (PR #24 gemerged, online). **Build 126 „Aufgeräumt“** liegt auf dem Arbeitszweig `claude/where-we-left-off-s12p8z`; PR und Merge nur mit Emmos OK.
+- **Emmos Entscheidung (17.11.):** keine Werkstatt, keine Schalter („ich möchte die nicht an- oder ausklicken können … wir drehen uns im Kreis“); seine eigenen Visuals
+  als echte Presets in der Butterchurn-Liste. Gewählt (alle Empfehlungen): Kick-Puls, Aufbau-Spannung, Drop-Blitz bleiben fest; Mitschnitt nur über die Test-Adresse
+  `…/?mitschnitt`; Spiegeln fest an; sofort aufräumen.
+- **Was Build 126 macht** (Einzelheiten README „Build 126“):
+  1. `toggles` ist fest und eingefroren (`js/01`, `Object.freeze`): an = mood, phrase, drop, flip, build, pulse (außer „Bewegung reduzieren“), mix, auto, instr, tune, name;
+     aus = spark, morph, acid, bar, journal, own; rec nur mit `?mitschnitt` (`TEST_REC`). Keine Werkstatt im HTML, kein `TOGGLES`, kein „Alles auf Auto“, keine Testtöne,
+     kein Regler „Reaktion“ (Auto-Pegel allein) und „Mix-Anteil“ (fest `MIXCFG.share` 0,35). Unter „Mehr“: Stimmung, Bluetooth-Versatz, Sichern/Laden, Protokoll, FPS/RES/HZ.
+  2. Gespeicherte Werkstatt-Werte (`nmd:am-toggles`, `nmd:am-gain2`, `nmd:sz-gain`, `nmd:mix-anteil`) werden NICHT gelesen, NICHT gelöscht; Sicherungen nehmen
+     `am-toggles` unverändert mit; beim Zurückspielen wirken nur noch Latenz, Auflösung, Farbe (`dSettings`, `js/07`). Emmos alte Werte (z. B. Mix-Anteil 100 %) gelten nicht mehr.
+  3. **Eigene Visuals** = `eigene-visuals.js` (`window.EIGENE_VISUALS`, in `ACID_PRESETS`, Menge `EIGEN` in `js/01`, REACT geschätzt in `window.EIGENE_REACT`).
+     Namen wie die alten eigenen Shader („Eigen · Peak · Strahlen“ usw.), Sterne bleiben. GLSL 1:1, Anschlüsse per `#define` im Kopf vor `shader_body`
+     (u_bass→kick_env, u_mid→acid_env, u_treb→hats_env, u_beat→kick_hit, u_bar aus ak_bar/ak_bpm, u_build→ak_build_strength, u_v/u_w/u_hue aus rand_preset,
+     Rauschen über `sampler_noise_lq` mit `textureLod`). Achtung bei neuen Presets: im Shader-Rumpf keine Namen `uv`, `rad`, `ang`, `ret`, `decay` neu anlegen
+     (Butterchurn deklariert sie), Hilfsfunktionen mit Vorsatz `ei…`. Echo-Ring: Spur im Warp, Leuchten mit `sampler_blur1/2`. Auswahl: Topf `EIGEN` mit 15 % in
+     `pickPreset` (vor Favoriten 40 % und Acid 12 %); nicht als Mix-Partner (`mixBuild` und `mixParents` in `js/10b` schließen `EIGEN` aus). Lastbremse greift (gehören zu `ACID`).
+  4. Entfernt: `acid-shader.js`, `shader-test.html`, `js/03-eigene-shader.js` (js/04 prüft jetzt Teil 2), `js/13b-schaltzentrale.js`, Funken/Ringe (`onHat`, `onSnare`,
+     `burst`), Übergangs-Verformung (`morphOn`), Acid-/Takt-Farbe (`hue`, `barHue`, `onBar` macht nur noch `AMI.bar = 1`), Pads-Farbe/Helligkeit, `#sh`-Fläche.
+     `js/12b` ist nur noch die Zoom-Feder (Kick-Puls, Aufbau mit Ausholen, Drop: Blitz 70 % + Zoom-Stoß 0,09, Protokoll „Puls (letzte Minute)“, „Drop: Blitz 70 %“).
+     Gemessener Aufbau bleibt: `js/12` nimmt `AKV.ak_build_strength`, wenn `curAnalysis.aufbau` da ist (sonst alte 8-Takte-Regel).
+  5. Bildgröße: `viewSize()` in `js/04` ignoriert sichtbare Höhen/Breiten unter 100 px oder unter einem Drittel des Fensters (iOS meldete 0 und −59 → „Auflösung: 1920×2“, Streifen).
+  6. AK-PATCH 10/11 (Endstufe, Bit-Salat) stecken noch in `vendor/butterchurn/butterchurn.js`, die App ruft `setAkStage` aber nicht mehr auf (alles 0 = übersprungen).
+     Kandidat zum Entfernen (kürzere Shader = schnelleres Übersetzen beim Bildwechsel); dann Regressionstest laufen lassen.
+- **Geprüft (Sandbox, Software-Grafik):** Schnelltests grün (27 Dateien, Build 126); Browser-Test 109 von 109 (zweiter Komplettlauf; im ersten liefen nach dem Mitschnitt drei Szenarien beim Laden der Seite in die 30-s-Grenze, gezielt wiederholt und im zweiten Lauf nicht wieder aufgetreten, Ursache nicht gefunden: auf GitHub darauf achten); Regression mit neuer Zweit-Zeichnung der Kopie
+  (nachgestellt: einmal anders → Hinweis, wiederholbar anders → Fehler); die 7 Visuals einzeln gerendert (960×443: 14–46 ms pro Bild in Software-Grafik,
+  Bild-Wächter-Kontrast ≥ 14). **NICHT geprüft:** iPhone (volle Größe 1920×886 für die eigenen Visuals: flüssig?), echte Tracks.
+- **Als Nächstes (Emmos Wunsch): Ruckeln.** Im nächsten iPhone-Protokoll ansehen: „Bild laden hielt … ms an“ (Drop-Schnitt), „Mix … Prüfen hielt … an“,
+  fps. Ideen: Shader vorab übersetzen bzw. Programme je Preset vorhalten (eigene Änderung in der Kopie), Mix-Prüfung verteilen (ein Kandidat pro Takt, nicht vor Drops),
+  `KHR_parallel_shader_compile` am iPhone prüfen, AK-PATCH 10/11 entfernen (siehe 6).
+- **CI:** Nach dem Merge von Build 125 war der Lauf auf main rot (Regression: „fiShbRaiN - breakfast cruiser“ einmal anders; Endstufe-Test fast ohne Wirkung auf
+  einem dunklen Zufallsbild), obwohl derselbe Stand vorher zweimal grün war; in der Sandbox nicht nachstellbar (27 Wiederholungen gleich). Build 126 entfernt den
+  Endstufe-Test (die App nutzt die Endstufe nicht mehr) und zeichnet in der Regression abweichende Presets auch in der Kopie ein zweites Mal.
+
+## STAND Build 125 (Verlauf)
 Die Abschnitte weiter unten sind in der Reihenfolge ihrer Entstehung stehen geblieben und teils überholt (z. B. „Bit-Salat noch nicht gebaut“: ist seit Build 112 gebaut; „STAND Build 105“; die Liste „WAS JETZT NOCH OFFEN IST“ stammt aus Build 114). Es gilt, was HIER steht.
 - **Gebaut und in main (bis Build 124):** Schaltzentrale komplett (Kick, Acid-Verzerrung, Hats-Körnung/Glitzern, Pads, Raum, Dirigent, Bit-Salat, Akzente), 367 Standard-Presets, Mix-Knopf und Auto-Mix (`js/10b`), eigene Shader in Varianten, Spiegeln, Bildbogen (`js/09b`), Mitschnitt (`js/09c`), Leer-/Bild-Wächter. 18 Schalter.
 - **Emmo nutzt die App so:** Tracks per Drag and Drop (Dateien), schaut zu, wischt und sternt zum Entdecken. Also zählt der Datei-Weg (Scan, Partitur, Drop-Vorahnung); das Mikrofon ist Nebensache.

@@ -26,8 +26,8 @@ const samp = document.createElement('canvas'); samp.width = 32; samp.height = 18
 const sctx = samp.getContext('2d', { willReadFrequently: true });
 const hist = []; let histPos = -1; const recent = [];
 
-let morphOn = false;
 Object.assign(REACT, {"Acid \u00b7 Tunnel":[0.96,0.18,0.01],"Acid \u00b7 Kick-Gitter":[1.53,0.32,0.06],"Acid \u00b7 Strobe-Ringe":[0.32,0.13,0.2],"Acid \u00b7 Gold-Staub":[1.46,0.89,0.63],"Acid \u00b7 Glaskugel":[0.97,0.88,0.67]});
+try { Object.assign(REACT, window.EIGENE_REACT || {}); } catch (e) {}   // Build 126: Emmos eigene Visuals (eigene-visuals.js), Werte geschätzt
 // Presets, die in der Messung auf keinen Ton reagiert haben, kommen in der Auswahl nicht mehr vor
 const DEAD = new Set(Object.keys(REACT).filter(n => REACT[n][0] + REACT[n][1] + REACT[n][2] < 0.05));
 // Reaktions-Angleich: schwach reagierende Presets bekommen am Anfang ihrer Formeln eine Zeile, die Bass/Mitten/Höhen stärker auslenkt,

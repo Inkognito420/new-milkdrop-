@@ -9,7 +9,7 @@ const switchMs = () => PHRASE_BEATS * 60000 / bpm;
 const engaged = () => scanActive() || beat.state !== 'warten';
 
 let frameCount = 0, fpsT = performance.now();
-let lastDraw = 0, outAA = false;
+let lastDraw = 0;
 // Build 125: War die Seite versteckt, zählt die nächste Messung nicht. Auf dem iPhone kommt das erste Bild nach der Rückkehr VOR dem Ereignis „wieder sichtbar“
 // (Protokoll Build 111: Bild um 04:29,7, Ereignis um 04:29,8), der Schutz aus Build 49 (js/16) kam dafür zu spät: die wenigen Bilder wurden durch die ganze
 // versteckte Zeit geteilt („tiefster Wert 2 fps“). Das Verstecken selbst meldet der Browser rechtzeitig, darum wird es hier gemerkt.
@@ -32,15 +32,13 @@ function loop() {
   const t = performance.now();
   if (t - lastDraw < FRAME_MIN) return;
   lastDraw = t;
-  rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV); if (viz.setAkStage && window.szStage) { viz.setAkStage(window.szStage()); if (viz.setOutputAA && window.szOutputAA) { const aa = window.szOutputAA(); if (aa !== outAA) { outAA = aa; viz.setOutputAA(aa); } } }   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen
+  rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV);   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen (die Endstufe der Schaltzentrale ist seit Build 126 entfernt)
   if (!frozen) {
-    const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
-    if (!shFull) { const lp = loadSt.pend, r0 = lp ? performance.now() : 0;
-      try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); }
-      if (lp && loadSt.pend === lp) loadDone(performance.now() - r0); }
-    if (!shCur && shOp < 0.01) sampleFrame(t);
+    const lp = loadSt.pend, r0 = lp ? performance.now() : 0;
+    try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); }
+    if (lp && loadSt.pend === lp) loadDone(performance.now() - r0);
+    sampleFrame(t);
   }
-  shFrame(t);
   frameCount++;
   if (t - fpsT >= 1000) {
     const fps = Math.round(frameCount * 1000 / (t - fpsT));

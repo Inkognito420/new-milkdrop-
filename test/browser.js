@@ -32,6 +32,7 @@ const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok, detail
 async function open(opts = {}) {
   const ctx = await browser.newContext({ serviceWorkers: opts.sw ? 'allow' : 'block', viewport: { width: 390, height: 844 } });
   await ctx.grantPermissions(['microphone']);
+  if (opts.init) await ctx.addInitScript(o => { for (const k in o) localStorage.setItem(k, o[k]); }, opts.init);   // Build 126: gespeicherte Werte vor dem Start
   if (!opts.real) await ctx.route(/\/vendor\/butterchurn(-presets)?\/[^/?]+\.js/, r => r.fulfill({ contentType: 'application/javascript', body: /Presets/.test(r.request().url()) ? STUB_PRE : STUB_VIZ }));
   await ctx.route(/cdn\.jsdelivr\.net|fonts\.(googleapis|gstatic)\.com/, r => {
     const u = r.request().url(), h = { 'access-control-allow-origin': '*' };
@@ -41,7 +42,7 @@ async function open(opts = {}) {
   const page = await ctx.newPage(), errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
-  await page.goto(URL0, { waitUntil: 'load' });
+  await page.goto(URL0 + (opts.query || ''), { waitUntil: 'load' });
   await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 15000 }).catch(() => {});
   return { ctx, page, errs, close: () => ctx.close() };
 }
@@ -79,8 +80,6 @@ const krRun = (page, name, gain, P) => page.evaluate(async ([url, gain, G]) => {
   return { events: S.events.map(e => ({ t: +(e.t / 1000).toFixed(3), k: e.kind, r: e.role })), env, rel, xv, sec, bpm, hits: S.hits, ms: ms / n, msMax, n };
 }, [PREFIX + '__tmp/' + name + '.wav', gain, P ? { bar0: P.bar0, beatS: P.barS / 4 } : null]);
 
-const localStorage_nmd = saved => true;   // der Schlüssel heißt nmd:sz-gain (store.set setzt den Vorsatz); hier reicht, dass store.get ihn wiederfindet
-const run2 = (page, ms) => page.evaluate(ms => new Promise(res => { const o = { act: 0, tr: 0 }; const t0 = performance.now(); const step = () => { o.act = Math.max(o.act, window.__SZ.act); if (/skewX/.test(canvas.style.transform)) o.tr++; if (performance.now() - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
 
 const SZ = {
   async start() {
@@ -99,33 +98,38 @@ const SZ = {
       await c2.close(); }
   },
   async bedienung() {
-    const { page, errs, close } = await open();
-    const r = await page.evaluate(() => {
-      $('fineBtn').click(); $('werkBtn').click();
-      const ids = [...document.querySelectorAll('#werk button[id^="t-"]')].map(b => b.id);
-      for (const id of ids) $(id).click();
-      const nachKlick = handSet().length; $('allAuto').click();
-      return { schalter: ids.length, tabelle: TOGGLES.length, nachKlick, nachAuto: handSet().length, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
-    });
-    check('Bedienung: 18 Werkstatt-Schalter, passend zur Tabelle TOGGLES', r.schalter === 18 && r.tabelle === 18, JSON.stringify(r));
-    check('Bedienung: alle Schalter umgelegt = 18 von Hand verstellt, „Alles auf Auto“ setzt zurück', r.nachKlick === 18 && r.nachAuto === 0, JSON.stringify(r));
+    // Build 126 (Emmo: „ich möchte die nicht an- oder ausklicken können“): keine Werkstatt, keine Schalter, keine Regler außer dem Bluetooth-Versatz.
+    // Gespeicherte Werkstatt-Werte bleiben unangetastet im Speicher liegen und wirken nicht mehr.
+    const alt = { 'nmd:am-toggles': JSON.stringify({ spark: true, morph: true, bar: true, drop: false, pulse: false, journal: true, rec: true }), 'nmd:am-gain2': '2.5',
+      'nmd:sz-gain': JSON.stringify({ raum: 0, bit: 1.2 }), 'nmd:mix-anteil': '1' };
+    const { page, errs, close } = await open({ init: alt });
+    const r = await page.evaluate(alt => {
+      $('fineBtn').click();
+      const fine = $('fine');
+      return { werk: !!$('werk'), werkBtn: !!$('werkBtn'), schalter: document.querySelectorAll('button[id^="t-"]').length, regler: [...document.querySelectorAll('input[type=range]')].map(x => x.id),
+        knoepfe: [...fine.querySelectorAll('button')].filter(b => !b.closest('[hidden]')).map(b => b.textContent.trim()), flaeche: !!document.getElementById('sh'),
+        fest: Object.isFrozen(toggles), an: ['mood', 'phrase', 'drop', 'flip', 'build', 'pulse', 'mix', 'auto', 'instr', 'tune', 'name'].filter(k => !toggles[k]),
+        aus: ['spark', 'morph', 'acid', 'bar', 'journal', 'rec', 'own'].filter(k => toggles[k]), mixAnteil: __MIX.share,
+        gespeichert: Object.keys(alt).every(k => localStorage.getItem(k) === alt[k]), fehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
+    }, alt);
+    check('Bedienung (Build 126): keine Werkstatt, keine Schalter, keine zweite Bildfläche; unter „Mehr“ nur der Bluetooth-Versatz als Regler, dazu Sichern/Laden und Protokoll', !r.werk && !r.werkBtn && r.schalter === 0 && !r.flaeche && r.regler.join() === 'latency' && r.knoepfe.join() === 'Sichern/Laden,Protokoll', JSON.stringify(r));
+    check('Feste Einstellungen: Stimmung, Phrasen-Sync, Drop-Schnitt, Spiegeln, Aufbau, Kick-Puls, Auto-Pegel an; Funken, Drehen, Farbverschiebung, Mitschreiben, Mitschnitt aus; Auto-Mix-Anteil 35 %', r.fest && r.an.length === 0 && r.aus.length === 0 && r.mixAnteil === 0.35, JSON.stringify(r));
+    check('Gespeicherte Werkstatt-Werte (Schalter, Reaktion, Schaltzentrale, Mix-Anteil) bleiben unverändert im Speicher und wirken nicht mehr', r.gespeichert, JSON.stringify(r));
     check('Bedienung: keine Fehler im Protokoll, keine Seitenfehler', r.fehler.length === 0 && errs.length === 0, r.fehler.concat(errs).join(' | '));
     await close();
   },
-  async shader() {
-    const { page, close } = await open();
+  async eigene() {
+    // Build 126: Emmos sieben eigene Visuals sind echte Presets. Gleiche Namen wie die eigenen Shader bis Build 125 („Eigen · …“), damit Sterne bleiben.
+    const { page, errs, close } = await open({ init: { 'nmd:am-favs': JSON.stringify(['Eigen · Acid · Echo-Ring']) } });
     const r = await page.evaluate(() => {
-      shEnsure(); const res = {}, w = 320, h = 180; shEl.width = w; shEl.height = h;
-      for (const d of window.ACID_SHADERS) {
-        const ok = shPlayer.use(d.id); let mean = 0, nz = 0;
-        if (ok) { for (let f = 0; f < 6; f++) shPlayer.draw({ time: 3 + f * 0.016, bass: 0.7, mid: 0.5, treb: 0.4, beat: f === 0 ? 1 : 0.2, bar: 0, build: 0.3, hue: 0.3, flash: 1 }); const gl = shPlayer.gl, px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); let s = 0, c = 0; for (let i = 0; i < px.length; i += 4) { const v = px[i] + px[i + 1] + px[i + 2]; s += v; if (v > 6) c++; } mean = s / (w * h * 3); nz = c / (w * h); }
-        res[d.id] = { ok, mean: +mean.toFixed(2), nz: +nz.toFixed(2), err: shPlayer.errors[d.id] || null };
-      }
-      return res;
+      const n = [...EIGEN].sort();
+      return { n, liste: n.filter(k => presets[k] && names.includes(k) && ACID.has(k)).length, comp: n.filter(k => /shader_body/.test(presets[k].comp || '')).length,
+        react: n.filter(k => Array.isArray(REACT[k]) && REACT[k].length === 3).length, stern: favs.has('Eigen · Acid · Echo-Ring'), alteTeile: [typeof shEnsure, typeof ACID_SHADERS, typeof SH].join(),
+        laden: n.filter(k => loadByName(k, 0) && curName === k).length };
     });
-    const ids = Object.keys(r);
-    check('Shader: 7 eigene Shader vorhanden (kein Track-Flug mehr)', ids.length === 7 && !ids.includes('flug-track'), ids.join(','));
-    check('Shader: jeder übersetzt und zeichnet ein Bild', ids.every(id => r[id].ok && r[id].mean > 1 && r[id].nz > 0.2), JSON.stringify(r));
+    const soll = ['Eigen · Acid · 303-Welle', 'Eigen · Acid · Echo-Ring', 'Eigen · Acid · Säure-Kaleidoskop', 'Eigen · Driving · Rumble-Nebel', 'Eigen · Driving · Sog-Tunnel', 'Eigen · Peak · Lichtwand', 'Eigen · Peak · Strahlen'];
+    check('Eigene Visuals: die 7 eigenen Shader stehen als Presets in der Liste (gleiche Namen), gehören zu den eigenen Presets (Lastbremse), haben einen Comp-Shader und Werte für die Auswahl nach Klang', r.n.join('|') === soll.join('|') && r.liste === 7 && r.comp === 7 && r.react === 7, JSON.stringify(r));
+    check('Eigene Visuals: ein Stern von früher gilt weiter, alle lassen sich wie jedes Preset laden; die alte Shader-Technik (zweite Fläche, js/03) ist weg', r.stern && r.laden === 7 && r.alteTeile === 'undefined,undefined,undefined' && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     await close();
   },
   async zufall() {
@@ -135,7 +139,7 @@ const SZ = {
       for (let i = 0; i < 400; i++) { try { nextPreset(0.2, undefined, false, ['t', 's', 'f', 'n', 'p', 'd', 'x', 'a'][i % 8]); n++; } catch (e) { return { fehler: e.message, bei: i }; } seen[curName] = 1; if (i % 20 === 0) await new Promise(r => requestAnimationFrame(r)); }
       return { n, verschiedene: Object.keys(seen).length, eigene: Object.keys(seen).filter(k => /^Eigen/.test(k)).length, logFehler: LOG.filter(l => l.k === 'x').map(l => l.x) };
     });
-    check('Zufall: 400 Wechsel ohne Fehler, Milkdrop und eigene Shader kommen vor', r.n === 400 && r.verschiedene > 10 && r.eigene >= 1 && r.logFehler.length === 0, JSON.stringify(r));
+    check('Zufall: 400 Wechsel ohne Fehler, Milkdrop und eigene Visuals kommen vor', r.n === 400 && r.verschiedene > 10 && r.eigene >= 1 && r.logFehler.length === 0, JSON.stringify(r));
     const c = { x: 195, y: 300 };
     await page.mouse.move(c.x + 80, c.y); await page.mouse.down(); await page.mouse.move(c.x - 80, c.y, { steps: 6 }); await page.mouse.up();
     await page.mouse.click(c.x, c.y); await page.waitForTimeout(80); await page.mouse.click(c.x, c.y); await page.waitForTimeout(400);
@@ -296,24 +300,6 @@ const SZ = {
     check('Trackende: nächster Track (schon vorab analysiert) startet ohne Wartezeit von selbst', r.qi === 1 && r.spielt && r.partitur && r.fehler.length === 0, JSON.stringify(r));
     await close();
   },
-  async grafikverlust() {
-    const { page, close } = await open();
-    const r = await page.evaluate(async () => {
-      const wait = ms => new Promise(r => setTimeout(r, ms)), out = {}, N = 'Eigen · Peak · Strahlen';
-      const px = () => { const gl = shPlayer.gl, a = new Uint8Array(64 * 36 * 4); shEl.width = 320; shEl.height = 180; shPlayer.draw({ time: 3, bass: .7, mid: .5, treb: .4, beat: 1, bar: 0, build: .3, hue: .3, flash: 1 }); gl.readPixels(100, 70, 64, 36, gl.RGBA, gl.UNSIGNED_BYTE, a); let s = 0; for (let i = 0; i < a.length; i += 4) s += a[i] + a[i + 1] + a[i + 2]; return +(s / (64 * 36 * 3)).toFixed(2); };
-      shEnsure(); toggles.own = true; loadByName(N, 0); await wait(300);
-      out.vorher = px(); const gl = shPlayer.gl, ext = gl.getExtension('WEBGL_lose_context'); ext.loseContext(); await wait(300);
-      const eigen = () => [...broken].filter(x => /^Eigen/.test(x)).length, b0 = eigen();
-      for (let i = 0; i < 40; i++) nextPreset(0, undefined, false, 't');
-      out.gesperrt = eigen() - b0; out.imVerlust = { shCur, shOp };
-      ext.restoreContext(); await wait(600); out.zurueck = !gl.isContextLost();
-      loadByName(N, 0); await wait(300); out.nachher = px();
-      return out;
-    });
-    check('Grafik-Verlust: Shader aus dem Spiel genommen, Milkdrop übernimmt, kein Shader zu Unrecht gesperrt', r.gesperrt === 0 && r.imVerlust.shCur === null && r.imVerlust.shOp === 0, JSON.stringify(r));
-    check('Grafik-Verlust: Kontext kommt zurück, Shader zeichnet dasselbe Bild wie vorher', r.zurueck && r.vorher > 1 && r.nachher === r.vorher, JSON.stringify(r));
-    await close();
-  },
   async mikrofon() {
     const { page, close } = await open();
     const r = await page.evaluate(async () => {
@@ -332,10 +318,10 @@ const SZ = {
       favs.add('Test · Preset 3'); store.set('am-favs', [...favs]);
       const txt = JSON.stringify(dPack()), p = dParse(txt), o = {};
       o.parse = !!p.o; const m = dMerge(p.o, false); o.nichtsNeu = m.favs === 0 && m.prof === 0 && m.runs === 0 && m.tracks === 0;
-      const had = toggles.spark; toggles.spark = !had; dSettings(JSON.parse(txt).settings); o.einstellungen = toggles.spark === had;
-      o.schalter = Object.keys(JSON.parse(txt).settings.toggles).length; return o;
+      const S = JSON.parse(txt).settings, vorher = JSON.stringify(toggles); o.mitSchaltern = 'toggles' in S; S.lat = 180; S.toggles = { spark: true, drop: false, pulse: false };
+      o.uebernommen = dSettings(S); o.lat = +latEl.value; o.schalterGleich = JSON.stringify(toggles) === vorher; return o;
     });
-    check('Sicherung: lesen, zusammenführen (nichts doppelt), Einstellungen zurückspielen, 18 Schalter', r.parse && r.nichtsNeu && r.einstellungen && r.schalter === 18, JSON.stringify(r));
+    check('Sicherung: lesen, zusammenführen (nichts doppelt); Einstellungen zurückspielen übernimmt den Bluetooth-Versatz, Schalter aus Sicherungen wirken nicht mehr (fest seit Build 126), gespeicherte Schalter wandern unverändert mit', r.parse && r.nichtsNeu && r.uebernommen && r.lat === 180 && r.schalterGleich && r.mitSchaltern, JSON.stringify(r));
     await close();
   },
   async fehlermeldungen() {
@@ -417,10 +403,10 @@ const SZ = {
     const sc = await page.evaluate(() => {
       let n = 0; const orig = nextPreset; window.nextPreset = function () { n++; };
       const P = 60000 / bpm, t = performance.now(), res = {}; auto = true; frozen = false; dropPre = 0;
-      for (const [ph, ty] of [[true, 'groove'], [true, 'drop'], [true, 'break'], [true, 'intro'], [false, 'groove']]) { toggles.phrase = ph; lastSwitch = t - 1e6; n = 0; stillCheck(ty, t, P); res[ty + (ph ? '' : '(Phrase aus)')] = n; }
-      window.nextPreset = orig; toggles.phrase = true; return res;
+      for (const ty of ['groove', 'drop', 'break', 'intro']) { lastSwitch = t - 1e6; n = 0; stillCheck(ty, t, P); res[ty] = n; }
+      window.nextPreset = orig; return res;
     });
-    check('Stillstands-Netz: nicht in Groove und Drop (Phrasen-Sync an), sonst schon', sc.groove === 0 && sc.drop === 0 && sc.break === 1 && sc.intro === 1 && sc['groove(Phrase aus)'] === 1, JSON.stringify(sc));
+    check('Stillstands-Netz: nicht in Groove und Drop (dort wechselt der Phrasen-Sync), sonst schon', sc.groove === 0 && sc.drop === 0 && sc.break === 1 && sc.intro === 1, JSON.stringify(sc));
     // 4) Protokoll: Kopf bleibt, Lücke wird markiert, Obergrenze gilt
     const lg = await page.evaluate(() => {
       for (let i = 0; i < 700; i++) rea('Füllzeile ' + i);
@@ -478,26 +464,18 @@ const SZ = {
     const { page, close } = await open();
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => scanActive(), null, { timeout: 120000, polling: 200 });
-    const r = await page.evaluate(() => {
-      const alt = curAnalysis.km, padsG = window.__SZ.gain.pads; window.__SZ.gain.pads = 0;   // Schaltzentrale: Pads-Farbschritt aus, hier zählt nur die Ton-Sprung-Logik (Schritt genau 20°)
-      const lauf = tonFolge => {
-        const n = tonFolge.length; curAnalysis.km = { n, t0: 1e9, barS: 1, ton: tonFolge, tk: tonFolge.map(() => 0.5) }; tonLast = -1; toggles.bar = true; dropPre = 0;
-        const v = barHueTarget; for (let k = 1; k < n; k++) { beat.n = k * 4; onBar('groove'); } return barHueTarget - v - 20 * (n - 1);
-      };
-      const pendeln = lauf([9, 4, 9, 4, 9, 4, 9, 4]), wechsel = lauf([9, 9, 9, 4, 4, 4, 4]), kurz = lauf([9, 9, 4, 4, 9, 9, 9, 9, 9]);
-      curAnalysis.km = alt; window.__SZ.gain.pads = padsG;
-      const S = window.__SZ, pe0 = S.pe; S.pe = 0; const ohnePads = szBarStep(20), gross = szBarStep(45); S.pe = 1; const mitPads = szBarStep(20); S.pe = pe0;
-      mxFrame(0, 0.016); MX.z.p = 0.3; MX.z.v = 0; mxFrame(16, 0.016); const z = MX.out.z;
-      return { pendeln, wechsel, kurz, z, ohnePads, gross, mitPads };
-    });
-    check('Takt-Farbe: Pendeln zwischen zwei Tönen gibt keinen Farbsprung, ein Ton, der nur 2 Takte bleibt, ebenfalls nicht; ein echter Wechsel (A→E, 4 Takte) genau einen', r.pendeln === 0 && r.kurz === 0 && r.wechsel === -150, JSON.stringify(r));
-    check('Takt-Farbschritt (Schaltzentrale): ohne Pads größer als normal (20° → 28°), mit vollen Pads kleiner (10°), nie über 40°', r.ohnePads > 20 && r.ohnePads <= 40 && r.mitPads < 20 && r.gross <= 40, JSON.stringify({ o: r.ohnePads, m: r.mitPads, g: r.gross }));
+    const r = await page.evaluate(() => { mxFrame(0, 0.016); MX.z.p = 0.3; MX.z.v = 0; mxFrame(16, 0.016); return { z: MX.out.z, taktFarbe: typeof szBarStep }; });
     check('Drop-Zoom: auch bei übergroßem Anschlag bleibt der Zoom unter 8 % (vorher bis 12,5 %)', r.z > 0.05 && r.z <= 0.08, JSON.stringify(r));
     await page.waitForFunction(() => curAnalysis && curAnalysis.km, null, { timeout: 120000, polling: 200 });
     const sw = await page.evaluate(() => { const K = curAnalysis.km, v = Array.from(K.sweep || []); return { n: K.n, len: v.length, max: Math.max(0, ...v.map(Math.abs)), ok: v.every(x => x >= -1 && x <= 1) }; });
     check('Filterfahrt: pro Takt ein Wert zwischen -1 und +1, im Test-Track mit wandernder Filterfrequenz nicht überall 0', sw.len === sw.n && sw.ok && sw.max > 0.1, JSON.stringify(sw));
-    const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), ton: TON_MIN, bk: BRAKE_KEY }; });
-    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Ton-Schwelle 0,10; Lastbremse-Speicher v3 (Build 124 fängt frisch an)', q.q === '1080' && q.lang <= 1920 && q.ton === 0.10 && q.bk === 'am-brake-v3', JSON.stringify(q));
+    const q = await page.evaluate(() => { const t = targetSize(true); return { q: $('quality').value, lang: Math.max(t[0], t[1]), bk: BRAKE_KEY }; });
+    check('Standard-Auflösung: 1080p, längste Seite höchstens 1920 px; Lastbremse-Speicher v3 (Build 124 fängt frisch an)', q.q === '1080' && q.lang <= 1920 && q.bk === 'am-brake-v3', JSON.stringify(q));
+    // Build 126: iOS meldete nach dem Hintergrund eine sichtbare Höhe von 0 oder −59 px (Protokoll: „sichtbar 852×0“, danach „Auflösung: 1920×2“ = Streifen)
+    const vv = await page.evaluate(() => { const out = {}, fake = v => Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => v }), echt = window.visualViewport;
+      for (const [k, v] of [['null', { width: innerWidth, height: 0 }], ['minus', { width: innerWidth, height: -59 }], ['normal', { width: innerWidth, height: innerHeight - 50 }]]) { fake(v); out[k] = viewSize(); }
+      fake({ width: innerWidth, height: 0 }); W = 0; resize(); out.bild = [W, H]; fake(echt); W = 0; resize(); return { out, fenster: [innerWidth, innerHeight] }; });
+    check('Bildgröße (Build 126): sichtbare Höhe 0 oder negativ zählt nicht (Fenstergröße gilt, kein Bild mit 2 Pixeln Höhe), eine normale sichtbare Fläche zählt weiter', vv.out.null[1] === vv.fenster[1] && vv.out.minus[1] === vv.fenster[1] && vv.out.normal[1] === vv.fenster[1] - 50 && vv.out.bild[1] > 100, JSON.stringify(vv));
     await close();
   },
   async klangrollen() {
@@ -610,7 +588,7 @@ const SZ = {
     const r = await page.evaluate(() => ({ calls: window.__akSet || 0, keys: window.__akLast ? Object.keys(window.__akLast).length : 0, bpm: AKV.ak_bpm, kick: AK.R.kick.nEntry, env: AKV.kick_env, maxRef: AK.R.kick.ref > 0,
       ms: akN ? akMs / akN : null, fehler: LOG.filter(l => l.k === 'x').map(l => l.x), dbg: !!$('akDbgBtn') }));
     check('Klangrollen live: setExtraVars bekommt jedes Bild alle 41 Werte, Tempo um 140, Kick erkannt, keine Fehler', r.calls > 100 && r.keys === 41 && Math.abs(r.bpm - 140) <= 2 && r.kick >= 1 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
-    const d = await page.evaluate(async () => { $('fineBtn').click(); $('werkBtn').click(); $('akDbgBtn').click(); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', schalter: document.querySelectorAll('#werk button[id^="t-"]').length }; });
+    const d = await page.evaluate(async () => { const knopf = !!$('akDbgBtn'); akDbgSet(true); await new Promise(r => setTimeout(r, 300)); const el = $('akDebug'); return { an: !!el && !el.hidden, text: el ? el.textContent : '', knopf }; });
     // Mit Scan kommt der Abschnitt aus dem Scan: in einen Break und an einen Drop-Anfang springen
     await page.waitForFunction(() => curAnalysis && curAnalysis.beatS && scanActive(), null, { timeout: 120000, polling: 200 });
     const sc = await page.evaluate(async () => {
@@ -626,91 +604,39 @@ const SZ = {
     check('ak_drop_strength: schon im Break vor dem Drop die Stärke des kommenden Drops (über 0), im Drop dieselbe (gleicher Wert ±0,02)', sc.drop && sc.drop.drop > 0 && sc.break && sc.break.drop > 0 && Math.abs(sc.break.drop - sc.drop.drop) < 0.02, JSON.stringify(sc));
     const ml = await page.evaluate(() => { akM.n = 1800; akM.t = 1; akMeasure(1e6); return LOG.map(l => l.x).filter(x => /Klangrollen-Messung/.test(x)).pop() || ''; });
     check('Klangrollen-Messzeile: enthält Pads-Gehaltenheit, Stereo und die Lage der Kick-Treffer am Raster', /Gehaltenheit/.test(ml) && /Stereo: \|Position\|/.test(ml) && /Kick-Treffer am Raster: \d+ von \d+/.test(ml), ml.slice(-260));
-    check('Klangrollen-Anzeige: Knopf in der Werkstatt schaltet sie an (Balken, BPM, Abschnitt); die 18 Schalter bleiben 18', d.an && /BPM/.test(d.text) && d.schalter === 18, JSON.stringify(d));
+    check('Klangrollen-Anzeige (Build 126: nur mit ?debug in der Adresse, kein Knopf mehr): Balken, BPM, Abschnitt', d.an && /BPM/.test(d.text) && !d.knopf, JSON.stringify(d));
     await close();
   },
-  async schaltzentrale() {
-    // Schaltzentrale 3a: Raum (Ping-Pong schiebt und verzieht das Bild, Mono nicht), Regler, flackerfrei, Dirigent (gemessener Aufbau, Drop-Wucht)
+  async puls() {
+    // Build 126: Kick-Puls, Aufbau und Drop-Blitz bleiben fest. Drehen, Schwanken, Raum (Schieben, Verziehen), Funken, Ringe und Farbverschiebung sind weg.
     const { page, errs, close } = await open();
-    await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
-    await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
-    await page.evaluate(() => { audio.currentTime = 24; }); await page.waitForTimeout(3500);
-    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now(); let lf = -1;
-      const step = () => { const s = window.__SZ, now = performance.now(); o.x.push(s.x); o.k.push(s.skew); o.act.push(s.act); if (/skewX/.test(canvas.style.transform)) o.tr++;
-        // Änderung über ein Fenster von mindestens 120 ms auf der Uhr der App (lastFx = Zeit des Bildes, für das die Werte gerechnet sind), nur bei neuen Bildern.
-        // Build 125: vorher performance.now() hier, nach der Arbeit des Bildes: nach einem schweren Bild wirkte das Fenster kürzer, als die App gerechnet hatte
-        // (Sandbox mit abwechselnd schweren Bildern: Test-Uhr 8,0, App-Uhr 6,1 %/s; GitHub 9,2-9,6 %/s; Auslegung höchstens 1,3 × (5 + 1/0,9) = 7,9 %/s)
-        if (lastFx !== lf) { lf = lastFx; H.push([lf, s.x, s.skew, s.bright]); while (H.length > 1 && lf - H[1][0] >= 120) H.shift();
-        if (lf - H[0][0] >= 120) { const ds = (lf - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); } }
-        if (now - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
-    const A = await run(4000), mx = a => Math.max(...a.map(Math.abs));
-    console.log('       (Info) Raum bei Ping-Pong: Aktivität bis ' + mx(A.act).toFixed(2) + ', Verschiebung bis ' + mx(A.x).toFixed(2) + ' %, Verzerrung bis ' + mx(A.k).toFixed(2) + '°, Bilder mit skewX ' + A.tr + ' von ' + A.x.length + ' · größte Änderung pro Sekunde (über 120 ms): ' + A.dx.toFixed(2) + ' % / ' + A.dk.toFixed(2) + '°');
-    check('Schaltzentrale Raum: Ping-Pong schiebt das Bild (Verschiebung über 0,3 %) und verzieht es (skewX im Transform), Grenzen eingehalten (höchstens 1,3 % und 1,0°)', mx(A.x) > 0.3 && A.tr > 10 && mx(A.x) <= 1.31 && mx(A.k) <= 1.01, JSON.stringify({ x: mx(A.x), k: mx(A.k), tr: A.tr }));
-    check('Schaltzentrale flackerfrei: größte Änderung pro Sekunde höchstens 9 % Verschiebung und 7° Verzerrung (gemessen über 120 ms, bei jeder Bildrate)', A.dx <= 9 && A.dk <= 7, JSON.stringify({ dx: A.dx, dk: A.dk }));
-    await page.evaluate(() => { const r = document.getElementById('sz-raum'); r.value = '0'; r.dispatchEvent(new Event('input')); }); await page.waitForTimeout(3000);
-    const Z = await run(1500), saved = await page.evaluate(() => store.get('sz-gain', null));
-    check('Schaltzentrale Regler: „Raum“ auf 0 stellt die Ebene ab (keine Verschiebung, kein skewX), der Wert wird unter nmd: gespeichert', mx(Z.x) < 0.001 && Z.tr === 0 && saved && saved.raum === 0 && !!localStorage_nmd(saved), JSON.stringify({ x: mx(Z.x), tr: Z.tr, saved }));
-    check('Schaltzentrale: keine Seitenfehler', errs.length === 0, errs.join(' | '));
-    await close();
-    // Mono-Track: Raum bleibt aus; Dirigent: gemessener Aufbau vor dem Drop
-    const m = await open();
-    await m.page.setInputFiles('#fileIn', [T[0]]);
-    await m.page.waitForFunction(() => !audio.paused && curAnalysis && curAnalysis.aufbau, null, { timeout: 180000, polling: 200 });
-    await m.page.evaluate(() => { audio.currentTime = 20; }); await m.page.waitForTimeout(3000);
-    const mono = await run2(m.page, 3000);
-    check('Schaltzentrale Raum: Mono-Track bleibt ohne Raum-Bewegung (Aktivität unter 0,15, kein skewX)', mono.act < 0.15 && mono.tr < 5, JSON.stringify(mono));
-    const D = await m.page.evaluate(async () => {
+    await page.setInputFiles('#fileIn', [T[0]]);
+    await page.waitForFunction(() => !audio.paused && curAnalysis && curAnalysis.aufbau, null, { timeout: 180000, polling: 200 });
+    await page.evaluate(() => { audio.currentTime = 30; }); await page.waitForTimeout(2500);    // Groove, der Kick läuft
+    const g = await page.evaluate(ms => new Promise(res => { const o = { sc: [], fremd: 0, filter: new Set() }; const t0 = performance.now();
+      const step = () => { const tr = canvas.style.transform || '', m = /scale\(([\d.]+)\)/.exec(tr); if (m) o.sc.push(+m[1]); if (/rotate|translate|skew/.test(tr)) o.fremd++; o.filter.add(canvas.style.filter);
+        if (performance.now() - t0 < ms) requestAnimationFrame(step);
+        else res({ n: o.sc.length, min: +Math.min(...o.sc).toFixed(4), max: +Math.max(...o.sc).toFixed(4), fremd: o.fremd, farbe: [...o.filter].some(f => /hue-rotate|brightness/.test(f)), funken: typeof onHat, ringe: typeof onSnare }); };
+      requestAnimationFrame(step); }), 3000);
+    console.log('       (Info) Kick-Puls im Groove: ' + JSON.stringify(g));
+    check('Kick-Puls: das Bild pumpt im Groove mit dem Kick (nur Zoom, höchstens ca. 8 %); kein Drehen, Schieben oder Verziehen, keine Farbverschiebung, keine Funken und Ringe', g.n > 20 && g.max - g.min > 0.01 && g.max <= 1.1 && g.fremd === 0 && !g.farbe && g.funken === 'undefined' && g.ringe === 'undefined', JSON.stringify(g));
+    const D = await page.evaluate(async () => {
       const w = ms => new Promise(r => setTimeout(r, ms)), dr = curAnalysis.aufbau.drops[0], out = {};
       if (!dr) return { keinDrop: true };
       const B = curAnalysis.aufbau, mid = B.t0 + (dr.buildFrom >= 0 ? dr.buildFrom + 0.7 * (dr.bar - dr.buildFrom) : dr.bar - 2) * B.barS;
-      out.drop = { bar: dr.bar, buildFrom: dr.buildFrom, buildBars: dr.buildBars };
-      const g = window.__SZ.gain.dirigent, seek = () => { audio.currentTime = Math.max(0, mid); };
-      window.__SZ.gain.dirigent = 0; seek(); await w(700); out.altDirigentAus = +dropPre.toFixed(2); window.__SZ.gain.dirigent = g;   // Regler auf 0: alte feste Regel
-      seek(); await w(1000);
-      out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)), bit: +window.__SZ.bit.toFixed(3) };
-      audio.currentTime = B.t0 + (dr.bar + 1) * B.barS; await w(1500); out.imDrop = +AKV.ak_drop_strength.toFixed(2); out.strength = dr.strength; out.bitDrop = +window.__SZ.bitDrop.toFixed(3); out.bitImDrop = +window.__SZ.bit.toFixed(3);
-      { const sd = []; let ohneSaat = 0, prev = null; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const st = szStage(), v = st[7]; if (!sd.length || sd[sd.length - 1] !== v) sd.push(v); else if (prev !== null && st[3] !== prev) ohneSaat++; prev = st[3]; await new Promise(r => requestAnimationFrame(r)); }
-        out.saatWechselIn2s = sd.length - 1; out.bitWechselOhneSaat = ohneSaat; }
-      const gb = window.__SZ.gain.bit; window.__SZ.gain.bit = 0; await w(3000); out.bitAus = szStage()[3]; window.__SZ.gain.bit = gb;
+      audio.currentTime = Math.max(0, mid); await w(1000);
+      out.vorDrop = { dropPre: +dropPre.toFixed(2), build: +AKV.ak_build_strength.toFixed(2), log: LOG.some(l => /Aufbau \(gemessen\)/.test(l.x)) };
+      const d0 = MX.st.drops; audio.currentTime = B.t0 + (dr.bar - 0.4) * B.barS;      // kurz vor dem Drop: der Abschnittswechsel löst Blitz und Zoom-Stoß aus
+      let z = 0; const t0 = performance.now(); while (performance.now() - t0 < 2500) { z = Math.max(z, MX.out.z); await new Promise(r => requestAnimationFrame(r)); }
+      const L = LOG.filter(l => /^Drop: Blitz \d+ %/.test(l.x)).pop();
+      out.imDrop = { drops: MX.st.drops - d0, blitz: L ? +/Blitz (\d+) %/.exec(L.x)[1] : 0, zoom: +z.toFixed(3) };
       return out;
     });
-    console.log('       (Info) Dirigent: ' + JSON.stringify(D));
-    check('Schaltzentrale Bit-Salat: im Aufbau an (über 0,05), am Drop ein Stoß (bitDrop über 0,2), neue Muster höchstens 3 pro Sekunde (in 2 s höchstens 7 Saat-Wechsel, die Stärke ändert sich nur zusammen mit der Saat), Regler „Bit-Salat“ auf 0 = Stufe nach weichem Ausblenden (3 s) aus (genau 0)', !D.keinDrop && D.vorDrop.bit > 0.05 && D.bitDrop > 0.2 && D.bitImDrop > 0.05 && D.saatWechselIn2s <= 7 && D.bitWechselOhneSaat === 0 && D.bitAus === 0, JSON.stringify(D));
-    { const e = await m.page.evaluate(() => { // Einsatz-Akzente: szEntry meldet einen Einsatz genau einmal pro Anstieg über SZCFG.entry
-        const o = AKV.acid_entry, p = SZ.ePrev.acid; SZ.ePrev.acid = 0; AKV.acid_entry = 1; const a = szEntry('acid'), b = szEntry('acid'); AKV.acid_entry = 0; const c = szEntry('acid'); AKV.acid_entry = 1; const d = szEntry('acid');
-        AKV.acid_entry = o; SZ.ePrev.acid = p; return { a, b, c, d }; });
-      check('Schaltzentrale Akzente: ein Einsatz (R_entry über 0,8) zählt genau einmal pro Anstieg', e.a && !e.b && !e.c && e.d, JSON.stringify(e)); }
-    check('Schaltzentrale Dirigent: vor dem Drop ist dropPre gleich der gemessenen Aufbau-Stärke (statt fester 8 Takte), im Drop ak_drop_strength = Stärke aus dem Detektor; mit Regler „Dirigent“ auf 0 gilt wieder die alte feste Regel (dropPre über 0,05)', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.1 && Math.abs(D.imDrop - D.strength) < 0.02 && D.altDirigentAus > 0.05, JSON.stringify(D));
-    { const k = await m.page.evaluate(() => { // Kick-Ebene: Drehen im Takt wechselt die Richtung mit jeder Takt-Eins, Regler 0 = aus, Break leiser, Acid dreht weniger
-        const g0 = SZ.gain.kick, on0 = SZ.on, out = {}; SZ.on = true; toggles.mix = true;
-        const mk = () => ({ v: 0 }); const a = mk(), b = mk(), c = mk(), wR = 3;
-        SZ.gain.kick = 1; szKickRot(a, 1, wR, true); const d1 = a.v; szKickRot(a, 1, wR, false); szKickRot(b, 1, wR, true); const d2 = b.v - 0;   // zweiter Takt: andere Richtung
-        out.richtung = d1 * (a.v - d1 > 0 ? 1 : -1) > 0 && Math.sign(d1) === Math.sign(a.v - d1) && Math.sign(d1) !== Math.sign(d2);
-        out.groesse = Math.abs(d1) <= SZCFG.kickRot * wR * 1.001;
-        SZ.gain.kick = 0; szKickRot(c, 1, wR, false); out.aus = c.v === 0 && szAcidRot() === 1;
-        SZ.gain.kick = 1; out.acid = Math.abs(szAcidRot() - (1 - SZCFG.acidRotShare)) < 1e-9;
-        SZ.kickS = SZCFG.kickBreak; out.break = Math.abs(szKickAmp() - SZCFG.kickBreak) < 1e-9; SZ.kickS = 1; out.normal = szKickAmp() === 1;
-        SZ.gain.kick = g0; SZ.on = on0; return out; });
-      { const gz = await m.page.evaluate(() => { // Build 125: Glitzern steigt auf einen Hats-Treffer mit grainMs[0] (120 ms), nicht mit 500 ms
-          const sv = {}; for (const k of ['hats_env', 'hats_density', 'hats_release', 'hats_hit']) sv[k] = AKV[k];
-          const on0 = SZ.on, mix0 = toggles.mix; SZ.on = true; toggles.mix = true; SZ.gl = 0;
-          AKV.hats_env = 0.2; AKV.hats_density = 0.3; AKV.hats_release = 0; AKV.hats_hit = 1;
-          for (let i = 0; i < 8; i++) szFrame(0.016); const hoch = SZ.gl;                       // ca. 130 ms Treffer
-          AKV.hats_hit = 0; for (let i = 0; i < 6; i++) szFrame(0.016); const danach = SZ.gl;    // ca. 100 ms später: fällt langsam (500 ms)
-          Object.assign(AKV, sv); SZ.on = on0; toggles.mix = mix0; return { hoch: +hoch.toFixed(3), danach: +danach.toFixed(3) }; });
-        check('Schaltzentrale Hats-Glitzern: steigt auf einen Treffer in ca. 130 ms auf über 0,35 (vorher ca. 0,2) und fällt danach langsam (nach 100 ms noch über 70 %)', gz.hoch > 0.35 && gz.hoch <= 1 && gz.danach > 0.7 * gz.hoch && gz.danach < gz.hoch, JSON.stringify(gz)); }
-      check('Schaltzentrale Kick-Ebene: Drehen im Takt (Richtung wechselt je Takt, begrenzt), Regler 0 = aus, Acid dreht weniger, Break leiser', k.richtung && k.groesse && k.aus && k.acid && k.break && k.normal, JSON.stringify(k)); }
-    check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
-    await m.close();
-    // Breit, aber mittig (wie der iPhone-Track mit Breite 0,75 und Wechsel-Tempo 0): Breite hoch, aber die Raum-Ebene bleibt aus
-    const w = await open();
-    await w.page.setInputFiles('#fileIn', [path.join(tmp, 'breitMitte.wav')]);
-    await w.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
-    await w.page.evaluate(() => { audio.currentTime = 8; }); await w.page.waitForTimeout(3500);
-    const wb = await w.page.evaluate(ms => new Promise(res => { const o = { act: 0, wid: 0, tr: 0 }; const t0 = performance.now(); const step = () => { o.act = Math.max(o.act, window.__SZ.act); o.wid = Math.max(o.wid, AKV.ak_width); if (/skewX/.test(canvas.style.transform)) o.tr++; if (performance.now() - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), 4000);
-    console.log('       (Info) breit, aber mittig: Breite bis ' + wb.wid.toFixed(2) + ', Raum-Aktivität bis ' + wb.act.toFixed(2));
-    check('Schaltzentrale Raum: breites, aber mittiges Stereobild (Breite über 0,5) löst keine Raum-Bewegung aus (Aktivität unter 0,2, kaum skewX)', wb.wid > 0.5 && wb.act < 0.2 && wb.tr < 20, JSON.stringify(wb));
-    await w.close();
+    console.log('       (Info) Aufbau und Drop: ' + JSON.stringify(D));
+    check('Aufbau: vor dem Drop folgt die Spannung dem gemessenen Aufbau (dropPre = ak_build_strength, über 0,05), steht im Protokoll', !D.keinDrop && D.vorDrop.dropPre > 0.05 && Math.abs(D.vorDrop.dropPre - D.vorDrop.build) < 0.05 && D.vorDrop.log, JSON.stringify(D));
+    check('Drop: Blitz (70 %, steht im Protokoll) und Zoom-Stoß (über 3 %, höchstens 8 %)', !D.keinDrop && D.imDrop.drops >= 1 && D.imDrop.blitz === 70 && D.imDrop.zoom > 0.03 && D.imDrop.zoom <= 0.08, JSON.stringify(D));
+    check('Puls: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
   },
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
@@ -725,13 +651,6 @@ const SZ = {
     const b2 = sum(await sample(5000));
     console.log('       (Info) Stereo live: Ping-Pong 1/Schlag ' + JSON.stringify(a) + ' · 2/Schlag ' + JSON.stringify(b2));
     check('Stereo live (zwei Analyser): Ping-Pong schlägt auf beide Seiten aus (unter -0,4 und über +0,4), Wechsel-Tempo über 0,05 und mit 2/Schlag höher als mit 1/Schlag (genaue Zahlen: Offline-Prüfung, Echtzeit hängt an der Bildrate des Rechners)', a.min < -0.4 && a.max > 0.4 && a.sp > 0.05 && b2.sp > a.sp, JSON.stringify({ a, b2 }));
-    check('Seiten-Funken live: hats_side zeigt beim Ping-Pong auf beide Seiten (unter -0,5 und über +0,5), nie außerhalb von ±1', a.hsMin < -0.5 && a.hsMax > 0.5 && a.hsMin >= -1 && a.hsMax <= 1, JSON.stringify({ a }));
-    { const q = await page.evaluate(() => { // Funken auf der Seite des Treffers: hats_side festhalten, Hats-Treffer auslösen, Lage der neuen Funken messen
-        const old = AKSIDE.hats_side, w = fxc.width, res = {}; toggles.spark = true;
-        for (const sd of [-1, 1, 0]) { sparks.length = 0; MX.konto = 1; AKSIDE.hats_side = sd; for (let i = 0; i < 20; i++) { onHat(1); if (sparks.length > 100) break; }
-          const xs = sparks.map(s => s.x / w); res[sd] = { n: xs.length, links: xs.filter(x => x < 0.5).length, rechts: xs.filter(x => x >= 0.5).length }; }
-        sparks.length = 0; AKSIDE.hats_side = old; return res; });
-      check('Seiten-Funken: Treffer links erzeugt nur Funken in der linken Bildhälfte, rechts nur rechts, Mitte verteilt auf beide', q[-1].n > 0 && q[-1].rechts === 0 && q[1].n > 0 && q[1].links === 0 && q[0].links > 0 && q[0].rechts > 0, JSON.stringify(q)); }
     await close();
     const m = await open();
     await m.page.setInputFiles('#fileIn', [T[0]]);
@@ -744,17 +663,16 @@ const SZ = {
   },
   async mitschnitt() {
     // Mitschnitt (Build 122): Video mit Ton im Speicher, in Teile unter der Größengrenze aufgeteilt, Teilen mit Protokoll und Partitur. Echte Kopie.
-    const { page, errs, close } = await open({ real: true });
+    // Build 126: kein Schalter mehr. Ohne Test-Adresse läuft keine Aufnahme (Knopf „Bildbogen“), mit …/?mitschnitt läuft sie (Knopf „Mitschnitt“)
+    let aus; { const o = await open(); await o.page.setInputFiles('#fileIn', [T[0]]);
+      await o.page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 }); await o.page.waitForTimeout(3000);   // mehrere Takte des Halbsekunden-Zeitgebers (js/09c)
+      aus = await o.page.evaluate(() => ({ rec: toggles.rec, laeuft: !!__MS.cur, teile: __MS.n, knopf: $('logBild').textContent })); await o.close(); }
+    const { page, errs, close } = await open({ real: true, query: '?mitschnitt' });
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
-    // Build 125: Voreinstellung aus. Ohne den Schalter läuft keine Aufnahme und der Knopf heißt „Bildbogen“; erst der Schalter in der Werkstatt startet sie
-    await page.waitForTimeout(3000);                                          // mehrere Takte des Halbsekunden-Zeitgebers (js/09c): ohne Schalter startet nichts
-    const aus = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, teile: __MS.n, knopf: $('logBild').textContent }));
-    await page.evaluate(() => { $('t-rec').click(); });
-    // auf den Start warten statt fest 1,2 s: auf einem langsamen GitHub-Rechner kam der Zeitgeber später (Lauf 44054329613: Schalter an, Aufnahme noch nicht gestartet)
-    await page.waitForFunction(() => !!__MS.cur, null, { timeout: 15000, polling: 200 }).catch(() => {});
-    const an = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, knopf: $('logBild').textContent }));
-    check('Mitschnitt: Voreinstellung aus (keine Aufnahme, Knopf „Bildbogen“), der Schalter in der Werkstatt startet ihn (Knopf „Mitschnitt“)', aus.schalter === false && !aus.laeuft && aus.teile === 0 && aus.knopf === 'Bildbogen' && an.schalter === true && an.laeuft && an.knopf === 'Mitschnitt', JSON.stringify({ aus, an }));
+    await page.waitForFunction(() => !!__MS.cur, null, { timeout: 15000, polling: 200 }).catch(() => {});   // auf den Start warten (langsamer GitHub-Rechner)
+    const an = await page.evaluate(() => ({ rec: toggles.rec, laeuft: !!__MS.cur, knopf: $('logBild').textContent }));
+    check('Mitschnitt (Build 126): ohne Test-Adresse aus (keine Aufnahme, Knopf „Bildbogen“), mit …/?mitschnitt nimmt er auf (Knopf „Mitschnitt“)', aus.rec === false && !aus.laeuft && aus.teile === 0 && aus.knopf === 'Bildbogen' && an.rec === true && an.laeuft && an.knopf === 'Mitschnitt', JSON.stringify({ aus, an }));
     await page.evaluate(() => { MSCFG.maxSegMin = 0.1; audio.currentTime = 20; });
     await page.waitForTimeout(9000);
     await page.evaluate(async () => { MSCFG.forceGL = true; await msCut('Test WebGL'); });          // Farbe über WebGL wie auf dem iPhone
@@ -764,11 +682,12 @@ const SZ = {
       const out = { ok: __MS.ok, err: __MS.err, mime: __MS.mime, knopf: $('logBild').textContent, n: v.length, typen: [...new Set(v.map(x => x.type))], kb: v.map(x => Math.round(x.size / 1024)),
         protokoll: f.some(x => /^protokoll.*\.txt$/.test(x.name)), partitur: f.some(x => /^partitur/.test(x.name)), gl: !!__MS.gl, log: LOG.some(l => /Mitschnitt läuft/.test(l.x)) };
       // abgeschaltet: kein neuer Teil
-      toggles.rec = false; const before = __MS.n; await new Promise(res => setTimeout(res, 1500)); out.ausKeinNeuer = __MS.n === before && (!__MS.cur || __MS.cur.state !== 'rec'); toggles.rec = true;
+      $('play').click(); await new Promise(res => setTimeout(res, 300)); const before = __MS.n; await new Promise(res => setTimeout(res, 1500));   // Build 126: kein Schalter mehr, Pause über den Play-Knopf
+      out.ausKeinNeuer = audio.paused && __MS.n === before && (!__MS.cur || __MS.cur.state !== 'rec'); $('play').click(); await new Promise(res => setTimeout(res, 500));   // (audio.pause() allein nimmt der Pausen-Wächter nach 0,2 s zurück)
       return out; });
     console.log('       (Info) Mitschnitt: ' + JSON.stringify(r));
     check('Mitschnitt: nimmt während der Musik auf (Video mit Ton), teilt in mehrere Videodateien, Knopf heißt „Mitschnitt“, beim Teilen kommen Protokoll und Partitur mit', r.ok && !r.err && r.knopf === 'Mitschnitt' && r.n >= 2 && r.typen.every(t => /^video\//.test(t)) && r.kb.every(k => k > 5) && r.protokoll && r.partitur && r.log, JSON.stringify(r));
-    check('Mitschnitt: Farbe über WebGL (Weg für Safari) nimmt ohne Fehler auf; Schalter „Mitschnitt“ aus = keine neue Aufnahme', r.gl && !r.err && r.ausKeinNeuer, JSON.stringify(r));
+    check('Mitschnitt: Farbe über WebGL (Weg für Safari) nimmt ohne Fehler auf; Musik pausiert = keine neue Aufnahme', r.gl && !r.err && r.ausKeinNeuer, JSON.stringify(r));
     const lw = await page.evaluate(async () => {   // Leer-Wächter (Build 123): ein schwarzes Bild bei Musik wird nach 2,5 s gewechselt und kommt nicht wieder
       const w = ms => new Promise(r => setTimeout(r, ms)), z = { enabled: 0 };
       presets['T·Leer'] = { baseVals: { wave_a: 0, ob_a: 0, ib_a: 0, decay: 0.5, gammaadj: 1 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(0.0); }', shapes: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }], waves: [{ baseVals: z }, { baseVals: z }, { baseVals: z }, { baseVals: z }] };
@@ -867,9 +786,7 @@ const SZ = {
     check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) , graue (kein Kontrast, keine Farbe) und flache Farbflächen (Build 121) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut,flach,flach', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
-      // Build 125: eigene Shader während dieser Prüfung aus. nextPreset (js/08) würfelt VOR dem Auto-Mix mit 15 % einen eigenen Shader aus; ohne das schlug die
-      // Prüfung in etwa jedem 7. Lauf fehl (GitHub, Lauf 44044651393: „Eigen · Acid · 303-Welle“ statt des Mix, danach auch die Stern-Prüfung)
-      const own0 = toggles.own; toggles.own = false;
+      // Build 126: der Wurf für eigene Shader VOR dem Auto-Mix (Build 125: schlug in jedem 7. Lauf fehl) ist weg, die eigenen Visuals sind Presets und kommen nach dem Auto-Mix
       const w = ms => new Promise(r => setTimeout(r, ms)), out = {}; auto = true; __MIX.share = 1; __MIX.ready = null;
       for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
       out.bereit = !!__MIX.ready;
@@ -877,9 +794,9 @@ const SZ = {
       nextPreset(0, undefined, false, 's'); out.abschnitt = curName; out.log = LOG.some(l => /^Auto-Mix · /.test(l.x));
       for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
       __MIX.share = 0; nextPreset(0, undefined, false, 's'); out.anteilNull = curName; out.regler = !!$('mixShare');
-      __MIX.share = 0.35; auto = false; toggles.own = own0; return out; });
+      __MIX.share = 0.35; auto = false; return out; });
     console.log('       (Info) Auto-Mix: ' + JSON.stringify(am));
-    check('Auto-Mix: ein geprüfter Mix liegt bereit; ein automatischer Wechsel (Abschnitt) nimmt ihn bei Anteil 100 %, Wischen nicht, bei Anteil 0 kommt keiner; Regler in der Werkstatt', am.bereit && !/^Mix · /.test(am.wischen) && am.nochBereit && /^Mix · /.test(am.abschnitt) && am.log && !/^Mix · /.test(am.anteilNull) && am.regler, JSON.stringify(am));
+    check('Auto-Mix: ein geprüfter Mix liegt bereit; ein automatischer Wechsel (Abschnitt) nimmt ihn bei Anteil 100 %, Wischen nicht, bei Anteil 0 kommt keiner; kein Regler mehr (fest 35 %)', am.bereit && !/^Mix · /.test(am.wischen) && am.nochBereit && /^Mix · /.test(am.abschnitt) && am.log && !/^Mix · /.test(am.anteilNull) && !am.regler, JSON.stringify(am));
     const star = await page.evaluate(n => { if (!/^Mix · /.test(curName) && /^Mix · /.test(n || '')) loadByName(n, 0); if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; }, am.abschnitt);
     await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
     const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
@@ -896,25 +813,20 @@ const SZ = {
     await page.waitForTimeout(6000);
     const r = await page.evaluate(() => ({ step: window.__AM_STEP, presets: names.length, ext: viz && viz.renderer && viz.renderer.extraVars ? Object.keys(viz.renderer.extraVars).length : 0,
       bpm: viz && viz.renderer.extraVars.ak_bpm, kick: viz && viz.renderer.extraVars.kick_env, gl2: webgl2Ok(), cur: curName, fehler: LOG.filter(l => l.k === 'x').map(l => l.x) }));
-    check('Echte Butterchurn-Kopie: startet bis Teil 16, 372 Presets (367 + 5 eigene), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 372 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
-    { const q = await page.evaluate(async () => { // AK-PATCH 10: Endstufe. Werte kommen im Comp-Shader an, Shader übersetzt ohne Fehler, Stärke 0 ändert das Bild nicht
-        const R = viz.renderer, gl = R.gl, cs = R.compShader, out = {}; if (!viz.setAkStage || !cs || !cs.akStageLocs) return { fehlt: true };
-        const px = () => { viz.render(); const u = new Uint8Array(4 * 16 * 16); gl.readPixels(0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };
-        const err0 = gl.getError(); viz.setAkStage([0.8, 0.3, 0.5, 0, 0.7, 0.8, -0.5, 5]); viz.render(); const got = gl.getUniform(cs.shaderProgram, cs.akStageLocs[0]), got2 = gl.getUniform(cs.shaderProgram, cs.akStageLocs[1]);
-        out.a = Array.from(got).map(x => +x.toFixed(2)); out.b = Array.from(got2).map(x => +x.toFixed(2)); out.glFehler = gl.getError() - 0 + err0;
-        const df = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]); return d / a.length; }, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, rd = () => { const u = new Uint8Array(4 * W * H); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u); return u; };
-        const Z = [0, 0, 0, 0, 0, 0, 0, 0]; viz.setOutputAA(true); viz.setAkStage(Z); viz.render(); const tex = R.compTexture, again = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); R.outputShader.renderQuadTexture(tex); return rd(); };
-        const z1 = again(), z2 = again(); viz.setAkStage([0.9, 0.3, 0.8, 0, 0, 0, 0, 5]); const s1 = again();
-        viz.setAkStage([0, 0, 0, 0, 0, 0, -0.6, 5]); const b0 = again(); viz.setAkStage([0, 0, 0, 0.8, 0, 0, -0.6, 5]); const b1 = again(), b2 = again(); viz.setAkStage([0, 0, 0, 0.8, 0, 0, -0.6, 6]); const b3 = again();
-        viz.setAkStage(Z); viz.setOutputAA(false);
-        const mean = u => { let m = 0; for (let i = 0; i < u.length; i += 4) m += (u[i] + u[i + 1] + u[i + 2]) / 3; return m / (u.length / 4); };
-        out.diffNull = +df(z1, z2).toFixed(3); out.diffAcid = +df(z2, s1).toFixed(3); out.diffHats = 0;
-        out.bitNullSeite = +df(z2, b0).toFixed(3); out.diffBit = +df(z2, b1).toFixed(3); out.bitGleicheSaat = +df(b1, b2).toFixed(3); out.bitNeueSaat = +df(b1, b3).toFixed(3); out.bitHell = +(mean(b1) - mean(z2)).toFixed(2);
-        viz.setAkStage([0, 0, 0, 0, 0, 0, 0, 0]); viz.render(); out.null = Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[0])).every(x => x === 0) && Array.from(gl.getUniform(cs.shaderProgram, cs.akStageLocs[1])).every(x => x === 0);
-        return out; });
-      console.log('       (Info) Endstufe: ' + JSON.stringify(q));
-      check('Echte Butterchurn-Kopie, Bit-Salat (AK-PATCH 11): Stärke 0 = Ausgabe bit-gleich (auch mit gesetzter Seite und Saat), Stärke 0,8 verändert das Bild sichtbar, gleiche Saat = gleiches Bild (kein Flackern ohne Saat-Wechsel), neue Saat = neues Muster, mittlere Helligkeit bleibt (höchstens ±6 von 255)', !q.fehlt && q.bitNullSeite === 0 && q.diffBit > 0.3 && q.bitGleicheSaat === 0 && q.bitNeueSaat > 0.1 && Math.abs(q.bitHell) <= 6, JSON.stringify(q));
-    check('Echte Butterchurn-Kopie, Endstufe (AK-PATCH 10): setAkStage kommt im Comp-Shader an (akfx_a/akfx_b), kein GL-Fehler, mit 0 sind alle Blöcke aus, derselbe Bildinhalt zweimal ausgegeben ist bit-gleich, die Acid-Verzerrung im Ausgabe-Durchgang verändert ihn sichtbar', !q.fehlt && q.a && q.a[0] === 0.8 && q.a[1] === 0.3 && q.b[0] === 0.7 && q.b[2] === -0.5 && q.glFehler === 0 && q.null && q.diffNull === 0 && q.diffAcid > 0.3, JSON.stringify(q)); }
+    check('Echte Butterchurn-Kopie: startet bis Teil 16, 379 Presets (367 + 5 Acid-Presets + 7 eigene Visuals), Werte kommen im Renderer an, keine Fehler', r.step === 16 && r.presets === 379 && r.ext === 41 && r.bpm > 0 && r.gl2 && r.fehler.length === 0 && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
+    { const e = await page.evaluate(() => {   // Build 126: Emmos eigene Visuals laufen als echte Presets in der Kopie (Shader übersetzt und verlinkt, Bild nicht schwarz)
+        const R = viz.renderer, gl = R.gl, out = {}, x0 = LOG.filter(l => l.k === 'x').length; auto = false;
+        for (const n of EIGEN) {
+          const ok = loadByName(n, 0), link = [R.warpShader, R.compShader].every(sh => sh && sh.shaderProgram && gl.getProgramParameter(sh.shaderProgram, gl.LINK_STATUS));
+          for (let i = 0; i < 40; i++) viz.render();
+          const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, u = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u);
+          let mx = 0, s = 0; for (let i = 0; i < u.length; i += 4) { const y = 0.299 * u[i] + 0.587 * u[i + 1] + 0.114 * u[i + 2]; s += y; if (y > mx) mx = y; }
+          out[n] = { ok, link, glFehler: gl.getError(), hell: +(s / (W * H)).toFixed(1), max: Math.round(mx), kaputt: broken.has(n) };
+        }
+        out.logFehler = LOG.filter(l => l.k === 'x').length - x0; return out; });
+      console.log('       (Info) Eigene Visuals (echte Kopie): ' + JSON.stringify(e));
+      const N = Object.keys(e).filter(k => k !== 'logFehler');
+      check('Eigene Visuals (Build 126): alle 7 laufen als echte Presets in der Butterchurn-Kopie (Warp- und Comp-Shader verlinkt, kein GL-Fehler), das Bild ist nicht schwarz', N.length === 7 && N.every(k => e[k].ok && e[k].link && e[k].glFehler === 0 && !e[k].kaputt && e[k].max > 40) && e.logFehler === 0, JSON.stringify(e)); }
     await close();
   },
   async manifest() {
@@ -930,7 +842,7 @@ const SZ = {
   T = ['t1', 't2', 't3', 't4', 't5'].map(n => path.join(tmp, n + '.wav'));
   makeTrack(T[0], 1); for (const f of T.slice(1)) fs.copyFileSync(T[0], f);
   if (want.includes('hintergrund')) { TL = path.join(tmp, 'lang.wav'); makeTrack(TL, 4); }
-  if (want.some(w => /^(klangrollen2?|stereoLive|schaltzentrale|klangrollenLive)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
+  if (want.some(w => /^(klangrollen2?|stereoLive|klangrollenLive)$/.test(w))) { for (const k in PLANS) PT[k] = makePlanTrack(path.join(tmp, k + '.wav'), PLANS[k]()); }
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
   browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
     args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

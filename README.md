@@ -10,7 +10,7 @@ Acid ist die Version für Auftritte und bleibt unverändert. Hier wird weiterent
    Variablen erweitert, die 367 Standard-Presets laufen nachweislich bit-gleich wie vorher.
 2. **Klangrollen-Analyse** (`js/08b-klangrollen.js`): erkennt Kick, Acid-Linie (303), Hi-Hats und Pads getrennt und gibt jedem Preset
    41 neue Werte (Einsatz, Anschlag, Aufbau, Ausklingen, Filter, Resonanz, Hats-Dichte, Pads-Tonhöhe, Tempo, Takt, Abschnitt, Aufbau- und Drop-Stärke, Stereo-Position, -Tempo und -Breite).
-   Die Presets nutzen diese Werte (noch) nicht; die Schaltzentrale (unten) macht daraus Bildebenen über allen Presets.
+   Die eigenen Presets nutzen sie (ab Build 126 auch Emmos 7 eigene Visuals); die Schaltzentrale (Bildebenen über allen Presets) ist seit Build 126 entfernt.
 
 Build-Nummern: new-milkdrop- zählt ab **Build 100** (steht im Protokoll), damit es nicht mit Acid verwechselt wird.
 
@@ -31,15 +31,14 @@ new-milkdrop- nie etwas von Acid verändert:
 - `app-files.js`: EINZIGE Liste der Bibliotheken (`AM_LIBS`) und Programmteile (`AM_FILES`) in Ladereihenfolge. Der Loader und `sw.js` lesen sie.
 - `vendor/butterchurn/`: eigene Butterchurn-Kopie (`butterchurn.js`), Lizenz, `NOTICE.md` mit allen Änderungen, `original/` mit dem unveränderten Original.
 - `vendor/butterchurn-presets/`: die Preset-Pakete `butterchurnPresets.min.js`, `butterchurnPresetsExtra.min.js` und `butterchurnPresetsExtra2.min.js` (unverändert, 100 + 146 + 122 Presets, 367 verschiedene Namen), Lizenz.
-- `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen, dazu neu `js/08b-klangrollen.js`.
+- `js/01-grundlagen.js` bis `js/16-start.js`: das Programm aus Acid in Teilen (ohne Teil 3 seit Build 126), dazu neu `js/08b-klangrollen.js`.
   Jeder Teil prüft am Anfang, ob der vorige fertig ist (`window.__AM_STEP`).
-- `js/13b-schaltzentrale.js` (ab Build 106): Schaltzentrale (alle Ebenen, Bit-Salat, Akzente), siehe unten „Schaltzentrale“.
 - `js/09c-mitschnitt.js` (ab Build 122): Mitschnitt, Video mit Ton der letzten Minuten zum Teilen, siehe unten „Mitschnitt“.
 - `js/09b-bildbogen.js` (ab Build 117): Bildbogen, Vorschaubilder vom Bildschirm zum Teilen, siehe unten „Bildbogen“.
 - `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
-- `acid-shader.js`, `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: eigene Shader, die 5 eigenen Acid-Presets, vermessene Presets.
+- `eigene-visuals.js` (ab Build 126): Emmos 7 eigene Visuals als Butterchurn-Presets. `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: die 5 eigenen Acid-Presets, vermessene Presets.
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
@@ -96,6 +95,36 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Build 126: Aufgeräumt – keine Werkstatt mehr, eigene Visuals sind Butterchurn-Presets
+
+Emmo: „Ich möchte die nicht an- oder ausklicken können. Die sollen einfach in die Preset-Liste mit eingebaut werden … ich habe das Gefühl, dass wir uns im Kreis drehen.“
+
+- **Keine Werkstatt, keine Schalter, keine Regler** (außer dem Bluetooth-Versatz unter „Mehr“). Was bleibt, läuft fest so, wie es gedacht ist: passende Presets nach Klang
+  und Stimmung, Wechsel im Takt (Phrasen-Sync), harter Schnitt im Drop, Spiegeln, Mix und Auto-Mix (fest 35 %), Sterne, Analyse, Auto-Pegel, Instrumente hören,
+  Reaktions-Angleich, Name oben rechts, Protokoll und Bildbogen, Notaus. Gespeicherte Werkstatt-Werte (`nmd:am-toggles`, `nmd:am-gain2`, `nmd:sz-gain`,
+  `nmd:mix-anteil`) bleiben im Speicher liegen und wandern in Sicherungen mit, werden aber nicht mehr gelesen.
+- **Emmos 7 eigene Visuals sind echte Butterchurn-Presets** (`eigene-visuals.js`, gleiche Namen „Eigen · …“, Sterne bleiben): in der Liste, wischen, Stern, Lastbremse,
+  Bild-Wächter. Bildformeln 1:1 übernommen; die Musik kommt über die Klangrollen (Kick → `kick_env`, 303 → `acid_env`, Hats → `hats_env`, Kick-Schlag → `kick_hit`,
+  Takt-Eins aus `ak_bar`, Aufbau → `ak_build_strength`, Variante je Einblenden aus `rand_preset`). Echo-Ring: Spur im Warp-Durchgang (Rückkopplung wie Milkdrop),
+  Leuchten aus den Blur-Bildern. Sie laufen jetzt in voller Auflösung (1920×886 am iPhone statt 960×443); zu schwer → Lastbremse (50 % = die alte Größe).
+  Auswahl: eigener Topf mit ca. 15 % der automatischen Wechsel (wie vorher die eigenen Shader); als Mix-Partner nicht genutzt (sie zeichnen ihr Bild ganz im Comp).
+  Gemessen in der Sandbox (Software-Grafik, 960×443): alle 7 übersetzen ohne Fehler und zeigen ein Bild; der Bild-Wächter (32×15) sieht bei allen Kontrast über 14,
+  auch bei leiser Musik. Ob sie am iPhone in voller Größe flüssig laufen: NICHT geprüft.
+- **Raus:** Werkstatt, zweite Bildfläche der eigenen Shader (`acid-shader.js`, `js/03`, `shader-test.html`), Schaltzentrale (`js/13b`: Raum, Pads-Farbe,
+  Seiten-Funken, Hats-Körnung, Acid-Verzerrung, Bit-Salat, Dirigent-Regler), Funken und Ringe, Übergangs-Verformung, Drehen und Schwanken, Acid- und Takt-Farbe,
+  Mitschreiben (nimmt nichts mehr auf; die alte Mitschrift bleibt gespeichert), Testtöne, Regler „Reaktion“ und „Mix-Anteil“, Knopf „Klangrollen-Anzeige“ (nur noch `?debug`).
+- **Bleibt fest:** Kick-Puls (Zoom-Feder auf dem Kick, `js/12b` ohne Drehen/Schwanken), Aufbau (Zoom, Vignette, Farbe raus; die Spannung folgt dem gemessenen Aufbau
+  `ak_build_strength`, ohne Messung die alte 8-Takte-Regel), Drop (Blitz 70 % und Zoom-Stoß).
+- **Mitschnitt nur zum Testen** über die Adresse `…/new-milkdrop-/?mitschnitt` (in Safari öffnen). Ohne diesen Zusatz nimmt die App nie auf.
+- **Fehler behoben: Bild in Streifen nach dem Hintergrund.** iOS meldete nach Rückkehr und Drehen eine sichtbare Höhe von 0 oder −59 px (Protokoll: „sichtbar 852×0“,
+  danach „Auflösung: 1920×2“). Die App rechnete das Bild dann mit 2 Pixeln Höhe und zog es über den Schirm. Unsinnige Werte zählen jetzt nicht (`viewSize`, `js/04`).
+- **Tests:** Werkstatt-, Schaltzentrale- und Shader-Flächen-Tests entfernt, neu: `bedienung` (keine Schalter, feste Werte, gespeicherte Werte unangetastet),
+  `eigene` (7 Visuals in der Liste, Sterne bleiben), `puls` (Kick-Puls, Aufbau, Drop; kein Drehen/Schieben/Farbe), eigene Visuals in der echten Kopie (Shader verlinkt,
+  Bild nicht schwarz), Bildgröße bei Höhe 0. Regression: weicht ein Preset ab, zeichnet der Test jetzt auch die Kopie ein zweites Mal (GitHub hatte nach dem Merge
+  von Build 125 ein Preset einmal anders gezeichnet, in der Sandbox jedes Mal gleich); eine echte Abweichung der Kopie fällt weiter durch (nachgestellt).
+- Geprüft in der Sandbox (Software-Grafik): Schnelltests grün, Browser-Test 109 von 109, Regression mit Teilmenge und nachgestellten Abweichungen; `vendor/` unverändert. Nicht am iPhone.
+- Die Abschnitte „Schaltzentrale“, „Abwechslung“ (eigene Shader) und die Werkstatt-Hinweise weiter unten sind Geschichte (Stand bis Build 125).
 
 ## Build 125: Reparaturen nach der Durchsicht
 

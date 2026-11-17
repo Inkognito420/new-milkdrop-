@@ -14,9 +14,8 @@ try { localStorage.removeItem(KEY_NS + 'am-brake-v1'); localStorage.removeItem(K
   if (b && typeof b === 'object') for (const k in b) { const e = b[k]; if (e && e.s >= 1 && e.s < BRAKE_STEPS.length && e.t > now - BRAKE_TTL) brake[k] = { s: e.s | 0, t: e.t | 0 }; } }
 let brakeUntil = 0, liveTicks = 0;                     // liveTicks: nur für den Test (zählt Schläge im Live-Raster)
 const fpsHist = [];
-const brakeWant = n => (guard && !SH[n] && brake[n]) ? brake[n].s : 0;
+const brakeWant = n => (guard && brake[n]) ? brake[n].s : 0;
 function brakeApply(n) {
-  if (SH[n]) return;                                  // eigene Shader haben ihre eigene (halbe) Fläche, Milkdrop steht dann still
   const want = brakeWant(n);
   if (want === curStep) return;
   curStep = want; resize();
@@ -25,7 +24,7 @@ function brakeApply(n) {
 // Schafft das Handy gerade überhaupt nichts über 40 fps (Stromsparmodus, heiß)? Dann liegt es nicht am Preset: nicht verkleinern.
 const brakeCapped = t => { let n = 0, mx = 0; for (const h of fpsHist) if (t - h[0] <= 45000) { n++; if (h[1] > mx) mx = h[1]; } return n >= 20 && mx < 40; };
 function brakeTry(n, fps, t) {
-  if (SH[n] || !(favs.has(n) || ACID.has(n))) return false;          // nur Favoriten und eigene Acid-Presets, alles andere wird wie bisher übersprungen
+  if (!(favs.has(n) || ACID.has(n))) return false;                   // nur Favoriten und eigene Presets (Acid und eigene Visuals), alles andere wird wie bisher übersprungen
   if (brakeCapped(t)) return false;
   const s = brake[n] ? brake[n].s : 0;
   if (s >= BRAKE_STEPS.length - 1) return false;                      // auch die kleinste Stufe reicht nicht: dann sperren
@@ -37,23 +36,18 @@ function brakeTry(n, fps, t) {
   if (JR.run) JR.run.fl |= 128;
   return true;
 }
-let mdFlip = '';                                     // Build 116: Spiegelung des aktuellen Milkdrop-Presets (CSS, kostet nichts)
+let mdFlip = '';                                     // Build 116: Spiegelung des aktuellen Presets (CSS, kostet nichts)
 function usable(n) { return !broken.has(n) && !DEAD.has(n) && !suspect.has(n) && !(guard && slow.has(n)); }
 function loadByName(n, blend, pushHist = true, why = 'a') {
   rea('Preset: ' + n);
   if (!viz) return false;
   brakeApply(n);                                     // Lastbremse: schwere Favoriten in kleinerer Auflösung, alles andere voll
-  if (SH[n]) { if (!shShow(n, blend)) return false; }
-  else {
-    const l0 = performance.now();
-    try { viz.loadPreset(tuned(n), blend); }
-    catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
-    if (typeof loadTimed === 'function') loadTimed(n, performance.now() - l0);   // Build 125: Halt beim Laden messen (js/09)
-    if (shCur || shOp > 0) { shCur = null; shFade(0, Math.max(blend, 0.3)); }   // eigener Shader blendet aus, Milkdrop übernimmt
-  }
+  const l0 = performance.now();
+  try { viz.loadPreset(tuned(n), blend); }
+  catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
+  if (typeof loadTimed === 'function') loadTimed(n, performance.now() - l0);   // Build 125: Halt beim Laden messen (js/09)
   curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;
-  if (!SH[n]) { const r = Math.random(); mdFlip = !toggles.flip ? '' : r < 0.3 ? ' scale(-1,1)' : r < 0.42 ? ' scale(1,-1)' : r < 0.5 ? ' scale(-1,-1)' : ''; }   // Build 116: Spiegeln, dasselbe Preset sieht anders aus
-  if (blender && blend > 0.2 && toggles.morph && !reduceMotion) { blender.begin(blend * 1000); morphOn = true; }
+  { const r = Math.random(); mdFlip = !toggles.flip ? '' : r < 0.3 ? ' scale(-1,1)' : r < 0.42 ? ' scale(1,-1)' : r < 0.5 ? ' scale(-1,-1)' : ''; }   // Build 116: Spiegeln, dasselbe Preset sieht anders aus
   recent.push(n); if (recent.length > 90) recent.shift();
   jrStart(n, why);                                   // Mitschreiben: neuer Lauf, der vorige wird mit diesem Anlass abgeschlossen
   if (pushHist) { hist.splice(histPos + 1); hist.push(n); if (hist.length > 60) hist.shift(); histPos = hist.length - 1; }
@@ -122,9 +116,9 @@ function reactFit(n, v) {
 let lastFitInfo = '';
 function pickPreset(tg) {
   const sv = toggles.mood ? soundTarget() : null;
-  // Favoriten (ca. 40 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
+  // Eigene Visuals (ca. 15 %, wie bis Build 125 die eigenen Shader), Favoriten (ca. 40 %) und eigene Acid-Presets (ca. 12 %) kommen bevorzugt dran, passend zum Klang gewählt
   const lastFew = recent.slice(-6), pool = (set, minLeft) => { const a = []; for (const n of set) if (presets[n] && usable(n) && n !== curName && !lastFew.includes(n)) a.push(n); return a.length >= minLeft ? a : []; };
-  for (const [set, chance, tag] of [[favs, 0.4, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
+  for (const [set, chance, tag] of [[EIGEN, 0.15, 'Eigenes Visual'], [favs, 0.4, 'Favorit'], [ACID, 0.12, 'Acid-Preset']]) {
     if (Math.random() >= chance) continue;
     const a = pool(set, 1); if (!a.length) continue;
     let best = null, bf = -9;
@@ -215,10 +209,6 @@ function nextPreset(blend = 2.7, tg, exact, why) {
   if (blend > 0 && !exact && blender && toggles.mood) {              // Übergangsdauer nach Klang: laut/hart = kurz, ruhig = lang
     const a = blender.suggestDuration() / 1000;
     blend = Math.min(a, Math.max(blend, 1.2));
-  }
-  if (toggles.own && Object.keys(SH).length && Math.random() < (shCur ? 0.05 : 0.15)) {
-    const sn = pickShader();
-    if (sn && loadByName(sn, blend, true, why)) { rea('Eigener Shader · Stil ' + lastShStyle + ' · Abschnitt ' + sectionKey()); return; }
   }
   if (window.mixAuto && window.mixAuto(blend, why)) return;          // Build 118: Auto-Mix (js/10b), ein Teil der automatischen Wechsel wird ein frischer Mix
   for (let tries = 0; tries < 20; tries++) {

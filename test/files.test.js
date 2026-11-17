@@ -11,7 +11,7 @@ let prev = 0;
 for (const f of parts) {
   const n = stepOf(f), src = read(f);
   if (/^js\/\d\d[a-z]-/.test(f)) { assert.ok(src.includes('__AM_STEP !== ' + prev), f + ' prüft nicht Teil ' + prev); continue; }   // 12b, 09c usw. ändern die Stufe nicht
-  assert.ok(src.includes('__AM_STEP !== ' + (n - 1)) || n === 1, f + ' prüft nicht Teil ' + (n - 1));
+  assert.ok(src.includes('__AM_STEP !== ' + prev) || n === 1, f + ' prüft nicht Teil ' + prev);   // prüft seinen Vorgänger (seit Build 126 fehlt Teil 3: js/04 prüft Teil 2)
   assert.ok(src.includes('window.__AM_STEP = ' + n + ';'), f + ' setzt nicht Stufe ' + n);
   prev = n;
 }
