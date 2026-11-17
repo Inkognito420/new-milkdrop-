@@ -11,6 +11,7 @@ for (const k in togIds) {
     toggles[k] = !toggles[k]; el.classList.toggle('hot', toggles[k]); store.set('am-toggles', toggles);
     if (k === 'phrase') lastSwitch = performance.now();
     if (k === 'name') showName();
+    if (k === 'rec') { rea('Mitschnitt: ' + (toggles.rec ? 'an (nur zum Testen, kostet Leistung)' : 'aus')); if (typeof msLabel === 'function') msLabel(); }
     if (k === 'journal') { rea('Mitschreiben: ' + (toggles.journal ? 'an' : 'aus (bisherige Mitschrift bleibt, es kommt nichts dazu)')); jrSplit('x'); jrInfo(); }
     if (k === 'mix') rea('Mischpult (Körper & Funken): ' + (toggles.mix ? 'an' : 'aus (Effekte wie vor Build 46)'));
     if (k === 'instr') rea('Instrumente hören: ' + (toggles.instr ? 'an (Kick, Mitten, Höhen einzeln)' : 'aus (Milkdrop hört wie vorher Bass, Mitte, Höhen)'));

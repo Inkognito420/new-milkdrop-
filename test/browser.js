@@ -89,6 +89,14 @@ const SZ = {
     check('Start: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     check('Start: Build-Nummer in index.html (var B) und im Programm (BUILD_NO) gleich', await page.evaluate(() => window.B === BUILD_NO));
     await close();
+    // Build 125: Google-Schriften antworten nicht (schlechter Empfang im Club): die App muss trotzdem starten. Vorher blockierte das Stylesheet im Kopf alle Skripte.
+    { const c2 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+      await c2.route(/\/vendor\/butterchurn(-presets)?\/[^/?]+\.js/, r => r.fulfill({ contentType: 'application/javascript', body: /Presets/.test(r.request().url()) ? STUB_PRE : STUB_VIZ }));
+      await c2.route(/fonts\.(googleapis|gstatic)\.com/, () => { /* hängt: nie eine Antwort */ });
+      const p2 = await c2.newPage(); p2.goto(URL0, { waitUntil: 'commit' }).catch(() => {});
+      const ok = await p2.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 10000 }).then(() => true, () => false);
+      check('Start: die App startet auch, wenn die Google-Schriften nicht antworten (Schriften laden nebenher)', ok);
+      await c2.close(); }
   },
   async bedienung() {
     const { page, errs, close } = await open();
@@ -385,6 +393,17 @@ const SZ = {
       return { nachHidden, nachVisible: slowSecs, lastbremse: LOG.filter(l => /Lastbremse/.test(l.x)).length - vorher };
     });
     check('Lastbremse: Zähler wird beim Verstecken und bei der Rückkehr geleert, keine Fehlauslösung', lb.nachHidden === 0 && lb.nachVisible === 0 && lb.lastbremse === 0, JSON.stringify(lb));
+    // 1b) Build 125: Bildraten-Messung nach dem Hintergrund. Wie auf dem iPhone kommt das erste Bild, BEVOR das Ereignis „wieder sichtbar“ feuert:
+    // die Messung über die versteckte Zeit (hier 20 s, 30 Bilder = „2 fps“) darf nicht gezählt werden
+    const fg = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), setVis = v => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+      setVis('hidden'); document.dispatchEvent(new Event('visibilitychange')); await w(100);
+      setVis('visible'); fpsT = performance.now() - 20000; frameCount = 30; const n0 = fpsHist.length, min0 = perf.min;
+      await w(400); const neu = fpsHist.slice(n0).map(h => h[1]), min1 = perf.min;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { neu, min0, min1 };
+    });
+    check('Bildrate: die Messung über die versteckte Zeit zählt nicht (kein „2 fps“ nach dem Hintergrund, auch wenn das erste Bild vor dem Ereignis kommt)', fg.neu.every(f => f > 5) && fg.min1 >= Math.min(fg.min0, 6), JSON.stringify(fg));
     // 2) Play-Tipp: ein wartendes playAt startet den Track vor dem Handler; der darf ihn nicht wieder pausieren
     const pl = await page.evaluate(async () => {
       const w = ms => new Promise(r => setTimeout(r, ms)); audio.pause(); await w(100);
@@ -669,6 +688,14 @@ const SZ = {
         SZ.gain.kick = 1; out.acid = Math.abs(szAcidRot() - (1 - SZCFG.acidRotShare)) < 1e-9;
         SZ.kickS = SZCFG.kickBreak; out.break = Math.abs(szKickAmp() - SZCFG.kickBreak) < 1e-9; SZ.kickS = 1; out.normal = szKickAmp() === 1;
         SZ.gain.kick = g0; SZ.on = on0; return out; });
+      { const gz = await m.page.evaluate(() => { // Build 125: Glitzern steigt auf einen Hats-Treffer mit grainMs[0] (120 ms), nicht mit 500 ms
+          const sv = {}; for (const k of ['hats_env', 'hats_density', 'hats_release', 'hats_hit']) sv[k] = AKV[k];
+          const on0 = SZ.on, mix0 = toggles.mix; SZ.on = true; toggles.mix = true; SZ.gl = 0;
+          AKV.hats_env = 0.2; AKV.hats_density = 0.3; AKV.hats_release = 0; AKV.hats_hit = 1;
+          for (let i = 0; i < 8; i++) szFrame(0.016); const hoch = SZ.gl;                       // ca. 130 ms Treffer
+          AKV.hats_hit = 0; for (let i = 0; i < 6; i++) szFrame(0.016); const danach = SZ.gl;    // ca. 100 ms später: fällt langsam (500 ms)
+          Object.assign(AKV, sv); SZ.on = on0; toggles.mix = mix0; return { hoch: +hoch.toFixed(3), danach: +danach.toFixed(3) }; });
+        check('Schaltzentrale Hats-Glitzern: steigt auf einen Treffer in ca. 130 ms auf über 0,35 (vorher ca. 0,2) und fällt danach langsam (nach 100 ms noch über 70 %)', gz.hoch > 0.35 && gz.hoch <= 1 && gz.danach > 0.7 * gz.hoch && gz.danach < gz.hoch, JSON.stringify(gz)); }
       check('Schaltzentrale Kick-Ebene: Drehen im Takt (Richtung wechselt je Takt, begrenzt), Regler 0 = aus, Acid dreht weniger, Break leiser', k.richtung && k.groesse && k.aus && k.acid && k.break && k.normal, JSON.stringify(k)); }
     check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
     await m.close();
@@ -717,6 +744,13 @@ const SZ = {
     const { page, errs, close } = await open({ real: true });
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    // Build 125: Voreinstellung aus. Ohne den Schalter läuft keine Aufnahme und der Knopf heißt „Bildbogen“; erst der Schalter in der Werkstatt startet sie
+    await page.waitForTimeout(1500);
+    const aus = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, teile: __MS.n, knopf: $('logBild').textContent }));
+    await page.evaluate(() => { $('t-rec').click(); });
+    await page.waitForTimeout(1200);
+    const an = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, knopf: $('logBild').textContent }));
+    check('Mitschnitt: Voreinstellung aus (keine Aufnahme, Knopf „Bildbogen“), der Schalter in der Werkstatt startet ihn (Knopf „Mitschnitt“)', aus.schalter === false && !aus.laeuft && aus.teile === 0 && aus.knopf === 'Bildbogen' && an.schalter === true && an.laeuft && an.knopf === 'Mitschnitt', JSON.stringify({ aus, an }));
     await page.evaluate(() => { MSCFG.maxSegMin = 0.1; audio.currentTime = 20; });
     await page.waitForTimeout(9000);
     await page.evaluate(async () => { MSCFG.forceGL = true; await msCut('Test WebGL'); });          // Farbe über WebGL wie auf dem iPhone

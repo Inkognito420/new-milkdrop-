@@ -105,8 +105,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 124;
-const BUILD = 'Build ' + BUILD_NO + ' · Bild-Wächter (blinkt schwarz, flach), Mitschnitt schont das iPhone';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 125;
+const BUILD = 'Build ' + BUILD_NO + ' · Start wartet nicht mehr auf Google-Schriften, fps-Messung nach dem Hintergrund, Mitschnitt nur noch zum Testen, Messung „Bild laden“';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
@@ -255,7 +255,7 @@ const TOGGLES = [
   ["instr", "Hören", "Instrumente hören", true, "Die Presets bekommen Kick, Mitten (303, Synths, Claps) und Hi-Hats einzeln statt verschwommener Frequenzbereiche."],
   ["tune", "Hören", "Reaktions-Angleich", true, "Schwach reagierende Presets werden verstärkt, zu starke gedämpft (gilt ab dem nächsten Bildwechsel)"],
   ["name", "Anzeige", "Name oben rechts", true, "Name des laufenden Presets oben rechts, wenn die Leiste weg ist (für Screenshots)"],
-  ["rec", "Anzeige", "Mitschnitt", true, "Nimmt während der Musik ein kleines Video mit Ton auf (nur im Speicher, nichts wird gespeichert). Teilen über „Mitschnitt“ im Protokoll, zusammen mit dem ganzen Protokoll"],
+  ["rec", "Anzeige", "Mitschnitt", false, "Nur zum Testen (kostet Leistung): nimmt während der Musik ein kleines Video mit Ton auf (nur im Speicher, nichts wird gespeichert). Teilen über „Mitschnitt“ im Protokoll, zusammen mit dem ganzen Protokoll. Aus = der Knopf teilt den Bildbogen"],   // Build 125: Voreinstellung aus (Build 123 gemessen: 35 statt 56 fps). Wer den Schalter schon gespeichert hat, behält seinen Stand
   ["journal", "Anzeige", "Mitschreiben", true, "Schreibt unsichtbar mit, welches Visual zu welcher Musik lief und was du damit gemacht hast (Wischen, Stern, Halten). Bleibt nur im Browser, nichts wird gesendet."]
 ];
 const TOG_DEFAULT = {}, TOG_LABEL = {}, togIds = {};

@@ -117,8 +117,9 @@ function bbLeer(t) {
   const music = (AKV.kick_env || 0) + (AKV.acid_env || 0) + (AKV.hats_env || 0) + (AKV.pads_env || 0);
   if (!viz || !viz.renderer || !viz.renderer.gl || !auto || !(micOn || (curFile && !audio.paused)) || t - lastSwitch < LEERCFG.afterSwitch || music < LEERCFG.music) { LW.since = 0; return; }
   if (!LW.cv) { LW.cv = document.createElement('canvas'); LW.cv.width = 32; LW.cv.height = 15; LW.x = LW.cv.getContext('2d', { willReadFrequently: true }); }
-  let l = 0, l2 = 0;
+  let l = 0, l2 = 0; const g0 = performance.now();
   try { bbScreen(LW.x, 32, 15, { base: true, color: false, fx: true }); const d = LW.x.getImageData(0, 0, 32, 15).data;
+    if (typeof loadSt === 'object') { const ms = performance.now() - g0, G = loadSt.grab; G.n++; G.sum += ms; if (ms > G.max) G.max = ms; }   // Build 125: was das Auslesen kostet (Leistungs-Zeile, js/09)
     for (let i = 0; i < d.length; i += 4) { const y = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; l += y; l2 += y * y; } } catch (e) { return; }
   l /= 480; const sd = Math.sqrt(Math.max(0, l2 / 480 - l * l)), C = LEERCFG, leer = l < C.luma && sd < C.std;
   LW.hist.push({ t, l, sd, leer }); while (LW.hist.length && t - LW.hist[0].t > Math.max(C.win, C.flatWin)) LW.hist.shift();

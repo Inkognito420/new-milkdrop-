@@ -97,15 +97,17 @@ async function mixCheck(p) {
   const V = mixViz(); if (!V) return { ok: true, skip: true };
   const gl = V.renderer.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, px = new Uint8Array(4 * W * H);
   const read = () => { gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px); return px.slice(); };
-  let f20 = null, f40 = null;
+  let f20 = null, f40 = null, h0 = performance.now(), hMax = 0;      // Build 125: wie lange die Prüfung die Seite am Stück anhält (Laden + je perTick Prüfbilder)
+  const held = () => { const ms = performance.now() - h0; if (ms > hMax) hMax = ms; };
   try {
     V.loadPreset(p, 0);
     for (let i = 1; i <= MIXCFG.frames; i++) {
       V.render({ elapsedTime: 1 / 30 });
       if (i === 20) f20 = read(); else if (i === MIXCFG.frames) f40 = read();
-      if (i % MIXCFG.perTick === 0) await mixTick();
+      if (i % MIXCFG.perTick === 0) { held(); await mixTick(); h0 = performance.now(); }
     }
   } catch (e) { return { ok: false, why: 'Fehler' }; }
+  held(); { const S = MIX.st; S.chkN = (S.chkN || 0) + 1; S.chkSum = (S.chkSum || 0) + hMax; if (hMax > (S.chkMax || 0)) S.chkMax = hMax; }
   let l = 0, l2 = 0, d = 0, sat = 0; const n = W * H;
   for (let i = 0; i < px.length; i += 4) {
     const r = f40[i], g = f40[i + 1], b = f40[i + 2], y = 0.3 * r + 0.59 * g + 0.11 * b;
@@ -192,7 +194,7 @@ async function mixNow() {
     row.appendChild(t); row.appendChild(r); row.appendChild(v); box.appendChild(row); werk.appendChild(box);
   } }
 // Protokoll: einmal pro Minute, wenn Mixe kamen
-setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %'); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
+setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %' + (S.chkN ? ' · Prüfen hielt die Seite Ø ' + Math.round(S.chkSum / S.chkN) + ' ms an, längstes ' + Math.round(S.chkMax) + ' ms (' + S.chkN + ' Prüfungen)' : '')); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
 
 // ===== Rezepte: Mixe mit Stern bleiben =====
 function mixSave() {
