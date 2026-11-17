@@ -38,7 +38,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
-- `eigene-visuals.js` (ab Build 126): Emmos 7 eigene Visuals als Butterchurn-Presets. `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: die 5 eigenen Acid-Presets, vermessene Presets.
+- `eigene-visuals.js` (ab Build 126): Emmos eigene Visuals als Butterchurn-Presets (7 frühere eigene Shader, 5 neue ab Build 127). `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: die 5 eigenen Acid-Presets, vermessene Presets.
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
@@ -95,6 +95,17 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Build 127: Fünf neue eigene Presets, die die Klangrollen einzeln hören
+
+Emmo: „Wie wäre es mit dem Erstellen von Shadern und Presets?“ → „Alle, leg los.“ Neu in `eigene-visuals.js` (Topf „Eigene Visuals“, Lastbremse, Sterne):
+- **Acid · Säureschlange:** leuchtende Linie, wird mit dem 303-Filter (`acid_cutoff`) wilder, bei Resonanz (`acid_reso`) zackig und glühend, Filterfahrten (`acid_squelch`) treiben sie an. Spur im Warp, Leuchten aus den Blur-Bildern.
+- **Peak · Kick-Schockwelle:** jeder Kick (`kick_hit`) schickt eine Welle durch ein Gitter, die Spur bleibt kurz stehen; im Drop stärker je nach gemessener Drop-Stärke (`ak_drop_strength`).
+- **Peak · Hats-Sternenfeld:** Sterne blitzen auf Hi-Hat-Treffern (`hats_hit`), mehr bei dichten Hats (`hats_density`), auf der Seite, wo die Hats im Stereo klingen (`ak_pan`), und fliegen nach außen. Ohne Hats ein dunkler Nebel.
+- **Driving · Pad-Nebel:** Farbflächen, die mit den Pads (`pads_env`) und im Break aufblühen; tiefe Pads dunkel und satt, hohe hell (`pads_pitch`).
+- **Driving · Phrasen-Tunnel:** Fahrt, die sich über 16 Takte aufbaut (`ak_phrase`), am Phrasenende Licht am Ende des Tunnels, jede Phrase dreht andersherum, im Drop volle Fahrt.
+- Musikabhängige Tempi werden in den Frame-Gleichungen aufsummiert (q-Werte). `time × Tempo` sprang bei jeder Tempo-Änderung, weil `time` seit dem Start der App läuft: das betraf auch zwei Muster der **Lichtwand** (flackerten nach langer Laufzeit), dort jetzt ebenso behoben.
+- Geprüft in der Sandbox (Software-Grafik, 960×443, nachgebaute Musik Groove → Break → Aufbau → Drop): alle übersetzen und verlinken ohne Fehler; Bild-Wächter (32×15) in je mehreren Zufallsvarianten nie „leer“ oder „flach“ (dafür Grundlicht in Schockwelle und Pad-Nebel, besserer Zufall im Sternenfeld: der alte lieferte bei großen Zahlen oft genau 0, dann blitzten Sterne ohne Hats). Zeit pro Bild in Software-Grafik 15–48 ms (Pad-Nebel am schwersten). Nicht am iPhone geprüft.
 
 ## Build 126: Aufgeräumt – keine Werkstatt mehr, eigene Visuals sind Butterchurn-Presets
 
