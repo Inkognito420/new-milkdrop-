@@ -102,6 +102,7 @@ Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausg
 - **Start ohne Google-Schriften:** Das Schriften-Stylesheet im Kopf blockierte alle Skripte, bis Google antwortete (bei schlechtem Empfang startete die App nicht). Es lädt jetzt nebenher; ohne Antwort gelten die Ersatzschriften. Der Offline-Speicher wird spätestens nach 6 s angemeldet.
 - **Bildrate nach dem Hintergrund:** Auf dem iPhone kommt das erste Bild nach der Rückkehr vor dem Ereignis „wieder sichtbar“; die Messung über die versteckte Zeit ergab „tiefster Wert 2 fps“. Sie wird jetzt verworfen.
 - **Hats-Glitzern** steigt auf einen Treffer mit 120 ms (vorher durch einen falschen Vergleich mit 500 ms).
+- **Bild-Wächter bei langsamer App:** Ein Prüffenster gilt als voll, wenn seine Proben genug Zeit abdecken (bei normaler Geschwindigkeit wie vorher), nicht erst ab einer festen Probenzahl. Vorher urteilte der Wächter bei unter etwa 2 Bildern pro Sekunde nie (nachgestellt).
 - **Messungen im Protokoll:** „Bild laden hielt … ms an“ (einzeln ab 120 ms) und alle 5 Minuten in „Leistung nach …“: Bild laden (Anzahl, Schnitt, längstes) und was der Bild-Wächter für das Auslesen braucht; in „Mix (letzte Minute)“, wie lange die Mix-Prüfung die Seite anhält.
 
 ## Mitschnitt: Video mit Ton (ab Build 122)
