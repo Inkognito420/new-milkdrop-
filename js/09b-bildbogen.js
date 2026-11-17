@@ -100,7 +100,7 @@ function bbGrab(name, tag) {
 // in den letzten flatWin ms mindestens flatShare mit Kontrast unter flatStd (bei Helligkeit ab flatLuma) → Wechsel.
 // Dunkle Bilder mit Inhalt bleiben (Tunnel mit Ringen danach: 10 % leer, Helligkeit 21). Die Prüfung beim Mischen sieht nur die ersten 1,3 s,
 // darum braucht es diesen Blick auf das echte Bild.
-const LEERCFG = { ms: 2500, every: 500, luma: 8, std: 6, afterSwitch: 3000, music: 0.15,
+const LEERCFG = { ms: 2500, every: 500, luma: 8, std: 6, afterSwitch: 3000, music: 0.15, minN: 4,
   win: 8000, leerShare: 0.3, darkMean: 15, flatWin: 10000, flatShare: 0.6, flatStd: 14, flatLuma: 40 };
 const LEER = new Set(), LW = { cv: null, x: null, since: 0, lastT: 0, n: 0, hist: [], name: '' };
 { const usable0 = usable; usable = n => usable0(n) && !LEER.has(n); }
@@ -117,8 +117,9 @@ function bbLeer(t) {
   const music = (AKV.kick_env || 0) + (AKV.acid_env || 0) + (AKV.hats_env || 0) + (AKV.pads_env || 0);
   if (!viz || !viz.renderer || !viz.renderer.gl || !auto || !(micOn || (curFile && !audio.paused)) || t - lastSwitch < LEERCFG.afterSwitch || music < LEERCFG.music) { LW.since = 0; return; }
   if (!LW.cv) { LW.cv = document.createElement('canvas'); LW.cv.width = 32; LW.cv.height = 15; LW.x = LW.cv.getContext('2d', { willReadFrequently: true }); }
-  let l = 0, l2 = 0;
+  let l = 0, l2 = 0; const g0 = performance.now();
   try { bbScreen(LW.x, 32, 15, { base: true, color: false, fx: true }); const d = LW.x.getImageData(0, 0, 32, 15).data;
+    if (typeof loadSt === 'object') { const ms = performance.now() - g0, G = loadSt.grab; G.n++; G.sum += ms; if (ms > G.max) G.max = ms; }   // Build 125: was das Auslesen kostet (Leistungs-Zeile, js/09)
     for (let i = 0; i < d.length; i += 4) { const y = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; l += y; l2 += y * y; } } catch (e) { return; }
   l /= 480; const sd = Math.sqrt(Math.max(0, l2 / 480 - l * l)), C = LEERCFG, leer = l < C.luma && sd < C.std;
   LW.hist.push({ t, l, sd, leer }); while (LW.hist.length && t - LW.hist[0].t > Math.max(C.win, C.flatWin)) LW.hist.shift();
@@ -126,11 +127,15 @@ function bbLeer(t) {
   if (leer) { if (!LW.since) LW.since = t; else if (t - LW.since >= C.ms) return bbLeerAct('war ' + ((t - LW.since) / 1000).toFixed(1).replace('.', ',') + ' s leer, während Musik lief', 'Helligkeit ' + l.toFixed(1) + ', Kontrast ' + sd.toFixed(1)); }
   else LW.since = 0;
   const W = LW.hist.filter(h => t - h.t <= C.win), FW = LW.hist.filter(h => t - h.t <= C.flatWin);
-  if (W.length >= C.win / C.every * 0.8) {
+  // Build 125: ein Fenster gilt als voll, wenn seine Proben genug ZEIT abdecken (bei 500 ms wie vorher: 8 Proben über 3,5 s), nicht erst ab einer festen Probenzahl.
+  // Läuft die App sehr langsam (unter ca. 2 Bilder/s, z. B. Mitschnitt und Auto-Mix-Prüfung zugleich), kamen nie 8 Proben in 5 s zusammen und der Wächter urteilte nie
+  // (nachgestellt mit 0,65 s pro Bild; GitHub, Lauf 44054339243: „flach“ nach 15 s nicht erkannt).
+  const voll = (A, win) => A.length >= C.minN && t - A[0].t >= win * 0.8 - C.every;
+  if (voll(W, C.win)) {
     const share = W.filter(h => h.leer).length / W.length, mean = W.reduce((s, h) => s + h.l, 0) / W.length;
     if (share >= C.leerShare && mean < C.darkMean) return bbLeerAct('blinkt schwarz', f(share * 100) + ' % leer in ' + C.win / 1000 + ' s, Helligkeit Ø ' + mean.toFixed(1));
   }
-  if (FW.length >= C.flatWin / C.every * 0.8) {
+  if (voll(FW, C.flatWin)) {
     const flat = FW.filter(h => h.sd < C.flatStd && h.l >= C.flatLuma).length / FW.length;
     if (flat >= C.flatShare) return bbLeerAct('ist flach (kaum Kontrast)', f(flat * 100) + ' % flach in ' + C.flatWin / 1000 + ' s, Helligkeit ' + f(l) + ', Kontrast ' + sd.toFixed(1));
   }

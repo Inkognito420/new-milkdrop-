@@ -46,6 +46,7 @@ const AKCFG = {
   },
   padsSmoothMs: 1000,       // pads: über etwa 1 s geglättet (nur die langsamen Anteile)
   stN: 2048,                // Stereo: so viele Abtastwerte pro Bild (46 ms bei 44,1 kHz). Bei 30-37 fps (langsames Handy) liegen die Bilder 27-33 ms auseinander: ein Fenster von nur 23 ms ließ kurze Hi-Hats dazwischenrutschen
+  stWinMax: 4,              // Stereo live (Build 125): liegen die Bilder weiter auseinander als ein Fenster (unter ca. 22 fps), zählt das lauteste der Fenster seit dem letzten Bild (höchstens so viele, 186 ms)
   stHpHz: 500,              // Stereo (Build 105): nur Mitten und Höhen zählen. Zwei Hochpass-Stufen (12 dB pro Oktave): Kick und Bass liegen fast immer mittig und
                             // übertönen mit einem sanften Hochpass (6 dB) die leiseren Hi-Hats, dann stand ak_pan im Test immer auf 0
   panTau: 35,               // ak_pan folgt so schnell (ms): Ping-Pong im Sechzehntel bei 150 BPM wechselt alle 100 ms
@@ -469,9 +470,18 @@ const akSpec = new Float32Array(akAn.frequencyBinCount);
 // Stereo (Build 105): Mono-Quellen werden auf zwei Kanäle verdoppelt (Mitte), Stereo bleibt Stereo; je Kanal ein Analyser für die Zeitsignale
 const akUp = ctx.createGain(); akUp.channelCount = 2; akUp.channelCountMode = 'explicit'; akUp.channelInterpretation = 'speakers';
 const akSp = ctx.createChannelSplitter(2), akAnL = ctx.createAnalyser(), akAnR = ctx.createAnalyser();
-akAnL.fftSize = AKCFG.stN; akAnR.fftSize = AKCFG.stN;
+akAnL.fftSize = AKCFG.stN * AKCFG.stWinMax; akAnR.fftSize = AKCFG.stN * AKCFG.stWinMax;   // Build 125: Platz für mehrere Fenster (langsame Bilder)
 delayNode.connect(akUp); akUp.connect(akSp); akSp.connect(akAnL, 0); akSp.connect(akAnR, 1);
-const akTL = new Float32Array(AKCFG.stN), akTR = new Float32Array(AKCFG.stN);
+const akTL = new Float32Array(AKCFG.stN * AKCFG.stWinMax), akTR = new Float32Array(AKCFG.stN * AKCFG.stWinMax);
+// Stereo live (Build 125): das neueste Fenster (46 ms) wie bisher. Liegen die Bilder weiter auseinander (unter ca. 22 fps), rutschten kurze Hi-Hats zwischen
+// zwei Fenstern durch (GitHub-Rechner: Wechsel-Tempo live 0,03 statt 0,2). Dann zählt das lauteste der Fenster seit dem letzten Bild. Ab 22 fps: genau wie vorher.
+function akStereoLive(dt) {
+  akAnL.getFloatTimeDomainData(akTL); akAnR.getFloatTimeDomainData(akTR);
+  const N = AKCFG.stN, L = akTL.length, sr = ctx.sampleRate, k = Math.min(AKCFG.stWinMax, Math.ceil(dt / 1000 * sr / N));
+  let st = akStereoStats(akTL.subarray(L - N), akTR.subarray(L - N), N, sr);
+  for (let j = 1; j < k; j++) { const o = L - N * (j + 1), s = akStereoStats(akTL.subarray(o, o + N), akTR.subarray(o, o + N), N, sr); if (s.l + s.r > st.l + st.r) st = s; }
+  return st;
+}
 const AK = akCreate(ctx.sampleRate, AKCFG.fftSize);
 const AKV = AK.out; const AKSIDE = AK.side;                                  // diese Werte gehen jedes Bild an viz.setExtraVars
 let akT = 0, akErr = false, akSrc = null, akSilent = false, akMs = 0, akN = 0;
@@ -532,7 +542,7 @@ function rollenFrame(t) {
       if (sc) { grid.sec = AK_SCAN_SEC[sc.type] || 0; grid.secStart = Math.round((sc.t0 - A.beat0) / A.beatS - (A.barPhase || 0)); }
     }
     let st = null;
-    if (!akSilent) { akAnL.getFloatTimeDomainData(akTL); akAnR.getFloatTimeDomainData(akTR); st = akStereoStats(akTL, akTR, AKCFG.stN, ctx.sampleRate); }
+    if (!akSilent) st = akStereoLive(dt);
     AK.step(akSpec, t, dt, grid, st);
     akDirigent(grid ? audio.currentTime - (+latEl.value) / 1000 : null);
     akMeasure(t);

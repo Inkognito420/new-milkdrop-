@@ -10,6 +10,21 @@ const engaged = () => scanActive() || beat.state !== 'warten';
 
 let frameCount = 0, fpsT = performance.now();
 let lastDraw = 0, outAA = false;
+// Build 125: War die Seite versteckt, zählt die nächste Messung nicht. Auf dem iPhone kommt das erste Bild nach der Rückkehr VOR dem Ereignis „wieder sichtbar“
+// (Protokoll Build 111: Bild um 04:29,7, Ereignis um 04:29,8), der Schutz aus Build 49 (js/16) kam dafür zu spät: die wenigen Bilder wurden durch die ganze
+// versteckte Zeit geteilt („tiefster Wert 2 fps“). Das Verstecken selbst meldet der Browser rechtzeitig, darum wird es hier gemerkt.
+let fpsSkip = false;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') fpsSkip = true; });
+// Build 125: wie lange das Laden eines Bilds die Seite anhält (Shader übersetzen): Zeit in loadPreset plus das erste Zeichnen danach. Steht alle 5 Minuten in der
+// Leistungs-Zeile, einzelne lange Halte (ab LOAD_SLOW_MS) sofort. Damit sieht man im Protokoll, ob z. B. der harte Schnitt im Drop ruckelt.
+const LOAD_SLOW_MS = 120;
+const loadSt = { pend: null, n: 0, sum: 0, max: 0, maxName: '', grab: { n: 0, sum: 0, max: 0 } };
+function loadTimed(n, ms) { loadSt.pend = { n, ms, sec: sectionKey() }; }                 // aus loadByName (js/08): Zeit in viz.loadPreset
+function loadDone(ms) {                                                                    // erstes Zeichnen nach dem Laden
+  const p = loadSt.pend; loadSt.pend = null; if (!p) return;
+  const tot = p.ms + ms; loadSt.n++; loadSt.sum += tot; if (tot > loadSt.max) { loadSt.max = tot; loadSt.maxName = p.n; }
+  if (tot >= LOAD_SLOW_MS) rea('Bild laden hielt ' + Math.round(tot) + ' ms an (' + Math.round(p.ms) + ' ms Laden + ' + Math.round(ms) + ' ms erstes Zeichnen) · ' + p.n + ' · Abschnitt ' + p.sec);
+}
 const FRAME_MIN = 1000 / 60 - 3;                 // fest 60 Bilder pro Sekunde: auf 120-Hz-Displays wird jedes zweite Bild gezeichnet
 function loop() {
   requestAnimationFrame(loop);
@@ -20,7 +35,9 @@ function loop() {
   rollenFrame(t); if (viz.setExtraVars) viz.setExtraVars(AKV); if (viz.setAkStage && window.szStage) { viz.setAkStage(window.szStage()); if (viz.setOutputAA && window.szOutputAA) { const aa = window.szOutputAA(); if (aa !== outAA) { outAA = aa; viz.setOutputAA(aa); } } }   // new-milkdrop-: Klangrollen (js/08b) an die Presets, direkt vor dem Zeichnen
   if (!frozen) {
     const shFull = shCur && shOp >= 0.999;          // eigener Shader deckt alles ab: Milkdrop pausiert und spart Grafikleistung
-    if (!shFull) { try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); } }
+    if (!shFull) { const lp = loadSt.pend, r0 = lp ? performance.now() : 0;
+      try { viz.render(); } catch (e) { if (curName) broken.add(curName); nextPreset(0, undefined, false, 'g'); }
+      if (lp && loadSt.pend === lp) loadDone(performance.now() - r0); }
     if (!shCur && shOp < 0.01) sampleFrame(t);
   }
   shFrame(t);
@@ -28,7 +45,8 @@ function loop() {
   if (t - fpsT >= 1000) {
     const fps = Math.round(frameCount * 1000 / (t - fpsT));
     frameCount = 0; fpsT = t;
-    if (document.visibilityState === 'visible' && !frozen) perSecond(fps, t);
+    if (fpsSkip) fpsSkip = false;                                    // Messung über eine versteckte Zeit: verwerfen
+    else if (document.visibilityState === 'visible' && !frozen) perSecond(fps, t);
   }
   beatFrame(t);
   instrFrame(t);
@@ -44,7 +62,10 @@ const minSince = t => ((t - perf.t0) / 60000).toFixed(1).replace('.', ',') + ' m
 function perfLog(fps, t) {
   if (fps > 0) { perf.sum += fps; perf.n++; if (fps < perf.min) perf.min = fps; }
   if (t - perf.last < 300000 || !perf.n) return;
-  erg('Leistung nach ' + minSince(t) + ': im Schnitt ' + Math.round(perf.sum / perf.n) + ' fps, tiefster Wert ' + perf.min + ' fps, langsam markiert bisher ' + perf.marked + ' (' + slow.size + ' gesperrt)');
+  erg('Leistung nach ' + minSince(t) + ': im Schnitt ' + Math.round(perf.sum / perf.n) + ' fps, tiefster Wert ' + perf.min + ' fps, langsam markiert bisher ' + perf.marked + ' (' + slow.size + ' gesperrt)'
+    + (loadSt.n ? ' · Bild laden: ' + loadSt.n + '×, Ø ' + Math.round(loadSt.sum / loadSt.n) + ' ms, längstes ' + Math.round(loadSt.max) + ' ms (' + loadSt.maxName + ')' : '')
+    + (loadSt.grab.n ? ' · Bild-Wächter liest das Bild: Ø ' + (loadSt.grab.sum / loadSt.grab.n).toFixed(1).replace('.', ',') + ' ms, längstes ' + loadSt.grab.max.toFixed(0) + ' ms (' + loadSt.grab.n + '×)' : ''));
+  loadSt.n = 0; loadSt.sum = 0; loadSt.max = 0; loadSt.maxName = ''; loadSt.grab = { n: 0, sum: 0, max: 0 };
   perf.sum = 0; perf.n = 0; perf.min = 99; perf.last = t;
 }
 function perSecond(fps, t) {

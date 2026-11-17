@@ -111,7 +111,7 @@ function szFrame(dt) {
     SZ.acPh = (SZ.acPh + dt * (SZCFG.acidPhase[0] + (SZCFG.acidPhase[1] - SZCFG.acidPhase[0]) * V.acid_squelch)) % 1000;
     const tG = Math.min(1, V.hats_env * (0.3 + 0.7 * V.hats_density)) * gh * (1 - SZCFG.hatsReleaseCut * V.hats_release);
     SZ.gr = ems(SZ.gr, tG, tG > SZ.gr ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
-    SZ.gl = ems(SZ.gl, Math.min(1, V.hats_hit * 0.6 + 0.4 * tG) * gh, SZ.gl < tG ? SZCFG.grainMs[0] : SZCFG.grainMs[1]);
+    { const tL = Math.min(1, V.hats_hit * 0.6 + 0.4 * tG) * gh; SZ.gl = ems(SZ.gl, tL, tL > SZ.gl ? SZCFG.grainMs[0] : SZCFG.grainMs[1]); }   // Build 125: Anstieg/Abfall am eigenen Ziel entscheiden (vorher am Körnungs-Ziel: das Glitzern stieg auf einen Hats-Treffer nur mit 500 ms statt 120 ms)
     const st = SZ.stage; st[0] = SZ.acA < 0.003 ? 0 : SZ.acA; st[1] = SZ.acPh; st[2] = SZ.acA < 0.003 ? 0 : V.acid_reso;
     st[4] = SZ.gr < 0.01 ? 0 : SZ.gr * SZCFG.grainMax; st[5] = SZ.gl < 0.01 ? 0 : SZ.gl * SZCFG.glitterMax; st[6] = AKSIDE.hats_side * (on ? Math.min(1, SZ.gain.raum) : 0);
     st[7] = Math.floor(performance.now() / 1000 * SZCFG.seedHz) % 997;

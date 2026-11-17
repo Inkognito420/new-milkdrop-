@@ -7,7 +7,7 @@ Das Projekt ist die Weiterentwicklung von **Acid Milkdrop** (Repo `Inkognito420/
 Acid ist die Version für Auftritte und bleibt unverändert. Hier wird weiterentwickelt. Neu gegenüber Acid:
 
 1. **Eigene Butterchurn-Kopie** (`vendor/butterchurn/`, lesbar, MIT) statt Laden aus dem Internet (CDN). Die Kopie ist um neue
-   Variablen erweitert, die alten 245 Presets laufen nachweislich bit-gleich wie vorher.
+   Variablen erweitert, die 367 Standard-Presets laufen nachweislich bit-gleich wie vorher.
 2. **Klangrollen-Analyse** (`js/08b-klangrollen.js`): erkennt Kick, Acid-Linie (303), Hi-Hats und Pads getrennt und gibt jedem Preset
    41 neue Werte (Einsatz, Anschlag, Aufbau, Ausklingen, Filter, Resonanz, Hats-Dichte, Pads-Tonhöhe, Tempo, Takt, Abschnitt, Aufbau- und Drop-Stärke, Stereo-Position, -Tempo und -Breite).
    Die Presets nutzen diese Werte (noch) nicht; die Schaltzentrale (unten) macht daraus Bildebenen über allen Presets.
@@ -97,7 +97,18 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
 
+## Build 125: Reparaturen nach der Durchsicht
+
+- **Start ohne Google-Schriften:** Das Schriften-Stylesheet im Kopf blockierte alle Skripte, bis Google antwortete (bei schlechtem Empfang startete die App nicht). Es lädt jetzt nebenher; ohne Antwort gelten die Ersatzschriften. Der Offline-Speicher wird spätestens nach 6 s angemeldet.
+- **Bildrate nach dem Hintergrund:** Auf dem iPhone kommt das erste Bild nach der Rückkehr vor dem Ereignis „wieder sichtbar“; die Messung über die versteckte Zeit ergab „tiefster Wert 2 fps“. Sie wird jetzt verworfen.
+- **Hats-Glitzern** steigt auf einen Treffer mit 120 ms (vorher durch einen falschen Vergleich mit 500 ms).
+- **Bild-Wächter bei langsamer App:** Ein Prüffenster gilt als voll, wenn seine Proben genug Zeit abdecken (bei normaler Geschwindigkeit wie vorher), nicht erst ab einer festen Probenzahl. Vorher urteilte der Wächter bei unter etwa 2 Bildern pro Sekunde nie (nachgestellt).
+- **Stereo-Messung bei langsamen Bildern:** Liegen zwei Bilder weiter auseinander als das Stereo-Fenster (46 ms, also unter ca. 22 Bildern pro Sekunde), rutschten kurze Hi-Hats dazwischen durch und das Wechsel-Tempo (`ak_pan_speed`) fiel auf fast 0 (GitHub-Rechner 0,03 statt 0,2). Jetzt liest die App bis zu vier Fenster seit dem letzten Bild und nimmt das lauteste. Bei 22 Bildern pro Sekunde und mehr misst sie genau wie vorher (Sandbox: 0,20 / 0,28 vorher und nachher; bei 4 fps vorher 0,02, jetzt 0,19).
+- **Messungen im Protokoll:** „Bild laden hielt … ms an“ (einzeln ab 120 ms) und alle 5 Minuten in „Leistung nach …“: Bild laden (Anzahl, Schnitt, längstes) und was der Bild-Wächter für das Auslesen braucht; in „Mix (letzte Minute)“, wie lange die Mix-Prüfung die Seite anhält.
+
 ## Mitschnitt: Video mit Ton (ab Build 122)
+
+**Ab Build 125 ist der Mitschnitt ein Test-Schalter und in der Voreinstellung aus** (er kostet Leistung: in Build 123 gemessen 35 statt 56 fps). Einschalten: Werkstatt → Anzeige → „Mitschnitt“. Ein schon gespeicherter Schalterstand bleibt, wie er ist. Ohne Mitschnitt teilt der Knopf im Protokoll den Bildbogen.
 
 Emmos Idee: statt Bildbogen ein Bildschirm-Mitschnitt, der nur auf Knopfdruck geteilt wird. Solange Musik läuft und der Schalter „Mitschnitt“ (Werkstatt,
 Anzeige) an ist, nimmt die App ein kleines Video auf (640 px lange Seite, 30 Bilder/s, MP4 auf dem iPhone): was auf dem Schirm ist (wie der Bildbogen:
@@ -228,7 +239,7 @@ sind die Werte darum etwa 30 Sekunden lang kleiner, danach wieder normal.
 Läuft bei jedem Push als GitHub-Aktion (`.github/workflows/pruefen.yml`). Von Hand:
 
 - Schnell (nur Node): `node test/files.test.js`, `node test/analyse.test.js`, `node test/aufbau.test.js` (Prüfdaten), `node test/klangrollen-namen.test.js`
-  (die 41 Namen kommen in keinem der 245 Standard-Presets vor).
+  (die 41 Namen kommen in keinem der 367 Standard-Presets vor).
 - Im Browser (Chromium über Playwright, ohne Internet):
   `PLAYWRIGHT_MODULE=… CHROMIUM_PATH=… node test/browser.js [Szenario,...]`: alle Acid-Prüfungen (Start, Bedienung, Shader, Scan, Offline,
   Notaus, Hänger-Wächter, Lastbremse …) und neu `klangrollen` (künstliche Tracks aus `test/gen-track.js`: Kick durchgehend, Kick-Lücke,

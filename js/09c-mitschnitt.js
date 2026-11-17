@@ -174,7 +174,7 @@ async function msShare() {
     return files.length;
   } finally { if (btn) { btn.disabled = false; msLabel(); } }
 }
-msShare.ok = () => MS.ok || MS.segs.length > 0;
-function msLabel() { const b = $('logBild'); if (b) { b.textContent = msShare.ok() ? 'Mitschnitt' : 'Bildbogen'; b.title = msShare.ok() ? 'Video der letzten Minuten (mit Ton), ganzes Protokoll und Partitur teilen (jedes Video unter 29 MB)' : b.title; } }
+msShare.ok = () => (MS.ok && toggles.rec) || MS.segs.length > 0;   // Build 125: Schalter aus (Voreinstellung) und nichts aufgenommen = der Knopf heißt und teilt „Bildbogen“
+function msLabel() { const b = $('logBild'); if (b) { b.textContent = msShare.ok() ? 'Mitschnitt' : 'Bildbogen'; b.title = msShare.ok() ? 'Video der letzten Minuten (mit Ton), ganzes Protokoll und Partitur teilen (jedes Video unter 29 MB)' : 'Vorschaubilder der letzten Minuten als ein Bild teilen: zeigt, was auf dem Schirm war (zum Schicken mit dem Protokoll)'; } }
 msLabel();
 window.msShare = msShare; window.msFiles = msFiles; window.__MS = MS; window.MSCFG = MSCFG; window.msCut = msCut;

@@ -45,8 +45,10 @@ function loadByName(n, blend, pushHist = true, why = 'a') {
   brakeApply(n);                                     // Lastbremse: schwere Favoriten in kleinerer Auflösung, alles andere voll
   if (SH[n]) { if (!shShow(n, blend)) return false; }
   else {
+    const l0 = performance.now();
     try { viz.loadPreset(tuned(n), blend); }
     catch (e) { tunedCache.set(n, presets[n]); try { viz.loadPreset(presets[n], blend); } catch (e2) { broken.add(n); return false; } }
+    if (typeof loadTimed === 'function') loadTimed(n, performance.now() - l0);   // Build 125: Halt beim Laden messen (js/09)
     if (shCur || shOp > 0) { shCur = null; shFade(0, Math.max(blend, 0.3)); }   // eigener Shader blendet aus, Milkdrop übernimmt
   }
   curName = n; presetStart = lastSwitch = performance.now(); prevLuma = null;

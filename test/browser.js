@@ -89,6 +89,14 @@ const SZ = {
     check('Start: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     check('Start: Build-Nummer in index.html (var B) und im Programm (BUILD_NO) gleich', await page.evaluate(() => window.B === BUILD_NO));
     await close();
+    // Build 125: Google-Schriften antworten nicht (schlechter Empfang im Club): die App muss trotzdem starten. Vorher blockierte das Stylesheet im Kopf alle Skripte.
+    { const c2 = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+      await c2.route(/\/vendor\/butterchurn(-presets)?\/[^/?]+\.js/, r => r.fulfill({ contentType: 'application/javascript', body: /Presets/.test(r.request().url()) ? STUB_PRE : STUB_VIZ }));
+      await c2.route(/fonts\.(googleapis|gstatic)\.com/, () => { /* hängt: nie eine Antwort */ });
+      const p2 = await c2.newPage(); p2.goto(URL0, { waitUntil: 'commit' }).catch(() => {});
+      const ok = await p2.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 10000 }).then(() => true, () => false);
+      check('Start: die App startet auch, wenn die Google-Schriften nicht antworten (Schriften laden nebenher)', ok);
+      await c2.close(); }
   },
   async bedienung() {
     const { page, errs, close } = await open();
@@ -385,6 +393,17 @@ const SZ = {
       return { nachHidden, nachVisible: slowSecs, lastbremse: LOG.filter(l => /Lastbremse/.test(l.x)).length - vorher };
     });
     check('Lastbremse: Zähler wird beim Verstecken und bei der Rückkehr geleert, keine Fehlauslösung', lb.nachHidden === 0 && lb.nachVisible === 0 && lb.lastbremse === 0, JSON.stringify(lb));
+    // 1b) Build 125: Bildraten-Messung nach dem Hintergrund. Wie auf dem iPhone kommt das erste Bild, BEVOR das Ereignis „wieder sichtbar“ feuert:
+    // die Messung über die versteckte Zeit (hier 20 s, 30 Bilder = „2 fps“) darf nicht gezählt werden
+    const fg = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), setVis = v => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+      setVis('hidden'); document.dispatchEvent(new Event('visibilitychange')); await w(100);
+      setVis('visible'); fpsT = performance.now() - 20000; frameCount = 30; const n0 = fpsHist.length, min0 = perf.min;
+      await w(400); const neu = fpsHist.slice(n0).map(h => h[1]), min1 = perf.min;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { neu, min0, min1 };
+    });
+    check('Bildrate: die Messung über die versteckte Zeit zählt nicht (kein „2 fps“ nach dem Hintergrund, auch wenn das erste Bild vor dem Ereignis kommt)', fg.neu.every(f => f > 5) && fg.min1 >= Math.min(fg.min0, 6), JSON.stringify(fg));
     // 2) Play-Tipp: ein wartendes playAt startet den Track vor dem Handler; der darf ihn nicht wieder pausieren
     const pl = await page.evaluate(async () => {
       const w = ms => new Promise(r => setTimeout(r, ms)); audio.pause(); await w(100);
@@ -616,10 +635,13 @@ const SZ = {
     await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
     await page.evaluate(() => { audio.currentTime = 24; }); await page.waitForTimeout(3500);
-    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now();
+    const run = ms => page.evaluate(ms => new Promise(res => { const o = { x: [], k: [], act: [], tr: 0, dx: 0, dk: 0, db: 0 }, H = []; const t0 = performance.now(); let lf = -1;
       const step = () => { const s = window.__SZ, now = performance.now(); o.x.push(s.x); o.k.push(s.skew); o.act.push(s.act); if (/skewX/.test(canvas.style.transform)) o.tr++;
-        H.push([now, s.x, s.skew, s.bright]); while (H.length > 1 && now - H[1][0] >= 120) H.shift();   // Änderung über ein Fenster von mindestens 120 ms (bildratenunabhängig, ohne Zählfehler durch versetzte Bilder)
-        if (now - H[0][0] >= 120) { const ds = (now - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); }
+        // Änderung über ein Fenster von mindestens 120 ms auf der Uhr der App (lastFx = Zeit des Bildes, für das die Werte gerechnet sind), nur bei neuen Bildern.
+        // Build 125: vorher performance.now() hier, nach der Arbeit des Bildes: nach einem schweren Bild wirkte das Fenster kürzer, als die App gerechnet hatte
+        // (Sandbox mit abwechselnd schweren Bildern: Test-Uhr 8,0, App-Uhr 6,1 %/s; GitHub 9,2-9,6 %/s; Auslegung höchstens 1,3 × (5 + 1/0,9) = 7,9 %/s)
+        if (lastFx !== lf) { lf = lastFx; H.push([lf, s.x, s.skew, s.bright]); while (H.length > 1 && lf - H[1][0] >= 120) H.shift();
+        if (lf - H[0][0] >= 120) { const ds = (lf - H[0][0]) / 1000; o.dx = Math.max(o.dx, Math.abs(s.x - H[0][1]) / ds); o.dk = Math.max(o.dk, Math.abs(s.skew - H[0][2]) / ds); o.db = Math.max(o.db, Math.abs(s.bright - H[0][3]) / ds); } }
         if (now - t0 < ms) requestAnimationFrame(step); else res(o); }; requestAnimationFrame(step); }), ms);
     const A = await run(4000), mx = a => Math.max(...a.map(Math.abs));
     console.log('       (Info) Raum bei Ping-Pong: Aktivität bis ' + mx(A.act).toFixed(2) + ', Verschiebung bis ' + mx(A.x).toFixed(2) + ' %, Verzerrung bis ' + mx(A.k).toFixed(2) + '°, Bilder mit skewX ' + A.tr + ' von ' + A.x.length + ' · größte Änderung pro Sekunde (über 120 ms): ' + A.dx.toFixed(2) + ' % / ' + A.dk.toFixed(2) + '°');
@@ -669,6 +691,14 @@ const SZ = {
         SZ.gain.kick = 1; out.acid = Math.abs(szAcidRot() - (1 - SZCFG.acidRotShare)) < 1e-9;
         SZ.kickS = SZCFG.kickBreak; out.break = Math.abs(szKickAmp() - SZCFG.kickBreak) < 1e-9; SZ.kickS = 1; out.normal = szKickAmp() === 1;
         SZ.gain.kick = g0; SZ.on = on0; return out; });
+      { const gz = await m.page.evaluate(() => { // Build 125: Glitzern steigt auf einen Hats-Treffer mit grainMs[0] (120 ms), nicht mit 500 ms
+          const sv = {}; for (const k of ['hats_env', 'hats_density', 'hats_release', 'hats_hit']) sv[k] = AKV[k];
+          const on0 = SZ.on, mix0 = toggles.mix; SZ.on = true; toggles.mix = true; SZ.gl = 0;
+          AKV.hats_env = 0.2; AKV.hats_density = 0.3; AKV.hats_release = 0; AKV.hats_hit = 1;
+          for (let i = 0; i < 8; i++) szFrame(0.016); const hoch = SZ.gl;                       // ca. 130 ms Treffer
+          AKV.hats_hit = 0; for (let i = 0; i < 6; i++) szFrame(0.016); const danach = SZ.gl;    // ca. 100 ms später: fällt langsam (500 ms)
+          Object.assign(AKV, sv); SZ.on = on0; toggles.mix = mix0; return { hoch: +hoch.toFixed(3), danach: +danach.toFixed(3) }; });
+        check('Schaltzentrale Hats-Glitzern: steigt auf einen Treffer in ca. 130 ms auf über 0,35 (vorher ca. 0,2) und fällt danach langsam (nach 100 ms noch über 70 %)', gz.hoch > 0.35 && gz.hoch <= 1 && gz.danach > 0.7 * gz.hoch && gz.danach < gz.hoch, JSON.stringify(gz)); }
       check('Schaltzentrale Kick-Ebene: Drehen im Takt (Richtung wechselt je Takt, begrenzt), Regler 0 = aus, Acid dreht weniger, Break leiser', k.richtung && k.groesse && k.aus && k.acid && k.break && k.normal, JSON.stringify(k)); }
     check('Schaltzentrale: keine Seitenfehler (Mono-Track)', m.errs.length === 0, m.errs.join(' | '));
     await m.close();
@@ -685,8 +715,8 @@ const SZ = {
   async stereoLive() {
     // Live-Weg mit zwei Analysern (Splitter): Ping-Pong-Track in Echtzeit, ak_pan muss auf beide Seiten ausschlagen, ak_pan_speed über 0; der Mono-Track (t1) bleibt bei Position 0
     const { page, errs, close } = await open();
-    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [], hs: [] }; const t0 = performance.now(); const iv = setInterval(() => { v.hs.push(AKSIDE.hats_side); v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); res(v); } }, 40); }), ms);
-    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2), hsMin: +Math.min(...v.hs).toFixed(2), hsMax: +Math.max(...v.hs).toFixed(2) });
+    const sample = ms => page.evaluate(ms => new Promise(res => { const v = { pan: [], sp: [], w: [], hs: [] }; const t0 = performance.now(); let nF = 0, on = true; const cnt = () => { nF++; if (on) requestAnimationFrame(cnt); }; requestAnimationFrame(cnt); const iv = setInterval(() => { v.hs.push(AKSIDE.hats_side); v.pan.push(AKV.ak_pan); v.sp.push(AKV.ak_pan_speed); v.w.push(AKV.ak_width); if (performance.now() - t0 > ms) { clearInterval(iv); on = false; v.fps = nF * 1000 / (performance.now() - t0); res(v); } }, 40); }), ms);
+    const sum = v => ({ min: +Math.min(...v.pan).toFixed(2), max: +Math.max(...v.pan).toFixed(2), sp: +(v.sp.reduce((a, b) => a + b, 0) / v.sp.length).toFixed(2), w: +(v.w.reduce((a, b) => a + b, 0) / v.w.length).toFixed(2), hsMin: +Math.min(...v.hs).toFixed(2), hsMax: +Math.max(...v.hs).toFixed(2), fps: +v.fps.toFixed(1) });
     await page.setInputFiles('#fileIn', [path.join(tmp, 'pingPong.wav')]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000, polling: 200 });
     await page.evaluate(() => { audio.currentTime = 12; }); await page.waitForTimeout(2500);    // Ping-Pong 1/Schlag
@@ -717,6 +747,14 @@ const SZ = {
     const { page, errs, close } = await open({ real: true });
     await page.setInputFiles('#fileIn', [T[0]]);
     await page.waitForFunction(() => !audio.paused && audio.currentTime > 0.5, null, { timeout: 180000 });
+    // Build 125: Voreinstellung aus. Ohne den Schalter läuft keine Aufnahme und der Knopf heißt „Bildbogen“; erst der Schalter in der Werkstatt startet sie
+    await page.waitForTimeout(3000);                                          // mehrere Takte des Halbsekunden-Zeitgebers (js/09c): ohne Schalter startet nichts
+    const aus = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, teile: __MS.n, knopf: $('logBild').textContent }));
+    await page.evaluate(() => { $('t-rec').click(); });
+    // auf den Start warten statt fest 1,2 s: auf einem langsamen GitHub-Rechner kam der Zeitgeber später (Lauf 44054329613: Schalter an, Aufnahme noch nicht gestartet)
+    await page.waitForFunction(() => !!__MS.cur, null, { timeout: 15000, polling: 200 }).catch(() => {});
+    const an = await page.evaluate(() => ({ schalter: toggles.rec, laeuft: !!__MS.cur, knopf: $('logBild').textContent }));
+    check('Mitschnitt: Voreinstellung aus (keine Aufnahme, Knopf „Bildbogen“), der Schalter in der Werkstatt startet ihn (Knopf „Mitschnitt“)', aus.schalter === false && !aus.laeuft && aus.teile === 0 && aus.knopf === 'Bildbogen' && an.schalter === true && an.laeuft && an.knopf === 'Mitschnitt', JSON.stringify({ aus, an }));
     await page.evaluate(() => { MSCFG.maxSegMin = 0.1; audio.currentTime = 20; });
     await page.waitForTimeout(9000);
     await page.evaluate(async () => { MSCFG.forceGL = true; await msCut('Test WebGL'); });          // Farbe über WebGL wie auf dem iPhone
@@ -750,7 +788,10 @@ const SZ = {
       presets['T·Flach'] = mk(' shader_body { ret = vec3(0.70, 0.74, 0.66) + 0.02*sin(uv.x*6.0 + time); }');
       const cfg0 = Object.assign({}, LEERCFG); LEERCFG.win = 5000; LEERCFG.flatWin = 5000;   // kürzere Fenster: der Test-Track wechselt sonst vorher den Abschnitt
       for (const n of ['T·Blink', 'T·Flach']) {
-        audio.currentTime = 22; await w(600); loadByName(n, 0); lastSwitch = performance.now() - 3100;   // ruhige Groove-Stelle des Test-Tracks (Break erst ab ca. 69 s)
+        // Build 125: Stelle 70 s statt 22 s. Seit Build 114 ist 14,1–27,8 s im Test-Track ein Drop (Abschnitte: Intro bis 14,1, Drop bis 27,8, Groove bis 41,5, Break, Aufbau,
+        // Drop 55,2–68,9, Groove 68,9–92,9). Der Sprung aus dem Groove zurück auf 22 s löste den Drop-Schnitt aus; kam das nächste Bild auf einem langsamen Rechner erst nach
+        // loadByName, ersetzte der Schnitt das Testbild, bevor der Bild-Wächter es sah (GitHub, Lauf 44051746211). 70 s: Groove → Groove, kein Abschnittswechsel bis 92,9 s.
+        audio.currentTime = 70; await w(600); loadByName(n, 0); lastSwitch = performance.now() - 3100;
         for (let i = 0; i < 60 && curName === n; i++) await w(250);
         out[n] = { weg: curName !== n, gemerkt: LEER.has(n), log: (LOG.filter(l => l.x.indexOf('Bild-Wächter: „' + n + '“') === 0).pop() || {}).x || '' };
       }
@@ -826,6 +867,9 @@ const SZ = {
     check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) , graue (kein Kontrast, keine Farbe) und flache Farbflächen (Build 121) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut,flach,flach', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
+      // Build 125: eigene Shader während dieser Prüfung aus. nextPreset (js/08) würfelt VOR dem Auto-Mix mit 15 % einen eigenen Shader aus; ohne das schlug die
+      // Prüfung in etwa jedem 7. Lauf fehl (GitHub, Lauf 44044651393: „Eigen · Acid · 303-Welle“ statt des Mix, danach auch die Stern-Prüfung)
+      const own0 = toggles.own; toggles.own = false;
       const w = ms => new Promise(r => setTimeout(r, ms)), out = {}; auto = true; __MIX.share = 1; __MIX.ready = null;
       for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
       out.bereit = !!__MIX.ready;
@@ -833,7 +877,7 @@ const SZ = {
       nextPreset(0, undefined, false, 's'); out.abschnitt = curName; out.log = LOG.some(l => /^Auto-Mix · /.test(l.x));
       for (let i = 0; i < 60 && !__MIX.ready; i++) { if (!__MIX.busy) mixPrepare(); await w(250); }
       __MIX.share = 0; nextPreset(0, undefined, false, 's'); out.anteilNull = curName; out.regler = !!$('mixShare');
-      __MIX.share = 0.35; auto = false; return out; });
+      __MIX.share = 0.35; auto = false; toggles.own = own0; return out; });
     console.log('       (Info) Auto-Mix: ' + JSON.stringify(am));
     check('Auto-Mix: ein geprüfter Mix liegt bereit; ein automatischer Wechsel (Abschnitt) nimmt ihn bei Anteil 100 %, Wischen nicht, bei Anteil 0 kommt keiner; Regler in der Werkstatt', am.bereit && !/^Mix · /.test(am.wischen) && am.nochBereit && /^Mix · /.test(am.abschnitt) && am.log && !/^Mix · /.test(am.anteilNull) && am.regler, JSON.stringify(am));
     const star = await page.evaluate(n => { if (!/^Mix · /.test(curName) && /^Mix · /.test(n || '')) loadByName(n, 0); if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; }, am.abschnitt);

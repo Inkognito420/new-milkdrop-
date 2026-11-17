@@ -10,8 +10,9 @@
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap">
-<script>var B=124;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+<!-- Build 125: die Schriften dürfen den Start nicht aufhalten (media=print lädt nebenher; antwortet Google nicht, startet die App trotzdem mit den Ersatzschriften aus style.css) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap" media="print" onload="this.media='all'">
+<script>var B=125;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
@@ -144,7 +145,7 @@
      new-milkdrop- zählt ab Build 100 (Acid endet bei 54/55), damit Protokolle nicht verwechselt werden. -->
 <script>
 AM_LIBS.concat(AM_FILES).forEach(f=>{const s=document.createElement("script");s.src=f+"?b="+B;s.async=false;document.body.appendChild(s)});
-if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?b="+B).catch(()=>{}));
+if("serviceWorker" in navigator){let swDone=0;const swReg=()=>{if(swDone)return;swDone=1;navigator.serviceWorker.register("sw.js?b="+B).catch(()=>{})};window.addEventListener("load",swReg);setTimeout(swReg,6000)}   // Build 125: spätestens nach 6 s, auch wenn „load“ noch auf die Schriften wartet
 </script>
 
 </body>
