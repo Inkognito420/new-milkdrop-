@@ -784,7 +784,10 @@ const SZ = {
       presets['T·Flach'] = mk(' shader_body { ret = vec3(0.70, 0.74, 0.66) + 0.02*sin(uv.x*6.0 + time); }');
       const cfg0 = Object.assign({}, LEERCFG); LEERCFG.win = 5000; LEERCFG.flatWin = 5000;   // kürzere Fenster: der Test-Track wechselt sonst vorher den Abschnitt
       for (const n of ['T·Blink', 'T·Flach']) {
-        audio.currentTime = 22; await w(600); loadByName(n, 0); lastSwitch = performance.now() - 3100;   // ruhige Groove-Stelle des Test-Tracks (Break erst ab ca. 69 s)
+        // Build 125: Stelle 70 s statt 22 s. Seit Build 114 ist 14,1–27,8 s im Test-Track ein Drop (Abschnitte: Intro bis 14,1, Drop bis 27,8, Groove bis 41,5, Break, Aufbau,
+        // Drop 55,2–68,9, Groove 68,9–92,9). Der Sprung aus dem Groove zurück auf 22 s löste den Drop-Schnitt aus; kam das nächste Bild auf einem langsamen Rechner erst nach
+        // loadByName, ersetzte der Schnitt das Testbild, bevor der Bild-Wächter es sah (GitHub, Lauf 44051746211). 70 s: Groove → Groove, kein Abschnittswechsel bis 92,9 s.
+        audio.currentTime = 70; await w(600); loadByName(n, 0); lastSwitch = performance.now() - 3100;
         for (let i = 0; i < 60 && curName === n; i++) await w(250);
         out[n] = { weg: curName !== n, gemerkt: LEER.has(n), log: (LOG.filter(l => l.x.indexOf('Bild-Wächter: „' + n + '“') === 0).pop() || {}).x || '' };
       }
