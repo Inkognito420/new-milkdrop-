@@ -22,6 +22,7 @@ function dPack() {
     app: APP_ID, fmt: 1, build: BUILD_NO, at: Math.floor(Date.now() / 1000), dev: JR.dev,
     standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
     favs: [...favs],
+    weg: [...WEG],                                                    // Build 128: ausgeblendete Visuals
     profiles: slimProfiles(true),
     settings: { toggles: store.get('am-toggles', null), gain: store.get('am-gain2', null), lat: store.get('am-lat', null), quality: store.get('am-quality', null), color: store.get('am-color', null) },
     journal: { cols: JR_COLS, runs: JR.runs, tracks: JR.tracks, sess: JR.sess }
@@ -37,8 +38,9 @@ function jrMergeTrack(L, T) {                                          // ergän
 }
 // Prüft eine Sicherung (apply = false: nur zählen) oder führt sie mit dem Stand hier zusammen (apply = true)
 function dMerge(o, apply) {
-  const res = { favs: 0, prof: 0, runs: 0, runsAll: 0, tracks: 0, sess: 0 };
+  const res = { favs: 0, weg: 0, prof: 0, runs: 0, runsAll: 0, tracks: 0, sess: 0 };
   for (const n of (Array.isArray(o.favs) ? o.favs : [])) if (typeof n === 'string' && n.length < 300 && !favs.has(n) && presets[n]) { res.favs++; if (apply) favs.add(n); }
+  for (const n of (Array.isArray(o.weg) ? o.weg : [])) if (typeof n === 'string' && n.length < 300 && !WEG.has(n) && presets[n]) { res.weg++; if (apply) WEG.add(n); }   // Build 128: nur hinzufügen
   const pr = o.profiles && typeof o.profiles === 'object' ? o.profiles : {};
   for (const n in pr) {
     const Q = pr[n]; if (!presets[n] || !Q || typeof Q !== 'object') continue;
@@ -69,6 +71,7 @@ function dMerge(o, apply) {
     if (addS.length) { JR.sess = JR.sess.concat(addS).sort((a, b) => a.ts - b.ts); }
     jrTrim();
     if (res.favs) { store.set('am-favs', [...favs]); showFav(); }
+    if (res.weg) { wegSave(); if (typeof wegBuild === 'function') wegBuild(); }
     if (res.prof) { profDirty = true; saveProfiles(performance.now()); }
     if (add.length || res.tracks || addS.length) { JR.dirty = true; jrSave(performance.now(), true); }
     jrInfo();
@@ -101,6 +104,7 @@ function dShow(text) {
   dPend = r.o;
   const m = dMerge(r.o, false), parts = [];
   if (m.favs) parts.push(m.favs + (m.favs === 1 ? ' neuer Stern' : ' neue Sterne'));
+  if (m.weg) parts.push(m.weg + (m.weg === 1 ? ' ausgeblendetes Visual' : ' ausgeblendete Visuals'));
   if (m.prof) parts.push(m.prof + ' besser vermessene Presets');
   if (m.runs) parts.push(m.runs + ' neue Läufe in der Mitschrift (' + m.runsAll + ' in der Datei)');
   if (m.tracks) parts.push(m.tracks + (m.tracks === 1 ? ' neuer oder ergänzter Track' : ' neue oder ergänzte Tracks'));
@@ -156,6 +160,7 @@ dEl.apply.addEventListener('click', () => {
   const setDid = dEl.set.checked && !dEl.set.disabled && dSettings(o.settings);
   const parts = [];
   if (m.favs) parts.push(m.favs + ' Sterne');
+  if (m.weg) parts.push(m.weg + ' ausgeblendete');
   if (m.prof) parts.push(m.prof + ' Preset-Messungen');
   if (m.runs) parts.push(m.runs + ' Läufe');
   if (m.tracks) parts.push(m.tracks + ' Tracks');

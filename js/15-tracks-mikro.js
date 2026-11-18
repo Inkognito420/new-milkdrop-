@@ -107,10 +107,13 @@ function applyScanFor(f) {
 }
 function setPlayLabel() {
   const b = $('play');
+  b.classList.toggle('on', !!curFile && !audio.paused);              // Build 128: Symbol im Glas-Dock (Pause-Zeichen, solange es läuft)
+  b.classList.toggle('wait', !!curFile && gateWaiting());            // ... und ein Kreisel, solange die Analyse läuft
   if (!curFile) { b.textContent = 'Play'; return; }
   if (gateWaiting()) { b.textContent = 'Analyse …'; b.disabled = true; return; }
   b.disabled = false;
   b.textContent = !audio.paused ? 'Pause' : gateFailed() && !curAnalysis ? 'Ohne Analyse spielen' : 'Play';
+  b.title = b.textContent;
 }
 audio.addEventListener('play', setPlayLabel);
 audio.addEventListener('pause', setPlayLabel);

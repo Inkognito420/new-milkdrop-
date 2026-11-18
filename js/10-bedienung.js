@@ -1,4 +1,4 @@
-// Acid Milkdrop · Teil 10 von 16: „Mehr“, Bluetooth-Versatz, Auto-Pegel
+// Acid Milkdrop · Teil 10 von 16: „Mehr“, Bluetooth-Versatz, Auto-Pegel, „Eigene“, Ausblenden (Build 128), Meldung oben
 // Alle Teile teilen sich einen gemeinsamen Bereich (wie vorher der eine große Block in index.html).
 // Reihenfolge ist wichtig: index.html lädt sie nacheinander. Bricht ein Teil ab, starten die folgenden nicht.
 if (window.__AM_STEP !== 9) throw new Error('Acid Milkdrop: Teil 10 (bedienung) nicht gestartet, ein früherer Teil ist abgebrochen');
@@ -7,7 +7,8 @@ if (window.__AM_STEP !== 9) throw new Error('Acid Milkdrop: Teil 10 (bedienung) 
 $('fineBtn').addEventListener('click', () => {
   const open = $('fine').hidden; $('fine').hidden = !open;
   $('fineBtn').setAttribute('aria-expanded', String(open)); $('fineBtn').classList.toggle('hot', open);
-  if (open) $('autoInfo').textContent = agcText();
+  if (open) { $('autoInfo').textContent = agcText(); if (typeof wegBuild === 'function') wegBuild(); }
+  if (open && !$('ownList').hidden) $('ownBtn').click();             // Build 128: immer nur ein Fenster über dem Glas-Dock
 });
 
 const latEl = $('latency');
@@ -56,11 +57,12 @@ function ownBuild() {
   for (const [title, list] of [['Eigene Visuals', [...EIGEN].sort()], ['Acid-Presets', [...ACID].filter(n => !EIGEN.has(n)).sort()]]) {
     if (!list.length) continue;
     const h = document.createElement('div'); h.className = 'gl'; h.textContent = title + ' (' + list.length + ')'; ownList.appendChild(h);
-    const box = document.createElement('div'); box.className = 'row';
+    const box = document.createElement('div'); box.className = 'grid';   // Build 128: Raster statt Zeile
     for (const n of list) {
       const b = document.createElement('button'); b.type = 'button'; b.dataset.n = n;
       b.textContent = (favs.has(n) ? '★ ' : '') + n.replace(/^Eigen · |^Acid · /, '');
       if (n === curName) b.classList.add('hot');
+      if (WEG.has(n)) { b.classList.add('weg'); b.title = 'Ausgeblendet: kommt nicht von selbst, antippen zeigt es trotzdem'; }
       b.addEventListener('click', () => ownShow(n));
       box.appendChild(b);
     }
@@ -77,7 +79,67 @@ ownBtn.addEventListener('click', () => {
   const open = ownList.hidden; ownList.hidden = !open;
   ownBtn.setAttribute('aria-expanded', String(open)); ownBtn.classList.toggle('hot', open);
   if (open) ownBuild();
+  if (open && !$('fine').hidden) $('fineBtn').click();               // Build 128: immer nur ein Fenster über dem Glas-Dock
 });
 autoBtn.addEventListener('click', () => { if (auto) { autoBtn.hidden = true; rea('Automatik läuft wieder'); if (!ownList.hidden) ownBuild(); } });   // läuft nach dem Umschalten in js/08
+
+// ===== Build 128: Meldung oben und großes Symbol in der Mitte (Rückmeldung für Gesten, auch wenn das Menü aus ist) =====
+const toastEl = $('toast'), toastTxt = $('toastTxt'), toastBtn = $('toastBtn'), gfxEl = $('gfx');
+let toastT = 0, toastAct = null;
+function toast(text, ms = 2200, undo) {
+  clearTimeout(toastT); toastTxt.textContent = text; toastAct = undo || null; toastBtn.hidden = !undo; toastEl.hidden = false;
+  toastT = setTimeout(() => { toastEl.hidden = true; toastAct = null; }, ms);
+}
+toastBtn.addEventListener('click', () => { const f = toastAct; toastAct = null; clearTimeout(toastT); toastEl.hidden = true; if (f) f(); });
+function gfxPop(icon, cls) {                                         // icon: Name einer Maske aus style.css (--i-…), cls: '' grün, 'ban' rot, 'white'
+  gfxEl.className = ''; gfxEl.style.setProperty('--ic', 'var(--i-' + icon + ')');
+  void gfxEl.offsetWidth; gfxEl.className = (cls ? cls + ' ' : '') + 'go';
+}
+
+// ===== Build 128 (Emmo): „Will ich nicht mehr sehen“ (Wisch nach unten) =====
+// Das laufende Visual kommt nie wieder von selbst dran (WEG, js/05; usable() in js/08 lässt es weg, auch als Mix-Partner).
+// 5 Sekunden lang holt „Rückgängig“ es sofort zurück, später die Liste „Ausgeblendet“ unter „Mehr“. Gezielt aus „Eigene“ geht es weiterhin.
+// Ein Mix hat keinen festen Namen: dann wird nur diese Paarung für die Sitzung gesperrt.
+const wegBox = $('wegBox');
+function wegBuild() {
+  if (!wegBox) return;
+  wegBox.textContent = '';
+  const add = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt) e.textContent = txt; wegBox.appendChild(e); return e; };
+  add('div', 'gl', 'Ausgeblendet (' + WEG.size + ')');
+  if (!WEG.size) { add('div', 'note', 'Noch nichts ausgeblendet. Nach unten wischen blendet das laufende Visual für immer aus.'); return; }
+  add('div', 'note', 'Antippen holt ein Visual zurück (es kommt dann wieder von selbst dran).');
+  const row = add('div', 'row');
+  for (const n of [...WEG].sort()) {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.n = n; b.textContent = '↩ ' + n;
+    b.addEventListener('click', () => wegBack(n, false));
+    row.appendChild(b);
+  }
+}
+function wegBack(n, show) {
+  if (!WEG.delete(n)) return false;
+  wegSave(); erg('Zurückgeholt: „' + n + '“' + (show ? ' (Rückgängig)' : ' (Liste unter „Mehr“)'));
+  if (!$('fine').hidden) wegBuild();
+  if (!ownList.hidden) ownBuild();
+  if (show) loadByName(n, 1.0, true, 'r'); else toast('Wieder dabei: ' + n);
+  return true;
+}
+function wegNow() {
+  const n = curName; if (!n || !viz) return false;
+  if (n.indexOf('Mix · ') === 0) {
+    const p = presets[n]; if (p && p.mix && window.__MIX) __MIX.bad.add(p.mix.a + '|' + p.mix.b);
+    erg('Ausgeblendet: Mix „' + n + '“ (diese Paarung kommt in dieser Sitzung nicht wieder)');
+    gfxPop('ban', 'ban'); nextPreset(1.0, undefined, false, 'v'); toast('Dieser Mix kommt nicht wieder');
+    return true;
+  }
+  WEG.add(n); wegSave();
+  erg('Ausgeblendet: „' + n + '“ (kommt nie wieder von selbst, zurückholen unter „Mehr“)');
+  gfxPop('ban', 'ban');
+  nextPreset(1.0, undefined, false, 'v');
+  toast('Ausgeblendet: ' + n, 5000, () => wegBack(n, true));
+  if (!$('fine').hidden) wegBuild();
+  if (!ownList.hidden) ownBuild();
+  return true;
+}
+window.wegNow = wegNow; window.toast = toast; window.gfxPop = gfxPop;
 
 window.__AM_STEP = 10;

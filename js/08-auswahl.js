@@ -37,7 +37,7 @@ function brakeTry(n, fps, t) {
   return true;
 }
 let mdFlip = '';                                     // Build 116: Spiegelung des aktuellen Presets (CSS, kostet nichts)
-function usable(n) { return !broken.has(n) && !DEAD.has(n) && !suspect.has(n) && !(guard && slow.has(n)); }
+function usable(n) { return !broken.has(n) && !DEAD.has(n) && !suspect.has(n) && !WEG.has(n) && !(guard && slow.has(n)); }   // Build 128: ausgeblendete (WEG) nie
 function loadByName(n, blend, pushHist = true, why = 'a') {
   rea('Preset: ' + n);
   if (!viz) return false;

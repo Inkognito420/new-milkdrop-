@@ -774,7 +774,13 @@ const SZ = {
     await page.waitForTimeout(1500);
     const r = await page.evaluate(async () => {
       const out = { knopf: !$('mixBtn').hidden, mixe: [] };
-      for (let i = 0; i < 3; i++) { const t0 = performance.now(); const ok = await mixNow(); out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0) }); }
+      // Build 128: der Knopf erweitert das laufende Visual; eigene Visuals lassen sich nicht mischen (eigene Prüfung im Szenario dock), darum ein Milkdrop-Preset als Start
+      if (EIGEN.has(curName) || !mixAnchor(curName)) loadByName(mixParents().pool.find(n => presets[n].comp) || mixParents().pool[0], 0);
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now(), an = mixAnchor(curName); const ok = await mixNow(); const mx = presets[curName] && presets[curName].mix;
+        // Build 128: das laufende Visual bleibt Anker (normales Preset: als Bewegung oder Look; Mix: die Hälfte mit den Formen in ihrer Rolle)
+        const anker = !!(an && mx && (an.role ? mx[an.role] === an.n : (mx.a === an.n || mx.b === an.n)));
+        out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0), anker, war: an && an.n }); }
       // q-Werte: B's Comp braucht q2 → B's Formeln laufen mit, q2 wird gesichert und zurückgeschrieben; liest A's Warp q2 → passt nicht
       presets['T·A'] = { baseVals: { zoom: 1.1 }, init_eqs_str: '', frame_eqs_str: 'a.q2=5;a.zoom=1.2;', pixel_eqs_str: '', warp: '', comp: '', shapes: [], waves: [] };
       presets['T·B'] = { baseVals: { gammaadj: 1.7, zoom: 0.9 }, init_eqs_str: 'a.k=1;', frame_eqs_str: 'a.q2=a.k*3;', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(q2); }', shapes: [], waves: [] };
@@ -790,6 +796,7 @@ const SZ = {
     console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
     const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
     check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
+    check('Mix erweitert (Build 128): jeder gezeigte Mix behält das vorher laufende Visual (bzw. bei einem Mix die Hälfte mit den Formen in ihrer Rolle)', good.length >= 2 && good.every(x => x.anker), JSON.stringify(r.mixe));
     check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) , graue (kein Kontrast, keine Farbe) und flache Farbflächen (Build 121) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut,flach,flach', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
@@ -809,6 +816,86 @@ const SZ = {
     const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
     check('Mix: Stern speichert das Rezept (nmd:mixe), nach dem Neuladen ist der Mix wieder da, hat seinen Stern und lässt sich laden', star && star.saved.includes(star.n) && back.da && back.fav && back.laden, JSON.stringify({ star, back }));
     check('Mix: keine Seitenfehler', errs.length === 0, errs.join(' | '));
+    await close();
+  },
+  async dock() {
+    // Build 128 (Emmo: Entwurf A „Glas-Dock“, Gesten 1-4, „nie wieder zeigen“). Mit Attrappen, misst Lage der Knöpfe und spielt Gesten mit Zeiger-Ereignissen nach.
+    const { page, errs, close } = await open();
+    const lage = async (w, h) => { await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(400); return page.evaluate(() => {
+      hud.classList.remove('off');
+      const ids = ['panic', 'addBtn', 'nextTrack', 'prev', 'play', 'next', 'fav', 'ownBtn', 'mixBtn', 'micBtn', 'fineBtn'], W = innerWidth, H = innerHeight;
+      const R = ids.map(id => { const b = $(id), r = b.getBoundingClientRect(), cs = getComputedStyle(b, '::before');
+        return { id, x: r.left, y: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height, sichtbar: !!b.offsetParent && r.width > 0, maske: /data:image\/svg/.test(cs.webkitMaskImage || cs.maskImage || '') }; });
+      const fehler = [];
+      for (const a of R) {
+        if (!a.sichtbar) fehler.push(a.id + ' unsichtbar');
+        if (a.x < 0 || a.y < 0 || a.r > W + 0.5 || a.b > H + 0.5) fehler.push(a.id + ' ragt raus');
+        if (a.w < 30 || a.h < 30) fehler.push(a.id + ' zu klein ' + Math.round(a.w) + '×' + Math.round(a.h));
+        if (!a.maske) fehler.push(a.id + ' ohne Symbol');
+      }
+      for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) { const a = R[i], b = R[j], ox = Math.min(a.r, b.r) - Math.max(a.x, b.x), oy = Math.min(a.b, b.b) - Math.max(a.y, b.y); if (ox > 1 && oy > 1) fehler.push(a.id + '/' + b.id + ' überlappen'); }
+      const dock = $('dock').getBoundingClientRect(), info = $('info').getBoundingClientRect(), pill = $('pill').getBoundingClientRect(), brand = document.querySelector('.brand').getBoundingClientRect();
+      if (dock.right > W + 0.5 || dock.left < 0) fehler.push('Dock breiter als der Schirm');
+      if (info.width < 120) fehler.push('Track-Zeile nur ' + Math.round(info.width) + ' px');
+      if (pill.left < brand.right - 1) fehler.push('Tempo-Pille überdeckt den Namen');
+      if (document.documentElement.scrollWidth > W + 1) fehler.push('Seite scrollt seitlich');
+      $('fineBtn').click(); const fine = $('fine').getBoundingClientRect(); if (!(fine.bottom <= dock.top + 1 && fine.top >= 0 && fine.height > 60)) fehler.push('„Mehr“ liegt nicht über dem Dock: ' + JSON.stringify([fine.top, fine.bottom, dock.top]));
+      $('ownBtn').click(); const nurEins = $('fine').hidden && !$('ownList').hidden; if (!nurEins) fehler.push('„Eigene“ und „Mehr“ gleichzeitig offen');
+      const grid = getComputedStyle(document.querySelector('#ownList .grid')).display; if (grid !== 'grid') fehler.push('„Eigene“ ist kein Raster');
+      $('ownBtn').click();
+      return { W, H, fehler, dockH: Math.round(dock.height) };
+    }); };
+    const hoch = await lage(390, 844), quer = await lage(852, 393);
+    check('Glas-Dock (Build 128): hoch (390×844) und quer (852×393) alle Knöpfe sichtbar, mit Symbol, mindestens 30 px, im Schirm, ohne Überlappung; „Mehr“ öffnet über dem Dock, „Eigene“ als Raster, nie beide zugleich', !hoch.fehler.length && !quer.fehler.length, JSON.stringify({ hoch, quer }));
+    const g = await page.evaluate(async () => {
+      const w = ms => new Promise(r => setTimeout(r, ms)), out = {}, H = innerHeight;
+      const ptr = (type, id, x, y) => canvas.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, isPrimary: id === 1, pointerType: 'touch' }));
+      const swipe = (x0, y0, x1, y1) => { ptr('pointerdown', 1, x0, y0); ptr('pointermove', 1, (x0 + x1) / 2, (y0 + y1) / 2); ptr('pointermove', 1, x1, y1); ptr('pointerup', 1, x1, y1); };
+      const multi = (n, dx, dy) => { for (let i = 1; i <= n; i++) ptr('pointerdown', i, 100 + 80 * i, 200); for (let i = 1; i <= n; i++) ptr('pointermove', i, 100 + 80 * i + dx, 200 + dy); for (let i = 1; i <= n; i++) ptr('pointerup', i, 100 + 80 * i + dx, 200 + dy); };
+      const toastTxt = () => $('toast').hidden ? '' : $('toastTxt').textContent;
+      hud.classList.add('off'); auto = false; await w(50);
+      // 1: hoch = Stern an, nochmal = aus
+      const X = curName; favs.delete(X); showFav();
+      swipe(300, 200, 300, 60); out.sternAn = favs.has(X) && $('gfx').classList.contains('go') && /Favorit/.test(toastTxt()) && store.get('am-favs', []).includes(X);
+      swipe(300, 200, 300, 60); out.sternAus = !favs.has(X);
+      // 2: runter = nie wieder, Rückgängig holt es zurück
+      swipe(300, 60, 300, 220); out.weg = WEG.has(X) && store.get('weg', []).includes(X) && curName !== X && !usable(X) && !$('toastBtn').hidden && /Ausgeblendet/.test(toastTxt());
+      $('toastBtn').click(); out.rueck = !WEG.has(X) && curName === X && !store.get('weg', []).includes(X);
+      // vom unteren Rand nach unten zählt nicht (gehört dem iPhone)
+      swipe(300, H - 10, 300, H + 150); out.randNichts = !WEG.has(X) && curName === X;
+      // Liste unter „Mehr“: ausblenden, dort antippen = zurück
+      swipe(300, 60, 300, 220); $('fineBtn').click(); const b = [...document.querySelectorAll('#wegBox button')].find(x => x.dataset.n === X);
+      out.liste = !!b; if (b) b.click(); out.listeZurueck = !WEG.has(X) && !document.querySelector('#wegBox button') && /Wieder dabei/.test(toastTxt()); $('fineBtn').click();
+      // Sichern/Laden nimmt die Liste mit, Laden fügt nur hinzu
+      const Y = names.find(n => n !== X && !WEG.has(n)); WEG.add(X); wegSave(); out.sichern = dPack().weg.includes(X);
+      const m = dMerge({ weg: [Y, 'gibt es nicht'] }, true); out.laden = m.weg === 1 && WEG.has(Y) && WEG.has(X) && store.get('weg', []).includes(Y);
+      WEG.clear(); wegSave();
+      // links/rechts = Visual wie bisher
+      const v0 = curName; swipe(300, 300, 120, 300); out.wischen = curName !== v0;
+      // 4: zwei Finger tippen = Mix (Zähler statt echtem Mix), drei Finger = nichts
+      let mixe = 0; const mixOrig = window.mixNow; window.mixNow = () => { mixe++; return Promise.resolve(true); };
+      multi(2, 0, 0); out.mixZwei = mixe === 1; multi(3, 0, 0); out.mixDrei = mixe === 1; multi(2, 140, 5); out.mixWisch = mixe === 1;
+      window.mixNow = mixOrig;
+      // Halten = Freeze wie bisher
+      ptr('pointerdown', 1, 300, 300); await w(520); out.halten = frozen === true; ptr('pointerup', 1, 300, 300); out.loslassen = frozen === false;
+      // Mix auf einem eigenen Visual: Hinweis, das Bild bleibt
+      const E = [...EIGEN][0]; loadByName(E, 0); const ok = await mixOrig(); out.eigenMix = ok === false && curName === E && /Eigene Visuals/.test(toastTxt());
+      out.fehler = LOG.filter(l => l.k === 'x').map(l => l.x);
+      return out;
+    });
+    check('Gesten (Build 128): nach oben = Stern an/aus (großer Stern, Meldung, gespeichert); links/rechts = Visual wie bisher; Halten = Freeze wie bisher', g.sternAn && g.sternAus && g.wischen && g.halten && g.loslassen, JSON.stringify(g));
+    check('Nach unten = „Will ich nicht mehr sehen“: kommt nicht mehr dran (gespeichert unter nmd:weg), „Rückgängig“ holt es sofort zurück, vom unteren Rand zählt es nicht, Liste unter „Mehr“ holt es zurück, Sichern/Laden nimmt die Liste mit', g.weg && g.rueck && g.randNichts && g.liste && g.listeZurueck && g.sichern && g.laden, JSON.stringify(g));
+    check('Zwei Finger tippen = Mix (genau einmal), drei Finger und Zwei-Finger-Wischen lösen keinen Mix aus; Mix auf einem eigenen Visual zeigt einen Hinweis und das Bild bleibt', g.mixZwei && g.mixDrei && g.mixWisch && g.eigenMix, JSON.stringify(g));
+    // 3: zwei Finger wischen = Track wechseln
+    await page.setInputFiles('#fileIn', T.slice(0, 2));
+    await page.waitForFunction(() => queue.length === 2 && qi === 0, null, { timeout: 30000 });
+    const t = await page.evaluate(async () => {
+      const ptr = (type, id, x, y) => canvas.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: 'touch' }));
+      const two = dx => { ptr('pointerdown', 1, 200, 300); ptr('pointerdown', 2, 280, 300); ptr('pointermove', 1, 200 + dx, 305); ptr('pointermove', 2, 280 + dx, 305); ptr('pointerup', 1, 200 + dx, 305); ptr('pointerup', 2, 280 + dx, 305); };
+      const out = {}; two(-150); out.vor = qi === 1; out.melde = /2\/2/.test($('toastTxt').textContent); two(-150); out.letzter = qi === 1 && /letzte/.test($('toastTxt').textContent);
+      two(150); out.zurueck = qi === 0; return out; });
+    check('Zwei Finger nach links wischen = nächster Track, nach rechts = voriger (mit Meldung „2/2 · Name“); am Ende der Liste ein Hinweis statt Fehler', t.vor && t.melde && t.letzter && t.zurueck, JSON.stringify(t));
+    check('Glas-Dock und Gesten: keine Fehler im Protokoll, keine Seitenfehler', g.fehler.length === 0 && errs.length === 0, g.fehler.concat(errs).join(' | '));
     await close();
   },
   async echtbutterchurn() {

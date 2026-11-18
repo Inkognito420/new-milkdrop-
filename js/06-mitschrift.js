@@ -7,7 +7,8 @@ if (window.__AM_STEP !== 5) throw new Error('Acid Milkdrop: Teil 6 (mitschrift) 
 // Jeder Preset-/Shader-Lauf wird als eine Zeile festgehalten, dazu pro Track ein kleiner Steckbrief aus dem Scan.
 // Alles bleibt im Browser (localStorage), nichts wird gesendet. „Sichern/Laden“ gleicht Safari und Icon ab.
 // Anlass-Buchstaben (Start und Ende eines Laufs): i Grafik neu gestartet, a unbestimmt, t Zeitgeber, f Phrase, s Abschnittswechsel, l Track-Flug gestartet (Build 36 bis 47, wird nicht mehr geschrieben),
-//   n Wischen weiter, p Wischen zurück, d Doppeltipp (Schnitt), g Wächter/Fehler (kein Geschmackssignal), x Einstellung, k Track-/Quellenwechsel, h Seite im Hintergrund.
+//   n Wischen weiter, p Wischen zurück, d Doppeltipp (Schnitt), g Wächter/Fehler (kein Geschmackssignal), x Einstellung, k Track-/Quellenwechsel, h Seite im Hintergrund,
+//   w gezielt aus „Eigene“ (Build 127), m Mix, v ausgeblendet per Wisch nach unten (Build 128), r Rückgängig nach dem Ausblenden (Build 128).
 // Flags: 1 Stern gesetzt, 2 gehalten (Freeze), 4 Stern entfernt, 8 eigener Shader, 16 war Favorit, 32 Scan aktiv, 64 Mikro, 128 Lastbremse (Auflösung verkleinert, ab Build 35).
 const JR_KEY = 'am-journal-v1', JR_RUNS = 2500, JR_TRACKS = 80, JR_SESS = 120;
 const JR_COLS = ['ts', 'name', 'dur', 'start', 'end', 'sec', 'flags', 'track', 'pos', 'kick', 'acid', 'hat', 'bright', 'energy', 'acidMood', 'bpm', 'touches', 'sinceTouch', 'freeze'];

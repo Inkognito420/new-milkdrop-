@@ -245,12 +245,14 @@ function drawTimeline(A) {
   if (!A || !A.grid) { tl.hidden = true; return; }
   const dur = audio.duration && isFinite(audio.duration) ? audio.duration : A.duration;
   tl.innerHTML = A.sections.map(s => '<span class="t-' + s.type + '" style="left:' + (100 * s.t0 / dur).toFixed(3) + '%;width:' + (100 * (s.t1 - s.t0) / dur).toFixed(3) + '%"></span>').join('') + '<span id="head" style="left:0"></span>';
-  tl.hidden = false;
+  tl.style.setProperty('--p', '0%'); tl.hidden = false;   // Build 128: Fortschritt des vorigen Tracks nicht stehen lassen
+  moveHead();
 }
 function moveHead() {
   const h = document.getElementById('head');
   if (!h || !curAnalysis || !audio.duration) return;
-  h.style.left = (100 * audio.currentTime / audio.duration).toFixed(2) + '%';
+  const pc = (100 * audio.currentTime / audio.duration).toFixed(2) + '%';
+  h.style.left = pc; if (h.parentNode) h.parentNode.style.setProperty('--p', pc);   // Build 128: gespielter Teil leuchtet im Glas-Dock
 }
 
 window.__AM_STEP = 14;

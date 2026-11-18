@@ -47,8 +47,12 @@ function tuned(n) {
 }
 // Favoriten: Stern-Knopf merkt sich Presets (bleibt im Browser gespeichert); die Auswahl nimmt sie öfter
 const favs = new Set(store.get('am-favs', []).filter(n => typeof n === 'string'));
+// Build 128 (Emmo): „Will ich nicht mehr sehen“ (Wisch nach unten). Diese Visuals kommen nie wieder von selbst dran (Auswahl, Mix-Partner).
+// Zurückholen unter „Mehr“. Gespeichert unter nmd:weg, Sichern/Laden nimmt die Liste mit (Laden fügt nur hinzu).
+const WEG = new Set(store.get('weg', []).filter(n => typeof n === 'string'));
+const wegSave = () => store.set('weg', [...WEG]);
 function showName() { const el = $('pname'); if (!el) return; el.classList.toggle('off', !toggles.name); el.textContent = curName ? (favs.has(curName) ? '★ ' : '') + curName : ''; }
-function showFav() { showName(); const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+function showFav() { showName(); const on = favs.has(curName); const b = $('fav'); b.textContent = on ? '★' : '☆'; b.classList.toggle('hot', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); const pe = $('preset'); if (pe) pe.classList.toggle('fav', on); }
 $('fav').addEventListener('click', () => {
   if (!curName) return;
   if (favs.has(curName)) { favs.delete(curName); rea('Favorit entfernt: ' + curName); } else { favs.add(curName); rea('Favorit: ' + curName); }
