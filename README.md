@@ -38,7 +38,7 @@ new-milkdrop- nie etwas von Acid verändert:
 - `js/10b-mix.js` (ab Build 115): Mix-Knopf, kreuzt zwei Favoriten zu einem neuen Bild, siehe unten „Mix“.
 - `js/14b-partitur.js` (ab Build 102): Klangrollen offline über den ganzen Track und Partitur-Speicher (siehe unten).
 - `js/analyse.js`: Track-Analyse (Scan) aus Acid.
-- `eigene-visuals.js` (ab Build 126): Emmos eigene Visuals als Butterchurn-Presets (7 frühere eigene Shader, 5 neue ab Build 127). `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: die 5 eigenen Acid-Presets, vermessene Presets.
+- `eigene-visuals.js` (ab Build 126): Emmos eigene Visuals als Butterchurn-Presets (7 frühere eigene Shader, 6 neue ab Build 127). `acid-presets.js`, `acid-profile.js`, `acid-bild-*.jpg`: die 5 eigenen Acid-Presets, vermessene Presets.
 - `sw.js`, `manifest.webmanifest`, `icon-*.png`: Offline-Betrieb und Home-Bildschirm-App.
 - `b33/`: alte Vergleichsseite aus Acid (Build 33). Unverändert übernommen, lädt Butterchurn noch selbst aus dem Internet und gehört nicht zum Programm.
 - `test/`: Prüfungen (siehe unten).
@@ -95,6 +95,15 @@ gibt es die Gruppe „Schaltzentrale“ mit sieben Reglern Kick, Acid, Raum, Pad
   Regler „Dirigent“ auf 0 = alte feste Regel.
 Protokoll-Minutenzeile „Schaltzentrale“: Raum, Pads-Helligkeit, Acid-Verzerrung, Hats-Körnung, Bit-Salat, Einsätze, Seiten-Funken, Drops, alle Regler.
 Nicht am Handy geprüft: wie die Ebenen auf dem iPhone aussehen und was der Ausgabe-Durchgang dort kostet. Siehe `ANWEISUNG-NAECHSTER-CHAT.md`.
+
+## Build 128: Glas-Dock, neue Gesten, Mix erweitert das laufende Visual
+
+Emmo: „Bin mit dem Menü nicht mehr zufrieden, finde das total altbacken“ → Entwurf **A (Glas-Dock)**, Gesten **1–4** und: „wenn der Mix-Knopf das aktuelle Visual mit einem zufälligen kombiniert, so dass das aktuelle nicht komplett verloren geht, sondern quasi erweitert wird“.
+- **Glas-Dock** (`index.html`, `style.css` ab „Build 128“): oben links der runde Notaus, der Name, rechts eine Pille mit Tempo, Takt-Punkten und Abschnitt. Unten schwebt eine Leiste aus Milchglas: ＋ (Tracks), Track mit ⏭, Visual (Stern davor, wenn Favorit), Fortschritt (gespielter Teil grün, kommende Abschnitte in ihren Farben), ◀ großer Play/Pause-Knopf ▶, Stern, Eigene, Mix, Mikro, Mehr. Im Hochformat zwei Zeilen. „Mehr“ und „Eigene“ öffnen als Fenster über der Leiste (nie beide zugleich), „Eigene“ als Raster. Die Symbole sind CSS-Masken (`--i-…`), der Text in den Knöpfen bleibt (Bildschirmleser, Protokoll „Tipp: …“, Tests). Ausgeblendet ist das Menü ganz weg (`visibility`), damit das Milchglas dann keine Grafikleistung kostet.
+- **Gesten** (`js/13-effekte-gesten.js`): nach oben wischen = Stern an/aus (großer Stern in der Mitte, Meldung oben); nach unten = **„Will ich nicht mehr sehen“**; zwei Finger links/rechts wischen = nächster/voriger Track; zwei Finger tippen = Mix. Wie bisher: links/rechts = Visual, tippen = Menü, Doppeltipp = Schnitt, halten = Freeze, drei Finger = Notaus. Senkrecht vom oberen/unteren Rand (28 px) zählt nicht, das gehört dem iPhone.
+- **Nie wieder zeigen**: Liste `WEG` (`js/05`, gespeichert unter `nmd:weg`), `usable()` lässt diese Visuals weg (Auswahl, Favoriten-Topf, Mix-Partner). 5 Sekunden lang „Rückgängig“, später unter „Mehr“ → „Ausgeblendet“ antippen. Gezielt aus „Eigene“ geht es weiter (dort blass). Sichern/Laden nimmt die Liste mit (Laden fügt nur hinzu). Ein Mix wird nur für die Sitzung gesperrt (hat keinen festen Namen). Mitschrift: Anlass `v` (ausgeblendet), `r` (Rückgängig).
+- **Mix erweitert** (`js/10b-mix.js`, `mixAnchor`, `mixExtendFind`): Knopf und Zwei-Finger-Tipp behalten das laufende Visual als Anker samt Formen. Normales Preset: per Zufall bleibt seine Bewegung (neuer Look vom Partner) oder sein Look (neue Bewegung). Läuft schon ein Mix, bleibt die Hälfte mit den Formen in ihrer Rolle, die andere wird ersetzt: mehrmals drücken = das Bild entwickelt sich weiter. Partner zu 60 % ein Favorit, sonst irgendein brauchbares Preset. Eigene Visuals zeichnen alles im Comp-Shader und lassen sich nicht mischen: dann nur ein Hinweis, das Bild bleibt. Der Auto-Mix für automatische Wechsel bleibt wie bisher (zwei zufällige Eltern).
+- Geprüft in der Sandbox (Chromium, Attrappe bzw. echte Butterchurn-Kopie, Software-Grafik, keine echten Handys): Lage aller Knöpfe hoch (390×844) und quer (852×393) ohne Überlappung und im Schirm; Gesten mit nachgespielten Zeiger-Ereignissen; jeder Mix behält den Anker. Nicht geprüft: echtes iPhone (Milchglas-Leistung, Systemgesten am Rand, Mehrfinger-Erkennung in Safari).
 
 ## Build 127: Fünf neue eigene Presets, die die Klangrollen einzeln hören
 

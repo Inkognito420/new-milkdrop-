@@ -1,4 +1,4 @@
-// new-milkdrop- · Teil 10b: Mix (ab Build 115). Zwei Favoriten werden zu einem neuen Bild gekreuzt.
+// new-milkdrop- · Teil 10b: Mix (ab Build 115). Zwei Presets werden zu einem neuen Bild gekreuzt (Knopf ab Build 128: das laufende Visual bleibt Anker).
 // Alle Teile teilen sich einen gemeinsamen Bereich (wie vorher der eine große Block in index.html).
 // Dieser Teil ändert window.__AM_STEP NICHT: bricht er ab, fehlt nur der Mix-Knopf, alles andere läuft weiter.
 if (window.__AM_STEP !== 10) throw new Error('new-milkdrop-: Teil 10b (mix) nicht gestartet, ein früherer Teil ist abgebrochen');
@@ -120,20 +120,56 @@ async function mixCheck(p) {
 }
 
 // ===== Paar suchen und prüfen (für Knopf und Auto-Mix) =====
+// Ein Rezept bauen und prüfen. Gibt { r, p, c } zurück oder null (dann ist die Paarung bis zum Neuladen gesperrt).
+async function mixTry(r, tag) {
+  const key = r.a + '|' + r.b;
+  if (MIX.bad.has(key)) return null;                                // Build 120: schon einmal durchgefallen (bis zum Neuladen gemerkt)
+  const p = mixBuild(r);
+  if (!p) { MIX.bad.add(key); MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; return null; }
+  const c = await mixCheck(p);
+  if (!c.ok) { MIX.bad.add(key); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Kontrast ' + c.kontrast + ', Farbe ' + c.farbe + ', Bewegung ' + c.move : '') + '): ' + r.a + ' × ' + r.b); return null; }
+  return { r, p, c };
+}
 async function mixFind(tag) {
   const P = mixParents();
   if (P.pool.length < 2) { rea('Mix: zu wenige Presets'); return null; }
   for (let t = 0; t < MIXCFG.tries; t++) {
     const a = P.pool[Math.floor(Math.random() * P.pool.length)], b = P.pool[Math.floor(Math.random() * P.pool.length)];
-    const r = { a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, key = a + '|' + b;
-    if (MIX.bad.has(key)) continue;                                   // Build 120: schon einmal durchgefallen (bis zum Neuladen gemerkt)
-    const p = mixBuild(r);
-    if (!p) { MIX.bad.add(key); MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; continue; }
-    const c = await mixCheck(p);
-    if (!c.ok) { MIX.bad.add(key); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Kontrast ' + c.kontrast + ', Farbe ' + c.farbe + ', Bewegung ' + c.move : '') + '): ' + a + ' × ' + b); continue; }
-    return { r, p, c, fav: P.fav };
+    const m = await mixTry({ a, b, f: Math.random() < 0.5 ? 'a' : 'b' }, tag);
+    if (m) { m.fav = P.fav; return m; }
   }
   rea(tag + ': in ' + MIXCFG.tries + ' Versuchen kein passendes Paar gefunden');
+  return null;
+}
+
+// ===== Build 128 (Emmo): Mix-Knopf und Zwei-Finger-Tipp ERWEITERN das laufende Visual, statt es zu ersetzen =====
+// Das laufende Visual ist der Anker und behält seine Formen (Linien, Kreise, Wellen):
+//   normales Preset: per Zufall bleibt seine Bewegung (neuer Look vom Partner) oder sein Look (neue Bewegung vom Partner).
+//   Mix: die Hälfte mit den Formen bleibt in ihrer Rolle, die andere Hälfte wird ersetzt. Mehrmals drücken = das Bild entwickelt sich weiter.
+// Partner: zu 60 % ein Favorit (wenn es einen gibt), sonst irgendein brauchbares Preset. Nie eigene Visuals, Mixe, Ausgeblendete oder der Anker selbst.
+// Eigene Visuals zeichnen ihr Bild ganz im Comp-Shader, dazu passt kein Partner: dann kommt nur ein Hinweis, das Bild bleibt.
+const MIX_FAV_SHARE = 0.6;
+function mixAnchor(n) {
+  if (!n || !presets[n] || EIGEN.has(n)) return null;
+  if (!isMix(n)) return { n, role: null, other: null };
+  const m = presets[n].mix; if (!m) return null;
+  const k = m.f === 'b' ? 'b' : 'a';
+  return presets[m[k]] ? { n: m[k], role: k, other: m[k === 'a' ? 'b' : 'a'] } : null;
+}
+async function mixExtendFind(an, tag) {
+  const ok = x => presets[x] && x !== an.n && x !== an.other && !EIGEN.has(x) && !isMix(x) && usable(x);
+  const fav = [...favs].filter(ok), all = names.filter(ok);
+  if (!all.length) { rea(tag + ': kein Partner übrig'); return null; }
+  const hasComp = !!presets[an.n].comp;
+  for (let t = 0; t < MIXCFG.tries; t++) {
+    const pool = fav.length && Math.random() < MIX_FAV_SHARE ? fav : all;
+    const x = pool[Math.floor(Math.random() * pool.length)];
+    let role = an.role || (hasComp && Math.random() < 0.5 ? 'b' : 'a');   // ohne eigenen Comp kann der Anker nur die Bewegung behalten
+    const r = role === 'a' ? { a: an.n, b: x, f: 'a' } : { a: x, b: an.n, f: 'b' };
+    const m = await mixTry(r, tag);
+    if (m) { m.keep = role; return m; }
+  }
+  rea(tag + ': in ' + MIXCFG.tries + ' Versuchen kein Partner für „' + an.n + '“ gefunden');
   return null;
 }
 // Einen gefundenen Mix zeigen
@@ -141,7 +177,7 @@ function mixShow(m, blend, why, tag) {
   const n = mixName(m.r); presets[n] = m.p; tunedCache.delete(n);
   if (!loadByName(n, blend, true, why)) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; return false; }
   MIX.st.made++;
-  erg(tag + ': ' + n + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Kontrast ' + m.c.kontrast + ', Farbe ' + m.c.farbe + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
+  erg(tag + ': ' + n + (m.keep ? ' · erweitert, ' + (m.keep === 'a' ? 'Bewegung' : 'Look') + ' und Formen von „' + (m.keep === 'a' ? m.r.a : m.r.b) + '“ bleiben' : '') + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Kontrast ' + m.c.kontrast + ', Farbe ' + m.c.farbe + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
   return true;
 }
 // Vorbereiten: ein geprüfter Mix liegt bereit, damit der nächste Wechsel (z. B. der Drop) ohne Wartezeit genau auf dem Takt kommt
@@ -164,20 +200,34 @@ function mixAuto(blend, why) {
 }
 window.mixAuto = mixAuto;
 
-// ===== Knopf „Mix“: liegt einer bereit, sofort; sonst suchen =====
+// ===== Knopf „Mix“ und Zwei-Finger-Tipp (Build 128): das laufende Visual erweitern =====
+// Der vorbereitete Auto-Mix (MIX.ready) bleibt für die automatischen Wechsel, er hat mit dem laufenden Bild nichts zu tun.
 async function mixNow() {
   if (!viz) return false;
   const btn = $('mixBtn');
-  if (MIX.busy) {                                                    // gerade wird einer vorbereitet (oder ein zweiter Tipp): abwarten, dann den nehmen
-    if (btn) { btn.disabled = true; btn.textContent = 'Mix …'; }
+  const busy = on => { if (btn) { btn.disabled = on; btn.textContent = on ? 'Mix …' : 'Mix'; } };
+  if (MIX.busy) {                                                    // gerade wird einer vorbereitet (oder ein zweiter Tipp): abwarten
+    busy(true);
     for (let i = 0; i < 600 && MIX.busy; i++) await mixTick();
-    if (btn) { btn.disabled = false; btn.textContent = 'Mix'; }
+    busy(false);
     if (MIX.busy) return false;
   }
-  if (MIX.ready) { const m = MIX.ready; MIX.ready = null; return mixShow(m, MIXCFG.blend, 'm', 'Mix'); }
-  MIX.busy = true; if (btn) { btn.disabled = true; btn.textContent = 'Mix …'; }
-  try { const m = await mixFind('Mix'); return m ? mixShow(m, MIXCFG.blend, 'm', 'Mix') : false; }
-  finally { MIX.busy = false; if (btn) { btn.disabled = false; btn.textContent = 'Mix'; } }
+  const from = curName, an = mixAnchor(from);
+  if (!an) {
+    const why = from && EIGEN.has(from) ? 'Eigene Visuals lassen sich nicht mischen, das Bild bleibt' : 'Dieses Visual lässt sich nicht mischen';
+    rea('Mix: ' + why + ' (' + (from || 'nichts geladen') + ')'); if (window.toast) toast(why, 2600);
+    return false;
+  }
+  MIX.busy = true; busy(true);
+  try {
+    const m = await mixExtendFind(an, 'Mix');
+    if (!m) { if (window.toast) toast('Kein passender Partner gefunden, nochmal versuchen', 2600); return false; }
+    if (curName !== from) { rea('Mix: inzwischen lief ein anderes Visual, der Mix wird trotzdem gezeigt'); }
+    const ok = mixShow(m, MIXCFG.blend, 'm', 'Mix');
+    if (ok && window.toast) toast((m.keep === 'a' ? 'Bewegung bleibt, neuer Look: ' + mixShort(m.r.b) : 'Look bleibt, neue Bewegung: ' + mixShort(m.r.a)), 2600);
+    return ok;
+  }
+  finally { MIX.busy = false; busy(false); }
 }
 
 // Protokoll: einmal pro Minute, wenn Mixe kamen
@@ -197,4 +247,4 @@ function mixSave() {
   if (ok || lost) rea('Mixe mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Eltern (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if (isMix(curName) || MIX.recipes.some(r => !favs.has(r.n))) mixSave(); });   // läuft nach dem Stern-Knopf (js/05): Stern gesetzt = Rezept speichern, weg = löschen
 { const b = $('mixBtn'); if (b) { b.hidden = false; b.addEventListener('click', () => { mixNow(); }); } }
-window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;
+window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixAnchor = mixAnchor; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;
