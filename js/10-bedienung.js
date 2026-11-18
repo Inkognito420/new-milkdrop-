@@ -47,4 +47,37 @@ setInterval(() => {
   if (agc.active >= agc.nextLog) { agc.nextLog += 20; if (toggles.auto) rea(agcText()); }
 }, 100);
 
+// ===== „Eigene“ (Build 127, Emmos Wunsch): Liste der selbstgebauten Visuals, gezielt anschauen =====
+// Antippen lädt das Visual und hält es fest: keine automatischen Wechsel (auch nicht im Drop, der Bild-Wächter pausiert mit), bis „Weiter automatisch“.
+// Wischen geht weiter von Hand. Die Liste: eigene Visuals (eigene-visuals.js) und die Acid-Presets (acid-presets.js), Stern = Favorit.
+const ownBtn = $('ownBtn'), ownList = $('ownList'), autoBtn = $('auto');
+function ownBuild() {
+  ownList.textContent = '';
+  for (const [title, list] of [['Eigene Visuals', [...EIGEN].sort()], ['Acid-Presets', [...ACID].filter(n => !EIGEN.has(n)).sort()]]) {
+    if (!list.length) continue;
+    const h = document.createElement('div'); h.className = 'gl'; h.textContent = title + ' (' + list.length + ')'; ownList.appendChild(h);
+    const box = document.createElement('div'); box.className = 'row';
+    for (const n of list) {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.n = n;
+      b.textContent = (favs.has(n) ? '★ ' : '') + n.replace(/^Eigen · |^Acid · /, '');
+      if (n === curName) b.classList.add('hot');
+      b.addEventListener('click', () => ownShow(n));
+      box.appendChild(b);
+    }
+    ownList.appendChild(box);
+  }
+}
+function ownShow(n) {
+  if (!loadByName(n, 1.0, true, 'w')) { sayFor('„' + n + '“ lässt sich gerade nicht laden.', 3000); return; }
+  auto = false; autoBtn.hidden = false; autoBtn.classList.remove('hot'); autoBtn.textContent = 'Weiter automatisch';
+  rea('Eigene: „' + n + '“ gezielt gewählt, automatische Wechsel pausiert');
+  ownBuild();
+}
+ownBtn.addEventListener('click', () => {
+  const open = ownList.hidden; ownList.hidden = !open;
+  ownBtn.setAttribute('aria-expanded', String(open)); ownBtn.classList.toggle('hot', open);
+  if (open) ownBuild();
+});
+autoBtn.addEventListener('click', () => { if (auto) { autoBtn.hidden = true; rea('Automatik läuft wieder'); if (!ownList.hidden) ownBuild(); } });   // läuft nach dem Umschalten in js/08
+
 window.__AM_STEP = 10;

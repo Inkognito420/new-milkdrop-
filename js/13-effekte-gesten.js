@@ -88,7 +88,7 @@ const touched = () => { lastTouch = performance.now(); };
 window.addEventListener('pointerdown', touched, true);
 window.addEventListener('input', touched, true);
 setInterval(() => {
-  if ((!audio.paused || micOn) && $('fine').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');
+  if ((!audio.paused || micOn) && $('fine').hidden && $('ownList').hidden && performance.now() - lastTouch > 12000) hud.classList.add('off');   // Build 127: offene Liste „Eigene“ hält die Leiste
 }, 1000);
 
 window.__AM_STEP = 13;
