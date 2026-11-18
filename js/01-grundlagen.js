@@ -107,8 +107,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 128;
-const BUILD = 'Build ' + BUILD_NO + ' · Glas-Dock statt Knopfleiste; Gesten: hoch = Stern, runter = nie wieder zeigen, zwei Finger wischen = Track, zwei Finger tippen = Mix; Mix erweitert das laufende Visual';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 129;
+const BUILD = 'Build ' + BUILD_NO + ' · Mix bei eigenen Visuals: neue Variante mit zufälliger Linse (Kaleidoskop, Spiegel, Kacheln, Fischauge, Wirbel, Pixel, Drehung)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

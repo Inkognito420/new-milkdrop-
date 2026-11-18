@@ -34,6 +34,7 @@ const MIXCFG = {
 };
 const MIX = { bad: new Set(), recipes: [], busy: false, viz: null, vizFail: false, ready: null, share: MIXCFG.share, st: { made: 0, rejected: 0, auto: 0, why: {} } };
 const isMix = n => typeof n === 'string' && n.indexOf('Mix · ') === 0;
+const isOwn = n => EIGEN.has(n) || !!(presets[n] && presets[n].lens);   // Build 129: eigene Visuals und ihre Linsen-Varianten (nie Mix-Eltern)
 const mixQs = s => { const o = new Set(); String(s || '').replace(/\bq(\d+)\b/g, (m, d) => { o.add(+d); return m; }); return o; };
 const mixShort = n => { const s = String(n).replace(/^[_$\s]+/, '').split(/ - | · /).pop().replace(/\s*[\[(].*$/, '').trim() || String(n); return s.length > 22 ? s.slice(0, 21) + '…' : s; };
 const mixFormsQ = p => [].concat(p.shapes || [], p.waves || []).filter(x => x && x.baseVals && x.baseVals.enabled !== 0)
@@ -42,7 +43,7 @@ const mixFormsQ = p => [].concat(p.shapes || [], p.waves || []).filter(x => x &&
 // Ein Kind bauen. r = { a, b, f } (f: 'a' oder 'b' = woher die Formen kommen). Gibt null zurück, wenn das Paar nicht passt.
 function mixBuild(r) {
   const A = presets[r.a], B = presets[r.b];
-  if (!A || !B || r.a === r.b || isMix(r.a) || isMix(r.b) || EIGEN.has(r.a) || EIGEN.has(r.b)) return null;   // Build 126: eigene Visuals zeichnen ihr Bild ganz im Comp, als Mix-Partner taugen sie nicht
+  if (!A || !B || r.a === r.b || isMix(r.a) || isMix(r.b) || isOwn(r.a) || isOwn(r.b)) return null;   // Build 126: eigene Visuals zeichnen ihr Bild ganz im Comp, als Mix-Partner taugen sie nicht
   if (!B.comp) return null;                                         // ohne eigenen Look bringt B nichts mit
   const need = mixQs(B.comp), aUse = mixQs((A.warp || '') + ';' + (A.pixel_eqs_str || ''));
   for (const q of need) if (aUse.has(q)) return null;               // A und B brauchen dieselben q-Werte: passt nicht zusammen
@@ -69,7 +70,7 @@ function mixName(r) {
 }
 // Eltern: Favoriten (Milkdrop-Presets, keine eigenen Shader, keine Mixe). Zu wenige Sterne: alle brauchbaren Presets.
 function mixParents() {
-  const ok = n => presets[n] && !EIGEN.has(n) && !isMix(n) && usable(n);
+  const ok = n => presets[n] && !isOwn(n) && !isMix(n) && usable(n);
   const fav = [...favs].filter(ok);
   return fav.length >= 2 ? { pool: fav, fav: true } : { pool: names.filter(ok), fav: false };
 }
@@ -92,7 +93,7 @@ function mixJudge(l, sd, sat, d) {
   return l < C.lumaMin ? 'schwarz' : l > C.lumaMax ? 'weiß' : d < C.moveMin ? 'steht' : (l >= C.washLuma && sd < C.washStd) ? 'blass' : (sd < C.flatStd && sat < C.flatSat) ? 'grau' : sd < C.flatAny ? 'flach' : '';
 }
 const mixTick = () => new Promise(res => requestAnimationFrame(() => res()));
-async function mixCheck(p) {
+async function mixCheck(p, keepPx) {                                // keepPx (Build 129): das letzte Prüfbild mitgeben (Linsen-Vergleich)
   const V = mixViz(); if (!V) return { ok: true, skip: true };
   const gl = V.renderer.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, px = new Uint8Array(4 * W * H);
   const read = () => { gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px); return px.slice(); };
@@ -116,6 +117,7 @@ async function mixCheck(p) {
   l /= n; d /= 3 * n; sat /= n; const sd = Math.sqrt(Math.max(0, l2 / n - l * l));
   const out = { luma: +l.toFixed(1), move: +d.toFixed(2), kontrast: +sd.toFixed(1), farbe: +sat.toFixed(1) };
   out.why = mixJudge(l, sd, sat, d); out.ok = !out.why;
+  if (keepPx) out.px = f40;
   return out;
 }
 
@@ -147,17 +149,17 @@ async function mixFind(tag) {
 //   normales Preset: per Zufall bleibt seine Bewegung (neuer Look vom Partner) oder sein Look (neue Bewegung vom Partner).
 //   Mix: die Hälfte mit den Formen bleibt in ihrer Rolle, die andere Hälfte wird ersetzt. Mehrmals drücken = das Bild entwickelt sich weiter.
 // Partner: zu 60 % ein Favorit (wenn es einen gibt), sonst irgendein brauchbares Preset. Nie eigene Visuals, Mixe, Ausgeblendete oder der Anker selbst.
-// Eigene Visuals zeichnen ihr Bild ganz im Comp-Shader, dazu passt kein Partner: dann kommt nur ein Hinweis, das Bild bleibt.
+// Eigene Visuals zeichnen ihr Bild ganz im Comp-Shader, dazu passt kein Partner: für sie gibt es ab Build 129 „Variante + Linse“ (unten).
 const MIX_FAV_SHARE = 0.6;
 function mixAnchor(n) {
-  if (!n || !presets[n] || EIGEN.has(n)) return null;
+  if (!n || !presets[n] || isOwn(n)) return null;
   if (!isMix(n)) return { n, role: null, other: null };
   const m = presets[n].mix; if (!m) return null;
   const k = m.f === 'b' ? 'b' : 'a';
   return presets[m[k]] ? { n: m[k], role: k, other: m[k === 'a' ? 'b' : 'a'] } : null;
 }
 async function mixExtendFind(an, tag) {
-  const ok = x => presets[x] && x !== an.n && x !== an.other && !EIGEN.has(x) && !isMix(x) && usable(x);
+  const ok = x => presets[x] && x !== an.n && x !== an.other && !isOwn(x) && !isMix(x) && usable(x);
   const fav = [...favs].filter(ok), all = names.filter(ok);
   if (!all.length) { rea(tag + ': kein Partner übrig'); return null; }
   const hasComp = !!presets[an.n].comp;
@@ -200,6 +202,108 @@ function mixAuto(blend, why) {
 }
 window.mixAuto = mixAuto;
 
+// ===== Build 129 (Emmo, A + B): Mix bei eigenen Visuals = neue Variante + zufällige Linse =====
+// Eigene Visuals lassen sich nicht kreuzen (sie malen alles im Comp, der Warp ist schwarz). Stattdessen:
+//   A Variante: die Zufallswerte (rand_preset, im Shader u_v, u_w, u_hue) werden fest neu gewürfelt: andere Farben, Anordnung, Muster-Tempo.
+//   B Linse:    die Bildkoordinaten laufen durch eine zufällige Linse (Kaleidoskop, Spiegel, Kacheln, Fischauge, Wirbel, Pixel, Drehung).
+//               Eingesetzt am Bildpunkt selbst (gl_FragCoord, darüber auch eiUvc() aus eigene-visuals.js) und für uv (Spur aus dem Warp, Blur-Bilder). Nur im Comp:
+//               der Warp (Rückkopplung) bleibt unverändert, die Spur erscheint durch die Linse. Kostet nur ein paar Rechenschritte pro Punkt.
+// Das Ergebnis ist ein eigenes Preset „<Visual> + <Linse>“ mit p.lens = { base, lens, seed }. Stern = Rezept (nmd:linsen), nach dem Neustart gleich.
+// Geprüft wird wie beim Mix im kleinen Prüf-Visualizer, aber relativ: die Linse darf das Bild nicht deutlich dunkler machen als das Visual ohne Linse
+// (eigene Visuals sind oft dunkel, die festen Mix-Grenzen würden sie verwerfen). Passt keine Linse, kommt nur die neue Variante.
+const EIUVC = 'vec2 eiUvc() { return (gl_FragCoord.xy - 0.5 * u_res) / u_res.y; }';
+const LENS_ROT = 'float cs = cos(k), sn = sin(k); return vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y);';
+const LENS = {                                                     // c: Bildpunkt um die Mitte, Höhe -0,5 … 0,5 (wie eiUvc)
+  'Kaleidoskop 6': 'float r = length(c), a = atan(c.y, c.x) + time * 0.05, s = 6.2831853 / 6.0; a = mod(a, s); a = abs(a - 0.5 * s); return r * vec2(cos(a), sin(a));',
+  'Kaleidoskop 8': 'float r = length(c), a = atan(c.y, c.x) - time * 0.04, s = 6.2831853 / 8.0; a = mod(a, s); a = abs(a - 0.5 * s); return r * vec2(cos(a), sin(a));',
+  'Spiegel': 'return vec2(abs(c.x), c.y);',
+  'Kacheln': 'vec2 w = vec2(u_res.x / u_res.y, 1.0); vec2 u = c * 2.0 / w + 0.5; u = 1.0 - abs(1.0 - mod(u, 2.0)); return (u - 0.5) * w;',
+  'Fischauge': 'return c * (0.55 + 0.9 * dot(c, c));',
+  'Wirbel': 'float k = (1.0 - smoothstep(0.0, 0.8, length(c))) * (1.6 + 2.2 * u_bass); ' + LENS_ROT,
+  'Pixel': 'float g = (1.0 / 56.0) * (1.0 + 1.5 * u_beat); return (floor(c / g) + 0.5) * g;',
+  'Drehung': 'float k = time * 0.12 + 0.25 * sin(time * 0.3); ' + LENS_ROT
+};
+const LENSCFG = { tries: 4, darkShare: 0.5, darkMin: 3, diffMin: 2, diffLuma: 4 };
+// tries: so viele Linsen höchstens pro Druck; darkShare/darkMin: mit Linse mindestens halb so hell wie ohne (und über 3 von 255);
+// diffMin: mittlere Änderung gegenüber ohne Linse (0-255), sonst sieht man die Linse nicht (gemessen: das Phrasen-Mandala ist am Phrasenanfang
+// rund, Drehen und Spiegeln ändern dort nichts); gilt nur, wenn das Bild ohne Linse überhaupt Inhalt hat (Helligkeit ab diffLuma).
+const lensSeed = () => [0, 0, 0, 0].map(() => +Math.random().toFixed(4));
+function lensBuild(r) {
+  const B = presets[r.base];
+  if (!B || !EIGEN.has(r.base) || !Array.isArray(r.seed) || r.seed.length !== 4 || !r.seed.every(x => isFinite(+x))) return null;
+  const v = 'vec4(' + r.seed.map(x => (+x).toFixed(4)).join(', ') + ')';
+  let comp = String(B.comp || '').split('rand_preset').join(v);
+  const warp = String(B.warp || '').split('rand_preset').join(v);
+  if (r.lens) {
+    if (!LENS[r.lens] || comp.indexOf(EIUVC) < 0 || !/shader_body\s*\{/.test(comp)) return null;
+    // Jeder Bildpunkt (gl_FragCoord.xy, auch in eiUvc() und z. B. der Lichtwand) und uv laufen durch die Linse
+    comp = comp.replace(EIUVC, '@@NMDLINSE@@' + EIUVC).split('gl_FragCoord.xy').join('nmdFC()').replace('@@NMDLINSE@@',
+      'vec2 nmdLens(vec2 c) { ' + LENS[r.lens] + ' }\n' +
+      'vec2 nmdFC() { return nmdLens((gl_FragCoord.xy - 0.5 * u_res) / u_res.y) * u_res.y + 0.5 * u_res; }\n' +
+      'vec2 nmdLensUv(vec2 t) { float as = u_res.x / u_res.y; vec2 c = nmdLens(vec2((t.x - 0.5) * as, 0.5 - t.y)); return vec2(c.x / as + 0.5, 0.5 - c.y); }\n')
+      .replace(/shader_body\s*\{/, 'shader_body {\n  uv = nmdLensUv(uv);');
+  }
+  return Object.assign({}, B, { comp, warp, baseVals: Object.assign({}, B.baseVals || {}),
+    shapes: (B.shapes || []).map(x => Object.assign({}, x)), waves: (B.waves || []).map(x => Object.assign({}, x)),
+    lens: { base: r.base, lens: r.lens || '', seed: r.seed.map(x => +x) } });
+}
+function lensName(r) {
+  const base = r.base + ' + ' + (r.lens || 'Variante');
+  for (let i = 1; i < 99; i++) {
+    const n = i === 1 ? base : base + ' ' + i, p = presets[n];
+    if (!p || !favs.has(n) || (p.lens && p.lens.seed.join() === r.seed.join())) return n;   // ohne Stern wird die alte Fassung ersetzt
+  }
+  return base + ' ' + Date.now();
+}
+async function lensCheck(p, base) {
+  const b = await mixCheck(lensBuild({ base, lens: '', seed: p.lens.seed }), true);   // dieselbe Variante ohne Linse
+  if (b.skip) return b;
+  const c = await mixCheck(p, true);
+  if (c.why === 'Fehler') return c;
+  let d = 0; if (b.px && c.px) { for (let i = 0; i < c.px.length; i += 4) d += Math.abs(c.px[i] - b.px[i]) + Math.abs(c.px[i + 1] - b.px[i + 1]) + Math.abs(c.px[i + 2] - b.px[i + 2]); d /= 3 * c.px.length / 4; }
+  c.base = b.luma; c.diff = +d.toFixed(1); delete c.px;
+  c.why = c.luma < Math.max(LENSCFG.darkMin, LENSCFG.darkShare * b.luma) ? 'dunkler' : (b.luma >= LENSCFG.diffLuma && d < LENSCFG.diffMin) ? 'kaum anders' : '';
+  c.ok = !c.why;
+  return c;
+}
+async function lensFind(base, from, tag) {
+  const cur = presets[from] && presets[from].lens ? presets[from].lens.lens : '';
+  const keys = Object.keys(LENS).filter(k => k !== cur);
+  for (let t = 0; t < LENSCFG.tries && keys.length; t++) {
+    const lens = keys.splice(Math.floor(Math.random() * keys.length), 1)[0];
+    const r = { base, lens, seed: lensSeed() }, p = lensBuild(r);
+    if (!p) { rea(tag + ': Linse „' + lens + '“ passt nicht zu „' + base + '“'); continue; }
+    const c = await lensCheck(p, base);
+    if (!c.ok) { MIX.st.why.linse = (MIX.st.why.linse || 0) + 1; rea(tag + ': Linse „' + lens + '“ verworfen (' + c.why + ', Helligkeit ' + c.luma + ' statt ' + c.base + ', Änderung ' + c.diff + ')'); continue; }
+    return { r, p, c };
+  }
+  const r = { base, lens: '', seed: lensSeed() };                   // keine Linse passt: nur eine neue Variante
+  return { r, p: lensBuild(r), c: { ok: true, nurVariante: true } };
+}
+function lensShow(m, tag) {
+  if (!m || !m.p) return false;
+  const n = lensName(m.r); presets[n] = m.p; tunedCache.delete(n);
+  if (!loadByName(n, MIXCFG.blend, true, 'm')) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; return false; }
+  MIX.st.lens = (MIX.st.lens || 0) + 1;
+  erg(tag + ': ' + n + ' · neue Variante (' + m.r.seed.join(', ') + ')' + (m.r.lens ? ', Linse „' + m.r.lens + '“' : ', ohne Linse (keine passte)') +
+    (m.c.skip ? ' · ungeprüft' : m.c.nurVariante ? '' : ' · geprüft (Helligkeit ' + m.c.luma + ', ohne Linse ' + m.c.base + ', Änderung ' + m.c.diff + ')'));
+  if (window.toast) toast(m.r.lens ? 'Neue Variante mit Linse: ' + m.r.lens : 'Neue Variante', 2600);
+  return true;
+}
+// Rezepte: Varianten mit Stern bleiben (nmd:linsen, nur Name, Visual, Linse und die vier Zufallswerte)
+function lensSave() {
+  const keep = []; for (const n of favs) { const p = presets[n]; if (p && p.lens) keep.push({ n, base: p.lens.base, lens: p.lens.lens, seed: p.lens.seed }); }
+  store.set('linsen', keep);
+}
+{ const saved = store.get('linsen', []); let ok = 0, lost = 0;
+  if (Array.isArray(saved)) for (const r of saved) {
+    if (!r || typeof r.n !== 'string' || typeof r.base !== 'string') continue;
+    const p = lensBuild({ base: r.base, lens: typeof r.lens === 'string' ? r.lens : '', seed: r.seed });
+    if (p) { presets[r.n] = p; ok++; } else { lost++; favs.delete(r.n); }
+  }
+  if (ok || lost) rea('Varianten mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Visual (entfernt)' : '')); }
+$('fav').addEventListener('click', () => { if ((presets[curName] && presets[curName].lens) || store.get('linsen', []).some(r => r && !favs.has(r.n))) lensSave(); });
+
 // ===== Knopf „Mix“ und Zwei-Finger-Tipp (Build 128): das laufende Visual erweitern =====
 // Der vorbereitete Auto-Mix (MIX.ready) bleibt für die automatischen Wechsel, er hat mit dem laufenden Bild nichts zu tun.
 async function mixNow() {
@@ -212,9 +316,16 @@ async function mixNow() {
     busy(false);
     if (MIX.busy) return false;
   }
-  const from = curName, an = mixAnchor(from);
+  const from = curName;
+  if (from && isOwn(from)) {                                         // Build 129: eigenes Visual → neue Variante + Linse
+    const base = EIGEN.has(from) ? from : presets[from].lens.base;
+    MIX.busy = true; busy(true);
+    try { return lensShow(await lensFind(base, from, 'Mix · Linse'), 'Mix · Linse'); }
+    finally { MIX.busy = false; busy(false); }
+  }
+  const an = mixAnchor(from);
   if (!an) {
-    const why = from && EIGEN.has(from) ? 'Eigene Visuals lassen sich nicht mischen, das Bild bleibt' : 'Dieses Visual lässt sich nicht mischen';
+    const why = 'Dieses Visual lässt sich nicht mischen';
     rea('Mix: ' + why + ' (' + (from || 'nichts geladen') + ')'); if (window.toast) toast(why, 2600);
     return false;
   }
@@ -231,7 +342,7 @@ async function mixNow() {
 }
 
 // Protokoll: einmal pro Minute, wenn Mixe kamen
-setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %' + (S.chkN ? ' · Prüfen hielt die Seite Ø ' + Math.round(S.chkSum / S.chkN) + ' ms an, längstes ' + Math.round(S.chkMax) + ' ms (' + S.chkN + ' Prüfungen)' : '')); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
+setInterval(() => { const S = MIX.st; if (!S.made && !S.rejected && !S.lens) return; erg('Mix (letzte Minute): ' + S.made + ' gezeigt, davon ' + S.auto + ' automatisch, ' + S.rejected + ' verworfen' + (S.lens ? ', ' + S.lens + ' Varianten eigener Visuals' : '') + (Object.keys(S.why).length ? ' (' + Object.entries(S.why).map(([k, n]) => k + ' ' + n).join(', ') + ')' : '') + ' · Anteil ' + Math.round(MIX.share * 100) + ' %' + (S.chkN ? ' · Prüfen hielt die Seite Ø ' + Math.round(S.chkSum / S.chkN) + ' ms an, längstes ' + Math.round(S.chkMax) + ' ms (' + S.chkN + ' Prüfungen)' : '')); MIX.st = { made: 0, rejected: 0, auto: 0, why: {} }; }, 60000);
 
 // ===== Rezepte: Mixe mit Stern bleiben =====
 function mixSave() {
@@ -247,4 +358,4 @@ function mixSave() {
   if (ok || lost) rea('Mixe mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Eltern (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if (isMix(curName) || MIX.recipes.some(r => !favs.has(r.n))) mixSave(); });   // läuft nach dem Stern-Knopf (js/05): Stern gesetzt = Rezept speichern, weg = löschen
 { const b = $('mixBtn'); if (b) { b.hidden = false; b.addEventListener('click', () => { mixNow(); }); } }
-window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixAnchor = mixAnchor; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;
+window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixAnchor = mixAnchor; window.lensBuild = lensBuild; window.lensFind = lensFind; window.LENS = LENS; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;

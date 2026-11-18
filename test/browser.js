@@ -811,9 +811,17 @@ const SZ = {
       __MIX.share = 0.35; auto = false; return out; });
     console.log('       (Info) Auto-Mix: ' + JSON.stringify(am));
     check('Auto-Mix: ein geprüfter Mix liegt bereit; ein automatischer Wechsel (Abschnitt) nimmt ihn bei Anteil 100 %, Wischen nicht, bei Anteil 0 kommt keiner; kein Regler mehr (fest 35 %)', am.bereit && !/^Mix · /.test(am.wischen) && am.nochBereit && /^Mix · /.test(am.abschnitt) && am.log && !/^Mix · /.test(am.anteilNull) && !am.regler, JSON.stringify(am));
+    const ln = await page.evaluate(async () => {   // Build 129: Mix auf einem eigenen Visual = neue Variante mit Linse; Stern = Rezept (nmd:linsen)
+      const N = 'Eigen · Peak · Klangkörper'; auto = false; loadByName(N, 0); const ok = await mixNow(), p = presets[curName];
+      const out = { ok, n: curName, basis: p && p.lens && p.lens.base, linse: p && p.lens && p.lens.lens, toast: $('toastTxt').textContent };
+      if (p && p.lens) { if (!favs.has(curName)) $('fav').click(); out.comp = p.comp; out.saved = store.get('linsen', []).map(x => x.n); out.anker = mixAnchor(curName); out.eigenHot = !!document.querySelector('#ownList') && (ownBuild(), !!document.querySelector('#ownList button.hot[data-n="' + N + '"]')); }
+      return out; });
     const star = await page.evaluate(n => { if (!/^Mix · /.test(curName) && /^Mix · /.test(n || '')) loadByName(n, 0); if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; }, am.abschnitt);
     await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
     const back = star && await page.evaluate(n => ({ da: !!presets[n], fav: favs.has(n), laden: loadByName(n, 0) }), star.n);
+    const lnBack = ln.comp && await page.evaluate(n => ({ gleich: presets[n] && presets[n].comp, fav: favs.has(n), laden: loadByName(n, 0) }), ln.n);
+    console.log('       (Info) Linse: ' + JSON.stringify(Object.assign({}, ln, { comp: !!ln.comp })));
+    check('Mix auf einem eigenen Visual (Build 129): neue Variante mit Linse („<Visual> + <Linse>“, Meldung), kein Kreuzen (kein Anker); Stern speichert das Rezept, nach dem Neuladen ist die Variante gleich (gleicher Shader), hat ihren Stern und lässt sich laden; „Eigene“ markiert das Visual', ln.ok && ln.basis === 'Eigen · Peak · Klangkörper' && /^Eigen · Peak · Klangkörper \+ /.test(ln.n) && /Variante/.test(ln.toast) && ln.anker === null && ln.saved.includes(ln.n) && ln.eigenHot && lnBack && lnBack.gleich === ln.comp && lnBack.fav && lnBack.laden, JSON.stringify(Object.assign({}, ln, { comp: !!ln.comp, lnBack: lnBack && { gleich: lnBack.gleich === ln.comp, fav: lnBack.fav, laden: lnBack.laden } })));
     check('Mix: Stern speichert das Rezept (nmd:mixe), nach dem Neuladen ist der Mix wieder da, hat seinen Stern und lässt sich laden', star && star.saved.includes(star.n) && back.da && back.fav && back.laden, JSON.stringify({ star, back }));
     check('Mix: keine Seitenfehler', errs.length === 0, errs.join(' | '));
     await close();
@@ -879,13 +887,13 @@ const SZ = {
       // Halten = Freeze wie bisher
       ptr('pointerdown', 1, 300, 300); await w(520); out.halten = frozen === true; ptr('pointerup', 1, 300, 300); out.loslassen = frozen === false;
       // Mix auf einem eigenen Visual: Hinweis, das Bild bleibt
-      const E = [...EIGEN][0]; loadByName(E, 0); const ok = await mixOrig(); out.eigenMix = ok === false && curName === E && /Eigene Visuals/.test(toastTxt());
+      const E = [...EIGEN][0]; loadByName(E, 0); const ok = await mixOrig(); out.eigenMix = ok === true && presets[curName] && presets[curName].lens && presets[curName].lens.base === E && /Variante/.test(toastTxt());   // Build 129
       out.fehler = LOG.filter(l => l.k === 'x').map(l => l.x);
       return out;
     });
     check('Gesten (Build 128): nach oben = Stern an/aus (großer Stern, Meldung, gespeichert); links/rechts = Visual wie bisher; Halten = Freeze wie bisher', g.sternAn && g.sternAus && g.wischen && g.halten && g.loslassen, JSON.stringify(g));
     check('Nach unten = „Will ich nicht mehr sehen“: kommt nicht mehr dran (gespeichert unter nmd:weg), „Rückgängig“ holt es sofort zurück, vom unteren Rand zählt es nicht, Liste unter „Mehr“ holt es zurück, Sichern/Laden nimmt die Liste mit', g.weg && g.rueck && g.randNichts && g.liste && g.listeZurueck && g.sichern && g.laden, JSON.stringify(g));
-    check('Zwei Finger tippen = Mix (genau einmal), drei Finger und Zwei-Finger-Wischen lösen keinen Mix aus; Mix auf einem eigenen Visual zeigt einen Hinweis und das Bild bleibt', g.mixZwei && g.mixDrei && g.mixWisch && g.eigenMix, JSON.stringify(g));
+    check('Zwei Finger tippen = Mix (genau einmal), drei Finger und Zwei-Finger-Wischen lösen keinen Mix aus; Mix auf einem eigenen Visual bringt eine neue Variante (Build 129)', g.mixZwei && g.mixDrei && g.mixWisch && g.eigenMix, JSON.stringify(g));
     // 3: zwei Finger wischen = Track wechseln
     await page.setInputFiles('#fileIn', T.slice(0, 2));
     await page.waitForFunction(() => queue.length === 2 && qi === 0, null, { timeout: 30000 });
@@ -921,6 +929,33 @@ const SZ = {
       console.log('       (Info) Eigene Visuals (echte Kopie): ' + JSON.stringify(e));
       const N = Object.keys(e).filter(k => k !== 'logFehler');
       check('Eigene Visuals (Build 126/127): alle 13 laufen als echte Presets in der Butterchurn-Kopie (Warp- und Comp-Shader verlinkt, kein GL-Fehler), das Bild ist nicht schwarz (Helligkeit über 5 oder ein Punkt über 40; das Sternenfeld zeigt ohne Hats-Treffer nur seinen dunklen Nebel)', N.length === 13 && N.every(k => e[k].ok && e[k].link && e[k].glFehler === 0 && !e[k].kaputt && (e[k].max > 40 || e[k].hell > 5)) && e.logFehler === 0, JSON.stringify(e)); }
+    { const L = await page.evaluate(async () => {   // Build 129: Variante + Linse für jedes eigene Visual im Prüf-Visualizer (128×72) der echten Kopie
+        const V = (typeof mixViz === 'function') && mixViz(); if (!V) return { keinViz: true }; const g0 = guard; guard = false;   // Leistungs-Wächter aus: in der Sandbox ist alles „zu langsam“
+        const gl = V.renderer.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, x0 = LOG.filter(l => l.k === 'x').length;
+        const shot = p => { V.loadPreset(p, 0); const link = [V.renderer.warpShader, V.renderer.compShader].every(sh => sh && sh.shaderProgram && gl.getProgramParameter(sh.shaderProgram, gl.LINK_STATUS));
+          for (let i = 0; i < 40; i++) V.render({ elapsedTime: 1 / 30 }); const u = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u);
+          let s = 0; for (let i = 0; i < u.length; i += 4) s += 0.299 * u[i] + 0.587 * u[i + 1] + 0.114 * u[i + 2]; return { link, err: gl.getError(), luma: s / (W * H), px: u }; };
+        const diff = (a, b) => { let d = 0; for (let i = 0; i < a.length; i += 4) d += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return d / (3 * a.length / 4); };
+        const out = { n: 0, linkFehler: [], dunkel: [], gleich: [], variante: {}, hell: {}, nichtGebaut: [] }, seed = [0.21, 0.67, 0.43, 0.88], seed2 = [0.83, 0.12, 0.71, 0.34];
+        for (const n of EIGEN) {
+          const b = shot(lensBuild({ base: n, lens: '', seed })), b2 = shot(lensBuild({ base: n, lens: '', seed: seed2 }));
+          out.variante[n.replace(/^Eigen · /, '')] = +diff(b.px, b2.px).toFixed(1); out.hell[n.replace(/^Eigen · /, '')] = +b.luma.toFixed(1);
+          for (const k of Object.keys(LENS)) {
+            const p = lensBuild({ base: n, lens: k, seed }); if (!p) { out.nichtGebaut.push(n + '+' + k); continue; }
+            const r = shot(p); out.n++;
+            if (!r.link || r.err) out.linkFehler.push(n + '+' + k);
+            if (b.luma >= 3 && r.luma < 0.5 * b.luma) out.dunkel.push(n + '+' + k + ' ' + r.luma.toFixed(1) + '/' + b.luma.toFixed(1));
+            if (diff(r.px, b.px) < 2) out.gleich.push(n + '+' + k + (b.luma < 4 ? ' (Bild noch dunkel)' : ''));
+            await new Promise(res => requestAnimationFrame(res));
+          }
+        }
+        // Schutz beim Drücken: auf dem Mandala (rund) darf keine Linse durchgehen, die das Bild nicht sichtbar ändert
+        out.schutz = []; for (let i = 0; i < 4; i++) { const m = await lensFind('Eigen · Driving · Phrasen-Mandala', '', 'Test'); out.schutz.push(m.c.nurVariante ? 'nur Variante' : m.r.lens + ' ' + m.c.diff); }
+        out.schutzOk = out.schutz.every(x => x === 'nur Variante' || +x.split(' ').pop() >= 2);
+        guard = g0; out.logFehler = LOG.filter(l => l.k === 'x').length - x0; out.logText = LOG.filter(l => l.k === 'x').slice(x0).map(l => l.x); return out; });
+      console.log('       (Info) Linsen (echte Kopie, 128×72): ' + JSON.stringify(L));
+      check('Variante + Linse (Build 129): alle 13 eigenen Visuals mit allen 8 Linsen bauen, übersetzen und verlinken (kein GL-Fehler); höchstens jede zehnte Linse macht das Bild deutlich dunkler oder ändert es kaum, und die Prüfung beim Drücken lässt so eine nicht durch (Phrasen-Mandala, viermal)',
+        !L.keinViz && L.n === 104 && !L.nichtGebaut.length && !L.linkFehler.length && L.dunkel.length + L.gleich.filter(x => !/dunkel/.test(x)).length <= 10 && L.schutzOk && L.logFehler === 0, JSON.stringify(L)); }
     await close();
   },
   async manifest() {

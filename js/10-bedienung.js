@@ -61,7 +61,7 @@ function ownBuild() {
     for (const n of list) {
       const b = document.createElement('button'); b.type = 'button'; b.dataset.n = n;
       b.textContent = (favs.has(n) ? '★ ' : '') + n.replace(/^Eigen · |^Acid · /, '');
-      if (n === curName) b.classList.add('hot');
+      if (n === curName || (presets[curName] && presets[curName].lens && presets[curName].lens.base === n)) b.classList.add('hot');   // Build 129: auch Varianten mit Linse
       if (WEG.has(n)) { b.classList.add('weg'); b.title = 'Ausgeblendet: kommt nicht von selbst, antippen zeigt es trotzdem'; }
       b.addEventListener('click', () => ownShow(n));
       box.appendChild(b);
@@ -125,6 +125,11 @@ function wegBack(n, show) {
 }
 function wegNow() {
   const n = curName; if (!n || !viz) return false;
+  if (presets[n] && presets[n].lens) {                                // Build 129: Variante mit Linse kommt ohnehin nicht von selbst wieder
+    erg('Ausgeblendet: Variante „' + n + '“ (kommt nicht wieder, das Visual selbst bleibt)');
+    gfxPop('ban', 'ban'); nextPreset(1.0, undefined, false, 'v'); toast('Diese Variante kommt nicht wieder');
+    return true;
+  }
   if (n.indexOf('Mix · ') === 0) {
     const p = presets[n]; if (p && p.mix && window.__MIX) __MIX.bad.add(p.mix.a + '|' + p.mix.b);
     erg('Ausgeblendet: Mix „' + n + '“ (diese Paarung kommt in dieser Sitzung nicht wieder)');
