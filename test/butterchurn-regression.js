@@ -83,9 +83,11 @@ const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); con
 
 // Build 129: Zeitgrenze pro Lauf. Auf GitHub blieb der Vergleich am 18.11. zweimal nach ca. 350 von 367 Presets stehen (Lauf 44267470246: 24 Minuten
 // bis zum Abbruch nach 40 Minuten; Lauf 44272696473: page.goto lief nach 30 s ab). Ohne Grenze hängt der ganze Job und niemand sieht, an welchem Preset.
-// Jetzt: page.goto bis 60 s, das Zeichnen bis RUN_MS; läuft eins ab, wird die Seite geschlossen und das Preset ein zweites Mal gezeichnet.
-// Hängt es auch dann, kommt { hang: true } zurück (mit Namen im Protokoll); ausgewertet wird das unten wie ein Unterschied.
-const RUN_MS = +process.env.RUN_MS || 120000, slowRuns = [];
+// Jetzt: page.goto bis 60 s, das Zeichnen bis RUN_MS (90 s); läuft eins ab, wird die Seite geschlossen und das Preset ein zweites Mal gezeichnet.
+// Hängt es auch dann, kommt { hang: true } zurück (mit Namen im Protokoll). Hängt das ORIGINAL, ist nichts vergleichbar (zählt wie „Original wackelt“,
+// höchstens 2 %); hängt nur die KOPIE, ist es ein Unterschied. Gemessen in der Sandbox am 18.11.: „Telek - City Helix Lattice“, „Telek - Sine Wave“,
+// „Unchained - All You Can Eat“ und „Unchained - Fuzzy Sciences“ brauchten mit Original UND Kopie über 120 s (vier gleichzeitig, Software-Grafik).
+const RUN_MS = +process.env.RUN_MS || 90000, slowRuns = [];
 async function runOne(browser, lib, name, extra) {
   for (let tryNo = 1; tryNo <= 2; tryNo++) {
     const ctx = await browser.newContext(), t = Date.now(); let timer = 0;
@@ -178,11 +180,12 @@ async function probe(browser) {
   const worker = async () => {
     while (idx < names.length) {
       const n = names[idx++];
-      const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'copy', n, EXTRA);
+      const a = await runOne(browser, 'orig', n);
+      if (a.hang) { wackel.push({ n, orig: [a.h, a.h], kopie: ['nicht gezeichnet', ''] }); if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)'); continue; }   // Original schafft es nicht: nichts zu vergleichen, Kopie spart sich die Zeit
+      const b = await runOne(browser, 'copy', n, EXTRA);
       seen.add(a.h[1]);
-      if (a.hang || b.hang) {                                         // Build 129: hängt das Original, ist nichts vergleichbar; hängt nur die Kopie, ist das ein Fehler
-        if (a.hang) wackel.push({ n, orig: [a.h, a.h], kopie: b.h }); else diff.push({ n, orig: a.h, kopie: b.h, kopie2: b.h, eo: a.err, ek: 'hängt' });
-      } else if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
+      if (b.hang) diff.push({ n, orig: a.h, kopie: b.h, kopie2: b.h, eo: a.err, ek: 'hängt' });   // Build 129: hängt nur die Kopie, ist das ein Fehler
+      else if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
       else {
         // Abweichung: zeichnet das ORIGINAL dieses Preset überhaupt jedes Mal gleich? Wenn nicht (gesehen bei „Magellan's Nebula“: Original jedes Mal anders,
         // Kopie immer gleich), lässt sich nichts vergleichen. Dann zählt es als „Original wackelt“, nicht als Fehler der Kopie.

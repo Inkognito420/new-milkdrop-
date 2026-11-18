@@ -921,7 +921,10 @@ const SZ = {
     { const e = await page.evaluate(() => {   // Build 126: Emmos eigene Visuals laufen als echte Presets in der Kopie (Shader übersetzt und verlinkt, Bild nicht schwarz)
         const R = viz.renderer, gl = R.gl, out = {}, x0 = LOG.filter(l => l.k === 'x').length; auto = false;
         for (const n of EIGEN) {
-          const ok = loadByName(n, 0), link = [R.warpShader, R.compShader].every(sh => sh && sh.shaderProgram && gl.getProgramParameter(sh.shaderProgram, gl.LINK_STATUS));
+          // Build 129: gemessen wird eine feste Variante (gleiche Zufallswerte wie im Linsen-Test). Mit jedesmal neuen Zufallswerten war der Rumble-Nebel
+          // auf GitHub einmal fast schwarz (Lauf 44270900146: Helligkeit 4,2, hellster Punkt 29), sonst 10-25: manche Varianten sind sehr dunkel.
+          const ok = loadByName(n, 0); viz.loadPreset(lensBuild({ base: n, lens: '', seed: [0.21, 0.67, 0.43, 0.88] }), 0);
+          const link = [R.warpShader, R.compShader].every(sh => sh && sh.shaderProgram && gl.getProgramParameter(sh.shaderProgram, gl.LINK_STATUS));
           for (let i = 0; i < 40; i++) viz.render();
           const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, u = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, u);
           let mx = 0, s = 0; for (let i = 0; i < u.length; i += 4) { const y = 0.299 * u[i] + 0.587 * u[i + 1] + 0.114 * u[i + 2]; s += y; if (y > mx) mx = y; }
