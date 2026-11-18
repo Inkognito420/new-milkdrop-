@@ -72,6 +72,9 @@ button.warn{background:#7a1f1f;border-color:#c0392b;color:#fff}
 .chk input{accent-color:var(--acid);width:20px;height:20px;flex:none}
 #mood{font-size:12px;color:var(--fg)}
 #fine{max-width:900px}
+#ownList{display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--line);max-width:900px}
+#ownList .gl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+#ownList button{min-height:34px;padding:7px 10px;font-size:11px}
 .card{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(198,244,50,.07);font-size:12px;line-height:1.45}
 .card.hand{background:rgba(255,179,71,.09);border-color:rgba(255,179,71,.35)}
 .card #autoTxt{flex:1 1 220px;min-width:0}

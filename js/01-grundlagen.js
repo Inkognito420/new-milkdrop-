@@ -107,8 +107,8 @@ function snapshot() {
   } catch (e) { return 'Status nicht lesbar: ' + e.message; }
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
-const BUILD_NO = 126;
-const BUILD = 'Build ' + BUILD_NO + ' · Aufgeräumt: keine Werkstatt mehr, eigene Visuals sind Butterchurn-Presets, Bild ohne Drehen und Funken, Bildgröße bei Höhe 0';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD_NO = 127;
+const BUILD = 'Build ' + BUILD_NO + ' · Sechs neue eigene Presets: Säureschlange, Kick-Schockwelle, Hats-Sternenfeld, Pad-Nebel, Phrasen-Mandala, Klangkörper; Knopf „Eigene“ zum gezielten Anschauen; Lichtwand ohne Flackern';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

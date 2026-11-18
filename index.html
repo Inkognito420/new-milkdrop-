@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <!-- Build 125: die Schriften dürfen den Start nicht aufhalten (media=print lädt nebenher; antwortet Google nicht, startet die App trotzdem mit den Ersatzschriften aus style.css) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Azeret+Mono:wght@400;600&display=swap" media="print" onload="this.media='all'">
-<script>var B=126;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
+<script>var B=127;document.write('<link rel="stylesheet" href="style.css?b='+B+'"><script src="app-files.js?b='+B+'"><\/script>')</script>
 </head>
 <body>
 
@@ -57,12 +57,14 @@
     <button id="prev" type="button" aria-label="Vorheriges Preset">◀</button>
     <button id="next" type="button" aria-label="Nächstes Preset">▶</button>
     <button id="fav" type="button" aria-pressed="false" aria-label="Preset als Favorit markieren" title="Favorit: kommt öfter dran">☆</button>
+    <button id="ownBtn" type="button" aria-expanded="false" aria-controls="ownList" title="Deine selbstgebauten Visuals: antippen = anschauen, es bleibt stehen">Eigene</button>
     <button id="mixBtn" type="button" hidden aria-label="Zwei Favoriten zu einem neuen Bild kreuzen" title="Mix: kreuzt zwei Favoriten zu einem neuen Bild (Stern = behalten)">Mix</button>
     <button id="auto" type="button" class="hot" hidden>Auto</button>
     <button id="guard" type="button" class="hot" title="Überspringt Presets, die keine 60 fps schaffen" hidden>Wächter</button>
     <button id="fineBtn" type="button" aria-expanded="false" aria-controls="fine">Mehr</button>
     <div id="preset">–</div>
   </div>
+  <div id="ownList" hidden></div>
   <div id="fine" hidden>
     <div id="mood">Stimmung: wird beim ersten Track ermittelt</div>
     <div class="row">

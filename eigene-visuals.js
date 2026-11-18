@@ -1,4 +1,4 @@
-// Emmos sieben eigene Visuals als echte Butterchurn-Presets (Build 126).
+// Emmos eigene Visuals als echte Butterchurn-Presets: die sieben früheren eigenen Shader (Build 126) und fünf neue (Build 127).
 // Bis Build 125 liefen sie als „eigene Shader“ auf einer zweiten Zeichenfläche in halber Auflösung (acid-shader.js, js/03).
 // Jetzt stehen sie in der normalen Preset-Liste: wischen, Stern, mixen, Lastbremse, Bild-Wächter wie bei jedem anderen Preset.
 // Die Namen sind dieselben wie vorher („Eigen · …“), damit gesetzte Sterne bleiben.
@@ -38,9 +38,10 @@ vec3 eiHsv(float h, float s, float v) { vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.
 float eiHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float eiNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return textureLod(sampler_noise_lq, (i + f + 0.5) / 256.0, 0.0).r; }
 vec2 eiUvc() { return (gl_FragCoord.xy - 0.5 * u_res) / u_res.y; }
+float eiHash2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 `;
   const BLACK_WARP = 'shader_body { ret = vec3(0.0); }';   // Bild entsteht ganz im Comp: der Warp-Durchgang schreibt nur Schwarz (billig)
-  const mk = (comp, warp) => ({ baseVals: Object.assign({}, BASE), init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', shapes: none(4), waves: noWave(4),
+  const mk = (comp, warp, eq) => ({ baseVals: Object.assign({}, BASE), init_eqs_str: eq ? eq.init : '', frame_eqs_str: eq ? eq.frame : '', pixel_eqs_str: '', shapes: none(4), waves: noWave(4),
     warp: warp || BLACK_WARP, comp });
   const V = {};
 
@@ -93,10 +94,10 @@ shader_body {
   vec2 cid = vec2(col_i, floor(y * segN));
   float tx;
   if (pat < 0.5) tx = 0.5 + 0.5 * sin(q.x * 13.0 + u_time * 1.4 + 3.0 * sin(q.y * 9.0 - u_time * 0.9) + 4.0 * u_mid);
-  else if (pat < 1.5) tx = smoothstep(0.35, 0.65, fract((cell.x + cell.y) * 1.5 - u_time * (0.8 + 2.2 * u_treb)));
+  else if (pat < 1.5) tx = smoothstep(0.35, 0.65, fract((cell.x + cell.y) * 1.5 - q1));
   else if (pat < 2.5) tx = smoothstep(0.18, 0.0, abs(length(cell - 0.5) - 0.12 - 0.3 * u_beat));
   else if (pat < 3.5) tx = 0.25 + 0.75 * step(1.0 - 0.15 - 0.5 * u_treb, eiHash(cid + floor(u_time * 3.0)));
-  else tx = eiNoise(cid * 0.6 + cell * 1.5 + vec2(0.0, u_time * (0.4 + 1.2 * u_bass)));
+  else tx = eiNoise(cid * 0.6 + cell * 1.5 + vec2(0.0, q2));
   float h = u_hue + band * (0.1 + 0.7 * u_w.x) + y * 0.1;
   float sat = 0.55 + 0.35 * u_w.w;
   float glow = exp(-abs(y - hgt) * 18.0) * 0.6;
@@ -105,7 +106,7 @@ shader_body {
   c *= 1.0 + 0.4 * u_bar * u_flash;
   c *= 0.85 + 0.3 * u_build;
   ret = c;
-}`);
+}`, null, { init: 'a.tp=0;a.p1=0;a.p2=0;a.q1=0;a.q2=0;', frame: 'a.dt=Math.min(.1,Math.max(0,a.time-a.tp));a.tp=a.time;a.p1+=a.dt*(.8+2.2*Math.min(1,Math.max(0,a.hats_env)));a.p2+=a.dt*(.4+1.2*Math.min(1,Math.max(0,a.kick_env)));a.q1=a.p1;a.q2=a.p2;' });
 
   /* ---------- DRIVING: hypnotisch, Tunnel, Sog (kaum Blitze, Pulsieren) ---------- */
 
@@ -238,12 +239,228 @@ shader_body {
   ret = min(prev + ink, 1.0);
 }`);
 
+  /* ---------- NEU (Build 127): fünf Presets, die die Klangrollen einzeln hören ---------- */
+  // Wo ein Tempo von der Musik abhängt, wird die Phase in den Frame-Gleichungen aufsummiert (q-Werte): „time × Tempo“ würde bei jeder
+  // Tempo-Änderung springen, weil time seit dem Start der App läuft (nach 30 Minuten 1800 s).
+  const DT = 'a.dt=Math.min(.1,Math.max(0,a.time-a.tp));a.tp=a.time;';
+  const cl = v => 'Math.min(1,Math.max(0,' + v + '))';
+
+  // 8) 303-Säureschlange: eine leuchtende Linie windet sich übers Bild. Öffnet sich der 303-Filter (acid_cutoff), wird sie wilder,
+  //    bei hoher Resonanz (acid_reso) bekommt sie Zacken und glüht; schnelle Filterfahrten (acid_squelch) treiben sie an. Spur im Warp.
+  V['Eigen · Acid · Säureschlange'] = mk(HEAD + `
+shader_body {
+  vec3 c = texture(sampler_main, uv).rgb;
+  vec3 g = 0.7 * (texture(sampler_blur1, uv).xyz * scale1 + bias1) + 0.5 * (texture(sampler_blur2, uv).xyz * scale2 + bias2);
+  vec3 col = c + g * (0.7 + 0.8 * clamp(acid_reso, 0.0, 1.0));
+  col *= 1.0 + 0.3 * u_bar;
+  ret = col / (1.0 + 0.3 * col);
+}`, HEAD + `
+shader_body {
+  float asp = texsize.x / texsize.y;
+  vec2 p = (uv_orig - 0.5) * vec2(asp, 1.0);
+  float sq = clamp(acid_squelch, 0.0, 1.0), co = clamp(acid_cutoff, 0.0, 1.0), rs = clamp(acid_reso, 0.0, 1.0);
+  float rt = (0.002 + 0.012 * sq) * (u_v.w < 0.5 ? -1.0 : 1.0);
+  float cs = cos(rt), sn = sin(rt);
+  vec2 q = mat2(cs, -sn, sn, cs) * p / (1.006 + 0.012 * u_bass);
+  vec3 prev = texture(sampler_main, q / vec2(asp, 1.0) + 0.5).rgb;
+  prev = max(prev * (0.87 + 0.07 * u_mid) - 1.0 / 255.0, 0.0);
+  float f1 = 2.0 + 6.0 * co + 3.0 * u_v.x;
+  float ph = q1 + u_v.y * 6.2831853;
+  float x = p.x;
+  float yS = 0.28 * (0.3 + 0.7 * u_mid) * sin(x * f1 + ph) + 0.08 * sin(x * f1 * 2.3 - ph * 1.7 + u_v.z * 6.2831853);
+  yS += rs * 0.06 * (abs(fract(x * (10.0 + 30.0 * co) + time * 2.0) - 0.5) * 2.0 - 0.5);
+  float w = 0.004 + 0.006 * u_mid + 0.004 * rs;
+  float line = smoothstep(w, 0.0, abs(p.y - yS));
+  vec3 ink = eiHsv(u_hue + 0.25 + 0.15 * co + 0.1 * x, 0.9 - 0.4 * rs, 1.0) * line * (0.6 + 0.8 * u_mid + 0.6 * rs);
+  ret = min(prev + ink, 1.0);
+}`, { init: 'a.tp=0;a.ph=0;a.q1=0;', frame: DT + 'a.ph+=a.dt*(.6+2.5*' + cl('a.acid_squelch') + ');a.q1=a.ph;' });
+
+  // 9) Kick-Schockwelle: jeder Kick schickt eine Welle durch ein Gitter, die Spur bleibt kurz stehen (Warp).
+  //    Im Drop (ak_section 3) ist die Welle stärker, je nachdem, wie heftig der Drop gemessen wurde (ak_drop_strength).
+  V['Eigen · Peak · Kick-Schockwelle'] = mk(HEAD + `
+shader_body {
+  vec3 c = texture(sampler_main, uv).rgb;
+  vec3 g = texture(sampler_blur1, uv).xyz * scale1 + bias1;
+  vec3 col = c + g * 0.6;
+  col *= 1.0 + 0.4 * u_bar;
+  ret = col / (1.0 + 0.2 * col);
+}`, HEAD + `
+shader_body {
+  float asp = texsize.x / texsize.y;
+  vec2 p = (uv_orig - 0.5) * vec2(asp, 1.0);
+  vec3 prev = max(texture(sampler_main, uv_orig).rgb * 0.74 - 2.0 / 255.0, 0.0);
+  float drop = step(2.5, ak_section) * clamp(ak_drop_strength, 0.0, 1.0);
+  float r = length(p);
+  float ringR = (1.0 - u_beat) * 0.95;
+  float wave = exp(-pow((r - ringR) * 15.0, 2.0)) * u_beat;
+  vec2 dir = p / max(r, 1e-4);
+  vec2 gp = p + dir * wave * (0.12 + 0.2 * drop);
+  float cells = 8.0 + 8.0 * u_v.x;
+  vec2 gg = abs(fract(gp * cells + vec2(time * 0.03, 0.0)) - 0.5);
+  float lw = 0.035 + 0.05 * wave;
+  float grid = max(smoothstep(lw, 0.0, gg.x), smoothstep(lw, 0.0, gg.y));
+  vec3 base = eiHsv(u_hue + 0.55 + 0.1 * wave, 0.65, 1.0);
+  float pe = clamp(pads_env, 0.0, 1.0);
+  vec3 ink = base * grid * (0.05 + 0.03 * pe * (0.5 + 0.5 * sin(time * 1.3)) + 0.9 * wave + 0.03 * u_bass);
+  ink += eiHsv(u_hue + 0.05, 0.35, 1.0) * wave * (0.25 + 0.6 * drop);
+  ink += base * (0.035 + 0.02 * pe) * exp(-r * 2.2);
+  ink += vec3(0.03) * (0.5 * grid + exp(-r * 1.8));            // neutrales Grundlicht: auch dunkle Farbvarianten bleiben im Break sichtbar (Bild-Wächter)
+  ret = min(prev + ink, 1.0);
+}`);
+
+  // 10) Hats-Sternenfeld links/rechts: Hi-Hats lassen Sterne aufblitzen (hats_hit), schnelle Hats geben mehr (hats_density),
+  //     springen die Hats im Stereo hin und her (ak_pan), blitzen die Sterne auf der Seite, wo sie klingen. Sterne treiben nach außen (Warp).
+  V['Eigen · Peak · Hats-Sternenfeld'] = mk(HEAD + `
+shader_body {
+  vec3 c = texture(sampler_main, uv).rgb;
+  vec3 g = texture(sampler_blur1, uv).xyz * scale1 + bias1;
+  vec2 p = (uv - 0.5) * vec2(texsize.x / texsize.y, 1.0);
+  float neb = eiNoise(p * 3.0 + time * 0.02) * eiNoise(p * 7.0 - time * 0.03);
+  vec3 bg = eiHsv(u_hue + 0.62, 0.7, 1.0) * (0.05 + 0.12 * neb + 0.05 * u_bass * exp(-length(p) * 2.0));   // ohne Hats ein dunkler Nebel, kein leeres Schwarz
+  vec3 col = c + g * 0.8 + bg;
+  ret = col / (1.0 + 0.25 * col);
+}`, HEAD + `
+shader_body {
+  float asp = texsize.x / texsize.y;
+  vec2 p = (uv_orig - 0.5) * vec2(asp, 1.0);
+  vec2 q = p / (1.010 + 0.015 * u_bass);
+  vec3 prev = max(texture(sampler_main, q / vec2(asp, 1.0) + 0.5).rgb * 0.90 - 1.0 / 255.0, 0.0);
+  vec2 n = vec2(48.0, 27.0);
+  vec2 cell = floor(uv_orig * n), f = fract(uv_orig * n);
+  float ep = floor(time * 15.0);
+  float side = clamp(1.0 + 1.6 * ak_pan * (uv_orig.x * 2.0 - 1.0), 0.0, 2.6);
+  float pr = (0.004 + 0.05 * clamp(hats_density, 0.0, 1.0)) * smoothstep(0.05, 0.6, clamp(hats_hit, 0.0, 1.0)) * side;
+  float h = eiHash2(cell + vec2(ep * 1.37, ep * 0.71));
+  vec2 pos = vec2(eiHash2(cell * 1.7 + ep), eiHash2(cell * 2.3 - ep)) * 0.7 + 0.15;
+  float star = (pr > h ? 1.0 : 0.0) * smoothstep(0.22, 0.0, length(f - pos));
+  vec3 ink = eiHsv(u_hue + 0.5 + 0.2 * h, 0.3, 1.0) * star * 1.4;
+  ret = min(prev + ink, 1.0);
+}`);
+
+  // 11) Pad-Nebel: weiche Farbflächen, die im Break aufblühen (pads_env, ak_section 1). Tiefe Pads = dunkle, satte Farben,
+  //     hohe Pads = helle (pads_pitch). Adern im Nebel halten den Kontrast (sonst hielte der Bild-Wächter ihn für eine flache Fläche).
+  V['Eigen · Driving · Pad-Nebel'] = mk(HEAD + `
+float eiFbm5(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * eiNoise(p); p = p * 2.1 + vec2(11.3, 7.7); a *= 0.5; } return s; }
+shader_body {
+  vec2 p = eiUvc() * (1.2 + 0.8 * u_v.x);
+  float t = time * (0.03 + 0.04 * u_v.y);
+  float pe = clamp(pads_env, 0.0, 1.0), pitch = clamp(pads_pitch, 0.0, 1.0);
+  float brk = 1.0 - min(1.0, abs(ak_section - 1.0));
+  float bloom = 0.4 + 0.6 * pe + 0.35 * brk * pe;
+  vec2 w = vec2(eiFbm5(p + t), eiFbm5(p - t + 3.7));
+  float f = eiFbm5(p * 1.3 + 2.5 * w + vec2(t * 2.0, 0.0));
+  vec3 dunkel = eiHsv(u_hue * 0.3 + 0.72, 0.85, 0.6), hell = eiHsv(u_hue * 0.3 + 0.48, 0.35, 1.0);
+  vec3 farbe = mix(dunkel, hell, pitch);
+  float adern = smoothstep(0.42, 0.72, f);
+  vec3 col = farbe * (0.2 + 0.8 * adern) * bloom;
+  col += vec3(0.07) * f;                                     // neutraler Schimmer der Struktur: auch dunkle Varianten (Violett/Blau) bleiben sichtbar
+  col += mix(dunkel, hell, 1.0 - pitch) * pow(max(f - 0.55, 0.0) * 2.2, 3.0) * 0.7 * bloom;
+  col *= 0.9 + 0.15 * u_bass;
+  ret = col * clamp(1.0 - 0.6 * dot(eiUvc(), eiUvc()), 0.0, 1.0);
+}`);
+
+  // 12) Phrasen-Mandala: macht die 16-Takt-Phrase sichtbar. Mit jedem Takt wächst ein neuer Ring aus Blütenblättern dazu (ak_phrase),
+  //     die Ringe drehen abwechselnd in Gegenrichtung; am Phrasenende leuchtet das Mandala auf und beginnt mit der nächsten Phrase neu.
+  //     Im Drop steht es voll da und pulsiert mit dem Kick. (Build 127: ersetzt den Phrasen-Tunnel, der Emmos Sog-Tunnel zu ähnlich war.)
+  V['Eigen · Driving · Phrasen-Mandala'] = mk(HEAD + `
+shader_body {
+  vec2 p = eiUvc();
+  float r = length(p), a = atan(p.y, p.x);
+  float ph = clamp(ak_phrase, 0.0, 0.999) * 16.0;
+  float drop = step(2.5, ak_section);
+  float nb = mix(floor(ph), 15.0, drop), fr = mix(fract(ph), 1.0, drop);
+  float rw = 0.042, k = floor((r - 0.04) / rw), inR = fract((r - 0.04) / rw);
+  vec3 col = vec3(0.0);
+  if (k >= 0.0 && k <= nb && k < 16.0) {
+    float grow = k < nb ? 1.0 : smoothstep(0.0, 1.0, fr);
+    float petals = 4.0 + 2.0 * mod(k + floor(u_v.x * 4.0), 5.0);
+    float dir = mod(k, 2.0) < 0.5 ? 1.0 : -1.0;
+    float pa = a * petals + dir * time * (0.15 + 0.1 * u_v.y) + k * 0.7;
+    float band = smoothstep(0.0, 0.15, inR) * smoothstep(1.0, 0.8, inR);
+    float petal = pow(0.5 + 0.5 * cos(pa), 3.0 - 1.5 * grow) * band * grow;
+    float edge = smoothstep(0.08, 0.0, abs(inR - 0.04)) * grow;
+    col = eiHsv(u_hue + k * 0.045 + 0.1 * u_mid, 0.75, 1.0) * (petal * (0.7 + 0.5 * u_beat * (0.6 + 0.4 * drop)) + 0.25 * edge);
+  } else if (k >= 0.0 && k < 16.0) {
+    col = eiHsv(u_hue + k * 0.045, 0.5, 1.0) * 0.16 * smoothstep(0.1, 0.0, abs(inR - 0.04));   // die noch kommenden Ringe als feine Umrisse
+  }
+  float ende = smoothstep(14.5, 16.0, ph) * (1.0 - drop);
+  col *= 1.0 + 1.5 * ende;
+  col += eiHsv(u_hue + 0.1, 0.25, 1.0) * ende * exp(-r * 4.0);
+  col += eiHsv(u_hue + 0.5, 0.6, 1.0) * (0.11 + 0.05 * u_bass) * exp(-r * 1.3);
+  ret = col;
+}`);
+
+  // 13) Klangkörper (Build 127, Emmo: „eins, das alle übertrifft in Bezug auf die Reaktion“): jede Klangrolle und jede Stelle im Track hat ihre eigene Ebene.
+  //     Kick = pumpendes Herz im Kern und Ringe nach außen, Wiedereinsatz des Kicks (kick_entry) = großer heller Ring.
+  //     303 = Faden um den Kern: Filter (acid_cutoff) = Ausschlag, Resonanz (acid_reso) = Zacken und Glühen, Filterfahrt (acid_squelch) = Tempo,
+  //           Einsatz (acid_entry) = Farbsprung. Hats = Funken auf der Seite, wo sie klingen (ak_pan), mehr bei dichten Hats, längere Spur beim Ausklingen.
+  //     Pads = Polarlicht im Hintergrund, Tonhöhe = Farbe, Einsatz = Aufblühen. Break = der Raum atmet langsam, Aufbau = Wirbel und Farbe raus,
+  //     je stärker der gemessene Aufbau, Drop = Sog nach außen nach der Drop-Stärke. Phrase = Fortschrittsring am Rand, Klangwechsel (ak_novelty) = kurzer Glitch.
+  V['Eigen · Peak · Klangkörper'] = mk(HEAD + `
+shader_body {
+  vec2 p = (uv - 0.5) * vec2(texsize.x / texsize.y, 1.0);
+  float r = length(p);
+  float drop = step(2.5, ak_section), brk = 1.0 - min(1.0, abs(ak_section - 1.0)), bld = clamp(ak_build_strength, 0.0, 1.0);
+  float pe = clamp(pads_env, 0.0, 1.0), pp = clamp(pads_pitch, 0.0, 1.0);
+  float cx = p.x * 3.0 + 0.4 * sin(p.y * 2.5 + q3 * 2.0);                                        // Polarlicht: senkrechte Vorhänge, die sich wiegen
+  float au = smoothstep(0.3, 0.9, eiNoise(vec2(cx + q3, 0.5))) * (0.6 + 0.4 * eiNoise(vec2(p.x * 7.0 - q3, p.y * 2.0))) * smoothstep(0.55, -0.35, p.y);
+  vec3 aur = mix(eiHsv(u_hue * 0.3 + 0.72, 0.8, 1.0), eiHsv(u_hue * 0.3 + 0.45, 0.4, 1.0), pp) * au * (0.1 + 0.4 * pe + 0.3 * clamp(q6, 0.0, 1.0)) * (1.0 + brk);
+  float nv = smoothstep(0.5, 1.0, clamp(q7, 0.0, 1.0));
+  vec2 u2 = uv + vec2((eiHash2(vec2(floor(uv.y * 24.0), floor(time * 8.0))) - 0.5) * 0.04 * nv, 0.0);
+  vec3 fb = texture(sampler_main, u2).rgb;
+  vec3 gw = texture(sampler_blur1, u2).xyz * scale1 + bias1;
+  float core = exp(-r * (9.0 + 6.0 * bld - 3.0 * drop * clamp(ak_drop_strength, 0.0, 1.0)) / (0.6 + 0.6 * u_bass));
+  vec3 heart = eiHsv(u_hue + 0.02 + 0.05 * u_beat, 0.7 - 0.5 * bld, 1.0) * core * (0.3 + 0.9 * u_bass);
+  vec3 col = aur + fb + gw * 0.7 + heart;
+  float aa = fract(atan(p.x, p.y) / 6.2831853 + 0.5);
+  col += eiHsv(u_hue + 0.15 + 0.3 * drop, 0.6, 1.0) * smoothstep(0.012, 0.0, abs(r - 0.47)) * step(aa, clamp(ak_phrase, 0.0, 1.0)) * 0.5;
+  float lum = dot(col, vec3(0.3, 0.59, 0.11));
+  col = mix(col, vec3(lum), 0.6 * bld * bld);
+  col *= 1.0 - 0.5 * bld * smoothstep(0.2, 0.7, r);
+  col *= 1.0 + 0.3 * u_bar + 0.15 * clamp(q4, 0.0, 1.0);
+  ret = col / (1.0 + 0.2 * col);
+}`, HEAD + `
+shader_body {
+  float asp = texsize.x / texsize.y;
+  vec2 p = (uv_orig - 0.5) * vec2(asp, 1.0);
+  float drop = step(2.5, ak_section), brk = 1.0 - min(1.0, abs(ak_section - 1.0)), bld = clamp(ak_build_strength, 0.0, 1.0);
+  float dS = clamp(ak_drop_strength, 0.0, 1.0) * drop;
+  float zm = 1.004 + 0.02 * u_bass * (0.5 + drop) + 0.03 * dS - 0.006 * brk;
+  float rt = 0.002 + 0.03 * bld * bld + 0.004 * drop;
+  float cs = cos(rt), sn = sin(rt);
+  vec2 q = mat2(cs, -sn, sn, cs) * p / zm;
+  vec3 prev = texture(sampler_main, q / vec2(asp, 1.0) + 0.5).rgb;
+  prev = max(prev * (0.86 + 0.07 * brk + 0.04 * clamp(hats_release, 0.0, 1.0)) - 1.5 / 255.0, 0.0);
+  float r = length(p), a = atan(p.y, p.x);
+  float co = clamp(acid_cutoff, 0.0, 1.0), rs = clamp(acid_reso, 0.0, 1.0), ae = u_mid;
+  float fr = 0.22 + 0.06 * sin(a * (3.0 + floor(6.0 * co)) + q2) * (0.4 + co)
+           + rs * 0.025 * (abs(fract(a / 6.2831853 * (4.0 + 8.0 * co) * 6.0 + q2) - 0.5) * 2.0 - 0.5);
+  float fil = smoothstep(0.004 + 0.008 * ae, 0.0, abs(r - fr)) * ae;
+  vec3 ink = eiHsv(u_hue + 0.28 + 0.2 * co + 0.15 * clamp(q5, 0.0, 1.0), 0.85 - 0.4 * rs, 1.0) * fil * (0.8 + 0.8 * rs);
+  vec2 n = vec2(56.0, 30.0), cell = floor(uv_orig * n), f = fract(uv_orig * n);
+  float ep = floor(time * 15.0);
+  float side = clamp(1.0 + 1.8 * ak_pan * (uv_orig.x * 2.0 - 1.0), 0.0, 2.8);
+  float pr = (0.003 + 0.04 * clamp(hats_density, 0.0, 1.0)) * smoothstep(0.05, 0.6, clamp(hats_hit, 0.0, 1.0)) * side;
+  float h = eiHash2(cell + vec2(ep * 1.37, ep * 0.71));
+  vec2 pos = vec2(eiHash2(cell * 1.7 + ep), eiHash2(cell * 2.3 - ep)) * 0.7 + 0.15;
+  ink += eiHsv(u_hue + 0.55, 0.25, 1.0) * (pr > h ? 1.0 : 0.0) * smoothstep(0.2, 0.0, length(f - pos)) * step(0.18, r) * 1.3;
+  float ringR = 0.15 + (1.0 - u_beat) * 0.8;
+  ink += eiHsv(u_hue + 0.02, 0.5, 1.0) * exp(-pow((r - ringR) * 18.0, 2.0)) * u_beat * (0.25 + 0.5 * drop);
+  float kb = clamp(q4, 0.0, 1.0);
+  ink += vec3(1.0, 0.9, 0.8) * exp(-pow((r - (0.2 + (1.0 - kb) * 1.0)) * 16.0, 2.0)) * kb * 0.35;   // Wiedereinsatz: heller Ring, ohne den Schirm weiß zu fluten
+  ret = min(prev + ink, 1.0);
+}`, { init: 'a.tp=0;a.ph=0;a.kb=0;a.ab=0;a.pb=0;a.au=0;a.q2=0;a.q3=0;a.q4=0;a.q5=0;a.q6=0;a.q7=0;',
+      frame: DT + 'a.ph+=a.dt*(.5+2.5*' + cl('a.acid_squelch') + ');a.au+=a.dt*(.04+.08*' + cl('a.pads_env') + ');'
+        + 'a.kb=Math.max(a.kb*Math.exp(-a.dt/.8),' + cl('a.kick_entry') + ');a.ab=Math.max(a.ab*Math.exp(-a.dt/.5),' + cl('a.acid_entry') + ');'
+        + 'a.pb=Math.max(a.pb*Math.exp(-a.dt/2),' + cl('a.pads_entry') + ');a.q2=a.ph;a.q3=a.au;a.q4=a.kb;a.q5=a.ab;a.q6=a.pb;a.q7=' + cl('a.ak_novelty') + ';' });
+
   // Worauf jedes Visual reagiert [Bass, Mitten, Höhen] für die Auswahl nach Klang (js/05 REACT). GESCHÄTZT aus den Formeln (Build 126), nicht gemessen:
   // die Visuals hören über die Klangrollen (Kick/303/Hats), die Vorab-Messung mit Testtönen deckt diesen Weg nicht ab.
   window.EIGENE_REACT = {
     'Eigen · Peak · Strahlen': [1.2, 0.4, 0.3], 'Eigen · Peak · Lichtwand': [0.9, 0.7, 0.7], 'Eigen · Driving · Sog-Tunnel': [0.8, 0.1, 0.05],
     'Eigen · Driving · Rumble-Nebel': [0.9, 0.4, 0.05], 'Eigen · Acid · 303-Welle': [0.3, 1.2, 0.1], 'Eigen · Acid · Säure-Kaleidoskop': [0.4, 1.0, 0.4],
-    'Eigen · Acid · Echo-Ring': [0.9, 0.6, 0.5]
+    'Eigen · Acid · Echo-Ring': [0.9, 0.6, 0.5], 'Eigen · Acid · Säureschlange': [0.3, 1.2, 0.1], 'Eigen · Peak · Kick-Schockwelle': [1.3, 0.2, 0.1],
+    'Eigen · Peak · Hats-Sternenfeld': [0.4, 0.2, 1.2], 'Eigen · Driving · Pad-Nebel': [0.2, 0.9, 0.2], 'Eigen · Driving · Phrasen-Mandala': [0.7, 0.4, 0.2], 'Eigen · Peak · Klangkörper': [1.1, 1.0, 1.0]
   };
   window.EIGENE_VISUALS = V;
   window.ACID_PRESETS = Object.assign(window.ACID_PRESETS || {}, V);

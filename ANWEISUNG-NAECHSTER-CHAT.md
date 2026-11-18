@@ -1,4 +1,4 @@
-# Anweisung für den nächsten Chat (Stand Build 126 auf Zweig `claude/where-we-left-off-s12p8z`; main = Build 125)
+# Anweisung für den nächsten Chat (Stand Build 127 auf Zweig `claude/where-we-left-off-s12p8z`; main = Build 126)
 
 Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neuen Chat einfach den Inhalt (ab „GRUNDREGEL“) einfügen oder sagen „Lies ANWEISUNG-NAECHSTER-CHAT.md im Repo new-milkdrop- und mach weiter“.
 
@@ -14,7 +14,11 @@ Diese Datei ist vollständig. Sie muss ohne weitere Infos funktionieren: im neue
   Seit Build 126 gibt es keine Werkstatt mehr (Emmos Entscheidung): die gespeicherten Werte bleiben unangetastet liegen (nicht lesen, nicht löschen, in Sicherungen mitnehmen), wirken aber nicht mehr.
 - Fremder Code nur mit passender Lizenz (MIT, BSD, Apache-2.0, ISC, zlib; Lizenztext und Herkunft in den Ordner, Eintrag im README unter „Lizenzen“). Kein GPL/AGPL/LGPL. Alles lokal im Repo, kein CDN.
 
-## AKTUELLER STAND (Build 126) – ZUERST LESEN, ältere Abschnitte unten sind Verlauf
+## AKTUELLER STAND (Build 127) – ZUERST LESEN, ältere Abschnitte unten sind Verlauf
+- **main = Build 126** (PR #25 gemerged, online, GitHub grün). **Build 127** (fünf neue eigene Presets, siehe README „Build 127“) liegt auf dem Arbeitszweig `claude/where-we-left-off-s12p8z`; PR und Merge nur mit Emmos OK.
+- **Build 127:** `eigene-visuals.js` hat jetzt 12 Presets (7 frühere Shader + Säureschlange, Kick-Schockwelle, Hats-Sternenfeld, Pad-Nebel, Phrasen-Mandala), `mk(comp, warp, {init, frame})` nimmt Frame-Gleichungen. Regel für neue Presets: musikabhängige Tempi in den Frame-Gleichungen aufsummieren und über q-Werte in den Shader geben (nie `time × Tempo`); Zufall pro Zelle mit `eiHash2` (der alte `eiHash` hat bei großen Zahlen nur 256 Stufen und liefert oft genau 0); jedes neue Preset mit nachgebauter Musik und dem 32×15-Maß des Bild-Wächters prüfen (Vorschau-Skript: siehe Chat, nachbaubar: Butterchurn-Kopie + eigene-visuals.js, setExtraVars je Bild, 32×15-Helligkeit/Kontrast, „leer“ = unter 8 und Kontrast unter 6). Emmo hat die Vorschau als Bild bekommen; ob alle fünf bleiben, entscheidet er. Der „Phrasen-Tunnel“ war Emmos Sog-Tunnel zu ähnlich und ist durch das **Phrasen-Mandala** ersetzt. Dazu **Peak · Klangkörper** (hört alle 41 Werte zugleich: Kick, 303, Hats mit Stereo, Pads, Abschnitt, Aufbau, Drop, Phrase, Neuheit; das schwerste Preset). Neu: Knopf **„Eigene“** (Liste der selbstgebauten Visuals, Antippen = anschauen und festhalten bis „Weiter automatisch“, Code am Ende von `js/10`).
+
+### Stand Build 126 (Verlauf)
 - **main = Build 125** (PR #24 gemerged, online). **Build 126 „Aufgeräumt“** liegt auf dem Arbeitszweig `claude/where-we-left-off-s12p8z`; PR und Merge nur mit Emmos OK.
 - **Emmos Entscheidung (17.11.):** keine Werkstatt, keine Schalter („ich möchte die nicht an- oder ausklicken können … wir drehen uns im Kreis“); seine eigenen Visuals
   als echte Presets in der Butterchurn-Liste. Gewählt (alle Empfehlungen): Kick-Puls, Aufbau-Spannung, Drop-Blitz bleiben fest; Mitschnitt nur über die Test-Adresse
