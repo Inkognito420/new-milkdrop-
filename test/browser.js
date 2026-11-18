@@ -775,12 +775,14 @@ const SZ = {
     const r = await page.evaluate(async () => {
       const out = { knopf: !$('mixBtn').hidden, mixe: [] };
       // Build 128: der Knopf erweitert das laufende Visual; eigene Visuals lassen sich nicht mischen (eigene Prüfung im Szenario dock), darum ein Milkdrop-Preset als Start
+      const g0 = guard; guard = false;   // Leistungs-Wächter aus: in der Sandbox ist alles „zu langsam“, er wechselte sonst mitten im Test das Visual (Lauf 18.11., Lichtwand statt Start-Preset)
       if (EIGEN.has(curName) || !mixAnchor(curName)) loadByName(mixParents().pool.find(n => presets[n].comp) || mixParents().pool[0], 0);
       for (let i = 0; i < 3; i++) {
         const t0 = performance.now(), an = mixAnchor(curName); const ok = await mixNow(); const mx = presets[curName] && presets[curName].mix;
         // Build 128: das laufende Visual bleibt Anker (normales Preset: als Bewegung oder Look; Mix: die Hälfte mit den Formen in ihrer Rolle)
         const anker = !!(an && mx && (an.role ? mx[an.role] === an.n : (mx.a === an.n || mx.b === an.n)));
         out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0), anker, war: an && an.n }); }
+      guard = g0;
       // q-Werte: B's Comp braucht q2 → B's Formeln laufen mit, q2 wird gesichert und zurückgeschrieben; liest A's Warp q2 → passt nicht
       presets['T·A'] = { baseVals: { zoom: 1.1 }, init_eqs_str: '', frame_eqs_str: 'a.q2=5;a.zoom=1.2;', pixel_eqs_str: '', warp: '', comp: '', shapes: [], waves: [] };
       presets['T·B'] = { baseVals: { gammaadj: 1.7, zoom: 0.9 }, init_eqs_str: 'a.k=1;', frame_eqs_str: 'a.q2=a.k*3;', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(q2); }', shapes: [], waves: [] };
