@@ -81,14 +81,30 @@ const EXTRA = {}; { const names = require('./klangrollen-namen.js').AK_NAMES; na
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); console.log((ok ? '  ok   ' : '  FEHL ') + name + (ok && !process.env.VERBOSE ? '' : '  → ' + detail)); };
 
+// Build 129: Zeitgrenze pro Lauf. Auf GitHub blieb der Vergleich am 18.11. zweimal nach ca. 350 von 367 Presets stehen (Lauf 44267470246: 24 Minuten
+// bis zum Abbruch nach 40 Minuten; Lauf 44272696473: page.goto lief nach 30 s ab). Ohne Grenze hängt der ganze Job und niemand sieht, an welchem Preset.
+// Jetzt: page.goto bis 60 s, das Zeichnen bis RUN_MS; läuft eins ab, wird die Seite geschlossen und das Preset ein zweites Mal gezeichnet.
+// Hängt es auch dann, kommt { hang: true } zurück (mit Namen im Protokoll); ausgewertet wird das unten wie ein Unterschied.
+const RUN_MS = +process.env.RUN_MS || 120000, slowRuns = [];
 async function runOne(browser, lib, name, extra) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(e.message));
-  await page.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=${lib}`);
-  const r = await page.evaluate(([n, x]) => window.__run(n, x), [name, extra]);
-  await ctx.close();
-  if (errs.length) r.pageErr = errs.join(' | ');
-  return r;
+  for (let tryNo = 1; tryNo <= 2; tryNo++) {
+    const ctx = await browser.newContext(), t = Date.now(); let timer = 0;
+    try {
+      const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(e.message));
+      const go = (async () => {
+        await page.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=${lib}`, { timeout: 60000 });
+        return page.evaluate(([n, x]) => window.__run(n, x), [name, extra]);
+      })();
+      const r = await Promise.race([go, new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('Zeitgrenze ' + RUN_MS / 1000 + ' s')), RUN_MS); })]);
+      const ms = Date.now() - t; if (ms > 20000) slowRuns.push(lib + ' „' + name + '“ ' + Math.round(ms / 1000) + ' s');
+      if (errs.length) r.pageErr = errs.join(' | ');
+      return r;
+    } catch (e) {
+      if (!/Zeitgrenze|Timeout/.test(e.message)) throw e;
+      console.log('    (Info) ' + lib + ' „' + name + '“: ' + e.message.split('\n')[0] + ' nach ' + Math.round((Date.now() - t) / 1000) + ' s' + (tryNo === 1 ? ', zweiter Versuch' : ', hängt auch beim zweiten Mal'));
+    } finally { clearTimeout(timer); await ctx.close().catch(() => {}); }
+  }
+  return { h: ['hängt', 'hängt'], hang: true, err: 'hängt', warp: 'hängt', comp: 'hängt' };
 }
 
 async function probe(browser) {
@@ -164,7 +180,9 @@ async function probe(browser) {
       const n = names[idx++];
       const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'copy', n, EXTRA);
       seen.add(a.h[1]);
-      if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
+      if (a.hang || b.hang) {                                         // Build 129: hängt das Original, ist nichts vergleichbar; hängt nur die Kopie, ist das ein Fehler
+        if (a.hang) wackel.push({ n, orig: [a.h, a.h], kopie: b.h }); else diff.push({ n, orig: a.h, kopie: b.h, kopie2: b.h, eo: a.err, ek: 'hängt' });
+      } else if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
       else {
         // Abweichung: zeichnet das ORIGINAL dieses Preset überhaupt jedes Mal gleich? Wenn nicht (gesehen bei „Magellan's Nebula“: Original jedes Mal anders,
         // Kopie immer gleich), lässt sich nichts vergleichen. Dann zählt es als „Original wackelt“, nicht als Fehler der Kopie.
@@ -179,12 +197,13 @@ async function probe(browser) {
           else diff.push({ n, orig: a.h, kopie: b.h, kopie2: b2.h, eo: a.err, ek: b.err });
         }
       }
-      if ((b.warp !== 'ok' && a.warp === 'ok') || (b.comp !== 'ok' && a.comp === 'ok')) shaderNew.push({ n, warp: b.warp, comp: b.comp });
+      if (!b.hang && ((b.warp !== 'ok' && a.warp === 'ok') || (b.comp !== 'ok' && a.comp === 'ok'))) shaderNew.push({ n, warp: b.warp, comp: b.comp });
       if (b.pageErr && !a.pageErr) errsNew.push({ n, e: b.pageErr });
       if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)');
     }
   };
   await Promise.all(Array.from({ length: JOBS }, worker));
+  if (slowRuns.length) console.log('       (Info) Langsame Läufe (über 20 s): ' + slowRuns.join(' · '));
   if (wackelKopie.length) console.log('       (Info) Kopie einmal anders gezeichnet, beim zweiten Mal gleich wie das Original: ' + wackelKopie.map(w => w.n + ' (Original ' + w.orig.join('/') + ', Kopie ' + w.kopie.map(h => h.join('/')).join(' bzw. ') + ')').join(' · '));
   if (wackel.length) console.log('       (Info) Original zeichnet nicht jedes Mal gleich, darum nicht vergleichbar: ' + wackel.map(w => w.n + ' (Original ' + w.orig.map(h => h.join('/')).join(' bzw. ') + ', Kopie ' + w.kopie.join('/') + ')').join(' · '));
   check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 2 %, die schon das Original nicht wiederholbar zeichnet, und höchstens 3, die nur die Kopie einmal anders zeichnet und beim zweiten Mal gleich)', diff.length === 0 && wackel.length <= Math.max(3, Math.ceil(0.02 * names.length)) && wackelKopie.length <= 3 && same + wackel.length + wackelKopie.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length + ', Kopie einmal anders: ' + wackelKopie.length);
