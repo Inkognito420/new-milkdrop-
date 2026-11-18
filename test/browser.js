@@ -128,7 +128,7 @@ const SZ = {
         laden: n.filter(k => loadByName(k, 0) && curName === k).length };
     });
     const soll = ['Eigen · Acid · 303-Welle', 'Eigen · Acid · Echo-Ring', 'Eigen · Acid · Säure-Kaleidoskop', 'Eigen · Driving · Rumble-Nebel', 'Eigen · Driving · Sog-Tunnel', 'Eigen · Peak · Lichtwand', 'Eigen · Peak · Strahlen',
-      'Eigen · Acid · Säureschlange', 'Eigen · Peak · Kick-Schockwelle', 'Eigen · Peak · Hats-Sternenfeld', 'Eigen · Driving · Pad-Nebel', 'Eigen · Driving · Phrasen-Tunnel'].sort();   // Build 127: fünf neue
+      'Eigen · Acid · Säureschlange', 'Eigen · Peak · Kick-Schockwelle', 'Eigen · Peak · Hats-Sternenfeld', 'Eigen · Driving · Pad-Nebel', 'Eigen · Driving · Phrasen-Mandala'].sort();   // Build 127: fünf neue
     check('Eigene Visuals: die 7 früheren eigenen Shader (gleiche Namen) und 5 neue (Build 127) stehen als Presets in der Liste, gehören zu den eigenen Presets (Lastbremse), haben einen Comp-Shader und Werte für die Auswahl nach Klang', r.n.join('|') === soll.join('|') && r.liste === 12 && r.comp === 12 && r.react === 12, JSON.stringify(r));
     check('Eigene Visuals: ein Stern von früher gilt weiter, alle lassen sich wie jedes Preset laden; die alte Shader-Technik (zweite Fläche, js/03) ist weg', r.stern && r.laden === 12 && r.alteTeile === 'undefined,undefined,undefined' && errs.length === 0, JSON.stringify(r) + errs.join(' | '));
     await close();

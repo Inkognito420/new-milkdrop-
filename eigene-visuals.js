@@ -359,29 +359,36 @@ shader_body {
   ret = col * clamp(1.0 - 0.6 * dot(eiUvc(), eiUvc()), 0.0, 1.0);
 }`);
 
-  // 12) Phrasen-Tunnel: eine Fahrt, die sich über 16 Takte aufbaut (ak_phrase: schneller, verdrehter, heißere Farben) und am
-  //     Phrasenende im Licht am Ende des Tunnels umschlägt; jede Phrase dreht andersherum. Im Drop volle Fahrt.
-  V['Eigen · Driving · Phrasen-Tunnel'] = mk(HEAD + `
+  // 12) Phrasen-Mandala: macht die 16-Takt-Phrase sichtbar. Mit jedem Takt wächst ein neuer Ring aus Blütenblättern dazu (ak_phrase),
+  //     die Ringe drehen abwechselnd in Gegenrichtung; am Phrasenende leuchtet das Mandala auf und beginnt mit der nächsten Phrase neu.
+  //     Im Drop steht es voll da und pulsiert mit dem Kick. (Build 127: ersetzt den Phrasen-Tunnel, der Emmos Sog-Tunnel zu ähnlich war.)
+  V['Eigen · Driving · Phrasen-Mandala'] = mk(HEAD + `
 shader_body {
   vec2 p = eiUvc();
-  float ph = clamp(q2, 0.0, 1.0);
-  float flip = step(0.5, fract(ak_barno / 32.0)) * 2.0 - 1.0;
+  float r = length(p), a = atan(p.y, p.x);
+  float ph = clamp(ak_phrase, 0.0, 0.999) * 16.0;
   float drop = step(2.5, ak_section);
-  float r = length(p) + 1e-4;
-  float a = atan(p.y, p.x) / 6.2831853;
-  float z = 0.45 / r + q1;
-  float tw = a * floor(5.0 + 7.0 * u_v.x) + flip * (0.2 + 0.8 * ph) * 0.5 / r;
-  float lw = 0.03 + 0.05 * u_beat;
-  float lines = smoothstep(lw, 0.0, abs(fract(z) - 0.5)) + 0.7 * smoothstep(0.05, 0.0, abs(fract(tw) - 0.5));
-  float fog = smoothstep(0.0, 0.6, r);
-  float hot = clamp(ph * ph + drop, 0.0, 1.0);
-  vec3 farbe = mix(eiHsv(u_hue + 0.6, 0.7, 1.0), eiHsv(u_hue + 0.02, 0.9, 1.0), hot);
-  vec3 col = farbe * lines * fog * (0.5 + 0.5 * ph + 0.4 * u_beat);
-  col += farbe * (1.0 - fog) * 0.08;
-  float ende = smoothstep(0.85, 1.0, ph);
-  col += eiHsv(u_hue + 0.15, 0.2, 1.0) * ende * exp(-r * (8.0 - 5.0 * ende)) * (1.0 + 0.5 * u_bar);
+  float nb = mix(floor(ph), 15.0, drop), fr = mix(fract(ph), 1.0, drop);
+  float rw = 0.042, k = floor((r - 0.04) / rw), inR = fract((r - 0.04) / rw);
+  vec3 col = vec3(0.0);
+  if (k >= 0.0 && k <= nb && k < 16.0) {
+    float grow = k < nb ? 1.0 : smoothstep(0.0, 1.0, fr);
+    float petals = 4.0 + 2.0 * mod(k + floor(u_v.x * 4.0), 5.0);
+    float dir = mod(k, 2.0) < 0.5 ? 1.0 : -1.0;
+    float pa = a * petals + dir * time * (0.15 + 0.1 * u_v.y) + k * 0.7;
+    float band = smoothstep(0.0, 0.15, inR) * smoothstep(1.0, 0.8, inR);
+    float petal = pow(0.5 + 0.5 * cos(pa), 3.0 - 1.5 * grow) * band * grow;
+    float edge = smoothstep(0.08, 0.0, abs(inR - 0.04)) * grow;
+    col = eiHsv(u_hue + k * 0.045 + 0.1 * u_mid, 0.75, 1.0) * (petal * (0.7 + 0.5 * u_beat * (0.6 + 0.4 * drop)) + 0.25 * edge);
+  } else if (k >= 0.0 && k < 16.0) {
+    col = eiHsv(u_hue + k * 0.045, 0.5, 1.0) * 0.16 * smoothstep(0.1, 0.0, abs(inR - 0.04));   // die noch kommenden Ringe als feine Umrisse
+  }
+  float ende = smoothstep(14.5, 16.0, ph) * (1.0 - drop);
+  col *= 1.0 + 1.5 * ende;
+  col += eiHsv(u_hue + 0.1, 0.25, 1.0) * ende * exp(-r * 4.0);
+  col += eiHsv(u_hue + 0.5, 0.6, 1.0) * (0.11 + 0.05 * u_bass) * exp(-r * 1.3);
   ret = col;
-}`, null, { init: 'a.tp=0;a.zz=0;a.q1=0;a.q2=0;', frame: DT + 'a.zz+=a.dt*(.25+1.5*a.ak_phrase*a.ak_phrase+(a.ak_section>2.5?.9:0));a.q1=a.zz;a.q2=a.ak_phrase;' });
+}`);
 
   // Worauf jedes Visual reagiert [Bass, Mitten, Höhen] für die Auswahl nach Klang (js/05 REACT). GESCHÄTZT aus den Formeln (Build 126), nicht gemessen:
   // die Visuals hören über die Klangrollen (Kick/303/Hats), die Vorab-Messung mit Testtönen deckt diesen Weg nicht ab.
@@ -389,7 +396,7 @@ shader_body {
     'Eigen · Peak · Strahlen': [1.2, 0.4, 0.3], 'Eigen · Peak · Lichtwand': [0.9, 0.7, 0.7], 'Eigen · Driving · Sog-Tunnel': [0.8, 0.1, 0.05],
     'Eigen · Driving · Rumble-Nebel': [0.9, 0.4, 0.05], 'Eigen · Acid · 303-Welle': [0.3, 1.2, 0.1], 'Eigen · Acid · Säure-Kaleidoskop': [0.4, 1.0, 0.4],
     'Eigen · Acid · Echo-Ring': [0.9, 0.6, 0.5], 'Eigen · Acid · Säureschlange': [0.3, 1.2, 0.1], 'Eigen · Peak · Kick-Schockwelle': [1.3, 0.2, 0.1],
-    'Eigen · Peak · Hats-Sternenfeld': [0.4, 0.2, 1.2], 'Eigen · Driving · Pad-Nebel': [0.2, 0.9, 0.2], 'Eigen · Driving · Phrasen-Tunnel': [0.7, 0.3, 0.2]
+    'Eigen · Peak · Hats-Sternenfeld': [0.4, 0.2, 1.2], 'Eigen · Driving · Pad-Nebel': [0.2, 0.9, 0.2], 'Eigen · Driving · Phrasen-Mandala': [0.7, 0.4, 0.2]
   };
   window.EIGENE_VISUALS = V;
   window.ACID_PRESETS = Object.assign(window.ACID_PRESETS || {}, V);

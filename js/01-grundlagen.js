@@ -108,7 +108,7 @@ function snapshot() {
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
 const BUILD_NO = 127;
-const BUILD = 'Build ' + BUILD_NO + ' · Fünf neue eigene Presets: Säureschlange, Kick-Schockwelle, Hats-Sternenfeld, Pad-Nebel, Phrasen-Tunnel; Lichtwand ohne Flackern';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD = 'Build ' + BUILD_NO + ' · Fünf neue eigene Presets: Säureschlange, Kick-Schockwelle, Hats-Sternenfeld, Pad-Nebel, Phrasen-Mandala; Lichtwand ohne Flackern';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);
