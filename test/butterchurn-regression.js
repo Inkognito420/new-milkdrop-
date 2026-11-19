@@ -81,15 +81,26 @@ const EXTRA = {}; { const names = require('./klangrollen-namen.js').AK_NAMES; na
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok }); console.log((ok ? '  ok   ' : '  FEHL ') + name + (ok && !process.env.VERBOSE ? '' : '  → ' + detail)); };
 
-// Build 129: Zeitgrenze pro Lauf. Auf GitHub blieb der Vergleich am 18.11. zweimal nach ca. 350 von 367 Presets stehen (Lauf 44267470246: 24 Minuten
-// bis zum Abbruch nach 40 Minuten; Lauf 44272696473: page.goto lief nach 30 s ab). Ohne Grenze hängt der ganze Job und niemand sieht, an welchem Preset.
-// Jetzt: page.goto bis 60 s, das Zeichnen bis RUN_MS (90 s); läuft eins ab, wird die Seite geschlossen und das Preset ein zweites Mal gezeichnet.
-// Hängt es auch dann, kommt { hang: true } zurück (mit Namen im Protokoll). Hängt das ORIGINAL, ist nichts vergleichbar (zählt wie „Original wackelt“,
-// höchstens 2 %); hängt nur die KOPIE, ist es ein Unterschied. Gemessen in der Sandbox am 18.11.: „Telek - City Helix Lattice“, „Telek - Sine Wave“,
-// „Unchained - All You Can Eat“ und „Unchained - Fuzzy Sciences“ brauchten mit Original UND Kopie über 120 s (vier gleichzeitig, Software-Grafik).
-const RUN_MS = +process.env.RUN_MS || 90000, slowRuns = [];
+// Build 129: Zeitgrenze pro Lauf, zweiter Versuch ALLEIN. Auf GitHub blieb der Vergleich am 18.11. mehrmals nach ca. 350 von 367 Presets stehen
+// (Lauf 44267470246: 24 Minuten bis zum Abbruch nach 40 Minuten; 44272696473: page.goto nach 30 s; 44283272575: vier Presets über 90 s).
+// Gemessen (Sandbox, je allein, Original und Kopie): „Unchained - All You Can Eat“ hängt auch allein (über 240 s pro Lauf, auch im Original);
+// „Telek - City Helix Lattice“ (5 s), „Unchained - Fuzzy Sciences“ (6 s) und „Telek - Sine Wave“ (5 s) sind allein schnell und hingen nur,
+// weil sie gleichzeitig liefen: alle Seiten teilen sich einen Grafik-Prozess, ein hängendes Preset hält die anderen mit an.
+// Darum: erster Versuch neben den anderen (RUN_MS), läuft er ab, wird die Seite geschlossen und das Preset ein zweites Mal ALLEIN gezeichnet
+// (die anderen Arbeiter warten). Hängt es auch allein, kommt { hang: true } zurück: beim Original „hängt schon im Original“ (eigene Liste,
+// höchstens HANG_MAX, nicht vergleichbar), bei der Kopie ein Unterschied (Fehler).
+const RUN_MS = +process.env.RUN_MS || 60000, HANG_MAX = 2, slowRuns = [];
+const pause = ms => new Promise(r => setTimeout(r, ms));
+let active = 0, soloWant = 0, soloQ = Promise.resolve();
+async function slot(solo) {
+  if (!solo) { while (soloWant > 0) await pause(100); active++; return () => { active--; }; }
+  let release; const prev = soloQ; soloQ = new Promise(r => { release = r; }); await prev;   // immer nur einer allein
+  soloWant++; while (active > 0) await pause(100); active++;
+  return () => { active--; soloWant--; release(); };
+}
 async function runOne(browser, lib, name, extra) {
   for (let tryNo = 1; tryNo <= 2; tryNo++) {
+    const free = await slot(tryNo === 2);
     const ctx = await browser.newContext(), t = Date.now(); let timer = 0;
     try {
       const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(e.message));
@@ -97,14 +108,15 @@ async function runOne(browser, lib, name, extra) {
         await page.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=${lib}`, { timeout: 60000 });
         return page.evaluate(([n, x]) => window.__run(n, x), [name, extra]);
       })();
+      go.catch(() => {});
       const r = await Promise.race([go, new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('Zeitgrenze ' + RUN_MS / 1000 + ' s')), RUN_MS); })]);
-      const ms = Date.now() - t; if (ms > 20000) slowRuns.push(lib + ' „' + name + '“ ' + Math.round(ms / 1000) + ' s');
+      const ms = Date.now() - t; if (ms > 20000) slowRuns.push(lib + ' „' + name + '“ ' + Math.round(ms / 1000) + ' s' + (tryNo === 2 ? ' (allein)' : ''));
       if (errs.length) r.pageErr = errs.join(' | ');
       return r;
     } catch (e) {
       if (!/Zeitgrenze|Timeout/.test(e.message)) throw e;
-      console.log('    (Info) ' + lib + ' „' + name + '“: ' + e.message.split('\n')[0] + ' nach ' + Math.round((Date.now() - t) / 1000) + ' s' + (tryNo === 1 ? ', zweiter Versuch' : ', hängt auch beim zweiten Mal'));
-    } finally { clearTimeout(timer); await ctx.close().catch(() => {}); }
+      console.log('    (Info) ' + lib + ' „' + name + '“: ' + e.message.split('\n')[0] + ' nach ' + Math.round((Date.now() - t) / 1000) + ' s' + (tryNo === 1 ? ', zweiter Versuch allein' : ', hängt auch allein'));
+    } finally { clearTimeout(timer); await Promise.race([ctx.close().catch(() => {}), pause(15000)]); free(); }
   }
   return { h: ['hängt', 'hängt'], hang: true, err: 'hängt', warp: 'hängt', comp: 'hängt' };
 }
@@ -176,12 +188,12 @@ async function probe(browser) {
   // Vorprüfung: das Original ist mit dem festen Zufall reproduzierbar (sonst sagt der Vergleich nichts)
   const rep = []; for (const n of names.slice(0, 3)) { const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'orig', n); rep.push(a.h.join() === b.h.join()); }
   check('Vorprüfung: Original zweimal gezeichnet = bit-gleich (fester Zufall wirkt), 3 von 3', rep.every(Boolean), JSON.stringify(rep));
-  const JOBS = +process.env.JOBS || 4, diff = [], wackel = [], wackelKopie = [], shaderNew = [], errsNew = [], seen = new Set(); let same = 0, idx = 0, done = 0;
+  const JOBS = +process.env.JOBS || 4, diff = [], wackel = [], wackelKopie = [], origHang = [], shaderNew = [], errsNew = [], seen = new Set(); let same = 0, idx = 0, done = 0;
   const worker = async () => {
     while (idx < names.length) {
       const n = names[idx++];
       const a = await runOne(browser, 'orig', n);
-      if (a.hang) { wackel.push({ n, orig: [a.h, a.h], kopie: ['nicht gezeichnet', ''] }); if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)'); continue; }   // Original schafft es nicht: nichts zu vergleichen, Kopie spart sich die Zeit
+      if (a.hang) { origHang.push(n); if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)'); continue; }   // Original schafft es nicht: nichts zu vergleichen, Kopie spart sich die Zeit
       const b = await runOne(browser, 'copy', n, EXTRA);
       seen.add(a.h[1]);
       if (b.hang) diff.push({ n, orig: a.h, kopie: b.h, kopie2: b.h, eo: a.err, ek: 'hängt' });   // Build 129: hängt nur die Kopie, ist das ein Fehler
@@ -207,9 +219,10 @@ async function probe(browser) {
   };
   await Promise.all(Array.from({ length: JOBS }, worker));
   if (slowRuns.length) console.log('       (Info) Langsame Läufe (über 20 s): ' + slowRuns.join(' · '));
+  if (origHang.length) console.log('       (Info) Hängt schon im ORIGINAL, auch allein (über ' + RUN_MS / 1000 + ' s), darum nicht vergleichbar: ' + origHang.join(' · '));
   if (wackelKopie.length) console.log('       (Info) Kopie einmal anders gezeichnet, beim zweiten Mal gleich wie das Original: ' + wackelKopie.map(w => w.n + ' (Original ' + w.orig.join('/') + ', Kopie ' + w.kopie.map(h => h.join('/')).join(' bzw. ') + ')').join(' · '));
   if (wackel.length) console.log('       (Info) Original zeichnet nicht jedes Mal gleich, darum nicht vergleichbar: ' + wackel.map(w => w.n + ' (Original ' + w.orig.map(h => h.join('/')).join(' bzw. ') + ', Kopie ' + w.kopie.join('/') + ')').join(' · '));
-  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 2 %, die schon das Original nicht wiederholbar zeichnet, und höchstens 3, die nur die Kopie einmal anders zeichnet und beim zweiten Mal gleich)', diff.length === 0 && wackel.length <= Math.max(3, Math.ceil(0.02 * names.length)) && wackelKopie.length <= 3 && same + wackel.length + wackelKopie.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length + ', Kopie einmal anders: ' + wackelKopie.length);
+  check('Pixel-Prüfsummen (Bild 45 und 90) bei allen ' + names.length + ' Presets gleich (außer höchstens 2 %, die schon das Original nicht wiederholbar zeichnet, und höchstens 3, die nur die Kopie einmal anders zeichnet und beim zweiten Mal gleich; höchstens ' + HANG_MAX + ', die schon das Original auch allein nicht in ' + RUN_MS / 1000 + ' s zeichnet)', diff.length === 0 && wackel.length <= Math.max(3, Math.ceil(0.02 * names.length)) && wackelKopie.length <= 3 && origHang.length <= HANG_MAX && same + wackel.length + wackelKopie.length + origHang.length === names.length && names.length > 0, same + ' gleich, abweichend: ' + JSON.stringify(diff.slice(0, 5)) + ', Original wackelt: ' + wackel.length + ', Kopie einmal anders: ' + wackelKopie.length + ', Original hängt: ' + origHang.length);
   check('Der Vergleich sieht etwas: die Presets ergeben verschiedene Bilder (mindestens 90 % verschiedene Prüfsummen)', seen.size >= 0.9 * names.length, seen.size + ' verschiedene bei ' + names.length);
   check('Shader: kein Warp- oder Comp-Shader schlägt mit der neuen Kopfzeile fehl, der im Original klappt', shaderNew.length === 0, JSON.stringify(shaderNew.slice(0, 5)));
   check('Keine neuen Seitenfehler mit der Kopie', errsNew.length === 0, JSON.stringify(errsNew.slice(0, 5)));
