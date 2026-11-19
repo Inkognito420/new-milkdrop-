@@ -42,6 +42,7 @@ const mixFormsQ = p => [].concat(p.shapes || [], p.waves || []).filter(x => x &&
 
 // Ein Kind bauen. r = { a, b, f } (f: 'a' oder 'b' = woher die Formen kommen). Gibt null zurück, wenn das Paar nicht passt.
 function mixBuild(r) {
+  if (r && r.f === 'plus') return plusBuild(r);                    // Build 129: „Formen dazu“ (unten)
   const A = presets[r.a], B = presets[r.b];
   if (!A || !B || r.a === r.b || isMix(r.a) || isMix(r.b) || isOwn(r.a) || isOwn(r.b)) return null;   // Build 126: eigene Visuals zeichnen ihr Bild ganz im Comp, als Mix-Partner taugen sie nicht
   if (!B.comp) return null;                                         // ohne eigenen Look bringt B nichts mit
@@ -64,8 +65,8 @@ function mixBuild(r) {
   };
 }
 function mixName(r) {
-  const base = 'Mix · ' + mixShort(r.a) + ' × ' + mixShort(r.b);
-  for (let i = 1; i < 99; i++) { const n = i === 1 ? base : base + ' ' + i; const p = presets[n]; if (!p || (p.mix && p.mix.a === r.a && p.mix.b === r.b)) return n; }
+  const base = 'Mix · ' + mixShort(r.a) + (r.f === 'plus' ? ' + ' : ' × ') + mixShort(r.b);
+  for (let i = 1; i < 99; i++) { const n = i === 1 ? base : base + ' ' + i; const p = presets[n]; if (!p || (p.mix && p.mix.a === r.a && p.mix.b === r.b && p.mix.f === r.f) || (r.f === 'plus' && !favs.has(n))) return n; }
   return base + ' ' + Date.now();
 }
 // Eltern: Favoriten (Milkdrop-Presets, keine eigenen Shader, keine Mixe). Zu wenige Sterne: alle brauchbaren Presets.
@@ -129,7 +130,11 @@ async function mixTry(r, tag) {
   const p = mixBuild(r);
   if (!p) { MIX.bad.add(key); MIX.st.why.passt = (MIX.st.why.passt || 0) + 1; return null; }
   const c = await mixCheck(p);
-  if (!c.ok) { MIX.bad.add(key); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Kontrast ' + c.kontrast + ', Farbe ' + c.farbe + ', Bewegung ' + c.move : '') + '): ' + r.a + ' × ' + r.b); return null; }
+  if (c.ok && !c.skip) {                                            // Build 129 (Emmo: „ab und zu sind die Kombinationen einfach tot“): Lebendigkeit gegen die Eltern
+    const ma = await mixMove(r.a), mb = await mixMove(r.b);
+    if (ma >= 0 && mb >= 0 && c.move < LIVE.share * (ma + mb) / 2) { c.ok = false; c.why = 'tot'; c.eltern = +((ma + mb) / 2).toFixed(1); }
+  }
+  if (!c.ok) { MIX.bad.add(key); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + (c.luma !== undefined ? ', Helligkeit ' + c.luma + ', Kontrast ' + c.kontrast + ', Farbe ' + c.farbe + ', Bewegung ' + c.move + (c.eltern !== undefined ? ' statt Ø ' + c.eltern + ' bei den Eltern' : '') : '') + '): ' + r.a + ' × ' + r.b); return null; }
   return { r, p, c };
 }
 async function mixFind(tag) {
@@ -144,42 +149,78 @@ async function mixFind(tag) {
   return null;
 }
 
-// ===== Build 128 (Emmo): Mix-Knopf und Zwei-Finger-Tipp ERWEITERN das laufende Visual, statt es zu ersetzen =====
-// Das laufende Visual ist der Anker und behält seine Formen (Linien, Kreise, Wellen):
-//   normales Preset: per Zufall bleibt seine Bewegung (neuer Look vom Partner) oder sein Look (neue Bewegung vom Partner).
-//   Mix: die Hälfte mit den Formen bleibt in ihrer Rolle, die andere Hälfte wird ersetzt. Mehrmals drücken = das Bild entwickelt sich weiter.
-// Partner: zu 60 % ein Favorit (wenn es einen gibt), sonst irgendein brauchbares Preset. Nie eigene Visuals, Mixe, Ausgeblendete oder der Anker selbst.
-// Eigene Visuals zeichnen ihr Bild ganz im Comp-Shader, dazu passt kein Partner: für sie gibt es ab Build 129 „Variante + Linse“ (unten).
-const MIX_FAV_SHARE = 0.6;
-function mixAnchor(n) {
-  if (!n || !presets[n] || isOwn(n)) return null;
-  if (!isMix(n)) return { n, role: null, other: null };
-  const m = presets[n].mix; if (!m) return null;
-  const k = m.f === 'b' ? 'b' : 'a';
-  return presets[m[k]] ? { n: m[k], role: k, other: m[k === 'a' ? 'b' : 'a'] } : null;
+// ===== Build 129 (Emmo, Punkt 2): Lebendigkeit =====
+// Ein Mix darf sich nicht deutlich weniger bewegen als seine Eltern: Bewegung (mittlere Änderung zwischen Prüfbild 20 und 40, 0-255) mindestens
+// LIVE.share × Durchschnitt der Eltern. Die Bewegung eines Presets wird je Sitzung gemerkt (LIVE.cacheMs), damit nicht jedes Mal alles neu gezeichnet wird.
+// Vorher (Build 115-128) galt nur die feste Grenze moveMin 5: Mixe, die viel ruhiger waren als ihre Eltern, kamen durch.
+const LIVE = { share: 0.5, cacheMs: 120000 };
+const MOVE_CACHE = {};
+async function mixMove(n) {
+  const k = MOVE_CACHE[n];
+  if (k && performance.now() - k.t < LIVE.cacheMs) return k.move;
+  if (!presets[n]) return -1;
+  const c = await mixCheck(presets[n]);
+  if (c.skip || c.why === 'Fehler') return -1;
+  MOVE_CACHE[n] = { t: performance.now(), move: c.move };
+  return c.move;
 }
-async function mixExtendFind(an, tag) {
-  const ok = x => presets[x] && x !== an.n && x !== an.other && !isOwn(x) && !isMix(x) && usable(x);
+
+// ===== Build 129 (Emmo, Punkt 1): Mix-Knopf = „Formen dazu“ =====
+// Emmo zum Mix aus Build 128 (Hälfte getauscht): „ab und zu sind die Kombinationen einfach tot, es überlagert sich schlecht, anders als erwartet“.
+// Jetzt bleibt das laufende Visual KOMPLETT (Bewegung, Formeln, Warp, Comp, Farben). Der Partner bringt nur seine Formen mit (Shapes und Waves),
+// und zwar nur solche, die keine q-Werte brauchen (die laufen für sich; gezählt: 144 von 367 Presets haben welche). Sie kommen in freie Plätze
+// (Milkdrop hat je 4), die Formen des Visuals bleiben. Gezeichnet werden sie wie eigene Formen: mit der Spur und dem Look des Visuals.
+// Nochmal drücken = andere Formen (Grundlage bleibt das Visual ohne die vorigen Formen). Rezept { a, b, f: 'plus' } wie jeder Mix (Stern = behalten).
+// Prüfung gegen das Visual ohne Formen: nicht dunkler (PLUS.dark), sichtbar anders (mittlere Änderung ab PLUS.diffMin), nicht toter (LIVE).
+const PLUS = { dark: 0.6, diffMin: 2, diffLuma: 4, favShare: 0.6 };
+const formOn = x => !!(x && x.baseVals && x.baseVals.enabled);
+const formFree = x => formOn(x) && mixQs((x.init_eqs_str || '') + (x.frame_eqs_str || '') + (x.point_eqs_str || '')).size === 0;
+const hasFreeForms = n => { const p = presets[n]; return !!p && [].concat(p.shapes || [], p.waves || []).some(formFree); };
+function plusBuild(r) {
+  const A = presets[r.a], B = presets[r.b];
+  if (!A || !B || r.a === r.b || isOwn(r.a) || isOwn(r.b) || isMix(r.b) || (A.mix && A.mix.f === 'plus')) return null;
+  const put = (mine, theirs) => {
+    const out = (mine || []).map(x => Object.assign({}, x));
+    const give = (theirs || []).filter(formFree).map(x => Object.assign({}, x, { baseVals: Object.assign({}, x.baseVals) }));
+    let n = 0; for (let i = 0; i < out.length && give.length; i++) if (!formOn(out[i])) { out[i] = give.shift(); n++; }
+    return [out, n];
+  };
+  const [shapes, ns] = put(A.shapes, B.shapes), [waves, nw] = put(A.waves, B.waves);
+  if (!ns && !nw) return null;
+  return Object.assign({}, A, { baseVals: Object.assign({}, A.baseVals || {}), shapes, waves, mix: { a: r.a, b: r.b, f: 'plus', formen: ns + nw } });
+}
+function plusDiff(a, b) { let d = 0; for (let i = 0; i < a.length; i += 4) d += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return d / (3 * a.length / 4); }
+async function plusFind(base, from, tag) {
+  const prev = presets[from] && presets[from].mix && presets[from].mix.f === 'plus' ? presets[from].mix.b : '';
+  const ok = x => x !== base && x !== prev && presets[x] && !isOwn(x) && !isMix(x) && usable(x) && hasFreeForms(x) && !MIX.bad.has(base + '|' + x);
   const fav = [...favs].filter(ok), all = names.filter(ok);
-  if (!all.length) { rea(tag + ': kein Partner übrig'); return null; }
-  const hasComp = !!presets[an.n].comp;
+  if (!all.length) { rea(tag + ': kein Preset mit passenden Formen übrig'); return null; }
+  const b0 = await mixCheck(presets[base], true);                  // das Visual selbst, zum Vergleichen
   for (let t = 0; t < MIXCFG.tries; t++) {
-    const pool = fav.length && Math.random() < MIX_FAV_SHARE ? fav : all;
-    const x = pool[Math.floor(Math.random() * pool.length)];
-    let role = an.role || (hasComp && Math.random() < 0.5 ? 'b' : 'a');   // ohne eigenen Comp kann der Anker nur die Bewegung behalten
-    const r = role === 'a' ? { a: an.n, b: x, f: 'a' } : { a: x, b: an.n, f: 'b' };
-    const m = await mixTry(r, tag);
-    if (m) { m.keep = role; return m; }
+    const pool = fav.length && Math.random() < PLUS.favShare ? fav : all;
+    const x = pool[Math.floor(Math.random() * pool.length)], r = { a: base, b: x, f: 'plus' }, p = plusBuild(r);
+    if (!p) { MIX.bad.add(base + '|' + x); continue; }
+    if (b0.skip) return { r, p, c: { ok: true, skip: true } };
+    const c = await mixCheck(p, true);
+    const d = b0.px && c.px ? plusDiff(c.px, b0.px) : 99; delete c.px;
+    c.base = b0.luma; c.diff = +d.toFixed(1); c.baseMove = b0.move;
+    c.why = c.why === 'Fehler' ? 'Fehler' : c.luma < Math.max(3, PLUS.dark * b0.luma) ? 'dunkler' : c.move < LIVE.share * b0.move ? 'tot'
+      : (b0.luma >= PLUS.diffLuma && d < PLUS.diffMin) ? 'Formen kaum zu sehen' : '';
+    c.ok = !c.why;
+    if (!c.ok) { MIX.bad.add(base + '|' + x); MIX.st.rejected++; MIX.st.why[c.why] = (MIX.st.why[c.why] || 0) + 1; rea(tag + ' verworfen (' + c.why + ', Helligkeit ' + c.luma + ' statt ' + c.base + ', Bewegung ' + c.move + ' statt ' + c.baseMove + ', Änderung ' + c.diff + '): Formen von „' + x + '“'); continue; }
+    return { r, p, c };
   }
-  rea(tag + ': in ' + MIXCFG.tries + ' Versuchen kein Partner für „' + an.n + '“ gefunden');
+  rea(tag + ': in ' + MIXCFG.tries + ' Versuchen keine passenden Formen für „' + base + '“ gefunden');
   return null;
 }
+
 // Einen gefundenen Mix zeigen
 function mixShow(m, blend, why, tag) {
   const n = mixName(m.r); presets[n] = m.p; tunedCache.delete(n);
   if (!loadByName(n, blend, true, why)) { MIX.st.why.laden = (MIX.st.why.laden || 0) + 1; return false; }
   MIX.st.made++;
-  erg(tag + ': ' + n + (m.keep ? ' · erweitert, ' + (m.keep === 'a' ? 'Bewegung' : 'Look') + ' und Formen von „' + (m.keep === 'a' ? m.r.a : m.r.b) + '“ bleiben' : '') + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Kontrast ' + m.c.kontrast + ', Farbe ' + m.c.farbe + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
+  if (m.p.mix.f === 'plus') { erg(tag + ': ' + n + ' · „' + m.r.a + '“ bleibt ganz, ' + m.p.mix.formen + ' Formen von „' + m.r.b + '“ dazu' + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ' statt ' + m.c.base + ', Bewegung ' + m.c.move + ' statt ' + m.c.baseMove + ', Änderung ' + m.c.diff + ')')); return true; }
+  erg(tag + ': ' + n + ' · Bewegung „' + m.r.a + '“, Look „' + m.r.b + '“, Formen von ' + (m.p.mix.f === 'a' ? 'Bewegung' : 'Look') + (m.c.skip ? ' · ungeprüft' : ' · geprüft (Helligkeit ' + m.c.luma + ', Kontrast ' + m.c.kontrast + ', Farbe ' + m.c.farbe + ', Bewegung ' + m.c.move + ')') + (m.fav ? '' : ' · Eltern zufällig (weniger als 2 Favoriten)'));
   return true;
 }
 // Vorbereiten: ein geprüfter Mix liegt bereit, damit der nächste Wechsel (z. B. der Drop) ohne Wartezeit genau auf dem Takt kommt
@@ -304,7 +345,7 @@ function lensSave() {
   if (ok || lost) rea('Varianten mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Visual (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if ((presets[curName] && presets[curName].lens) || store.get('linsen', []).some(r => r && !favs.has(r.n))) lensSave(); });
 
-// ===== Knopf „Mix“ und Zwei-Finger-Tipp (Build 128): das laufende Visual erweitern =====
+// ===== Knopf „Mix“ und Zwei-Finger-Tipp: das laufende Visual erweitern (Build 129: Formen dazu; eigene Visuals: Variante + Linse) =====
 // Der vorbereitete Auto-Mix (MIX.ready) bleibt für die automatischen Wechsel, er hat mit dem laufenden Bild nichts zu tun.
 async function mixNow() {
   if (!viz) return false;
@@ -323,19 +364,19 @@ async function mixNow() {
     try { return lensShow(await lensFind(base, from, 'Mix · Linse'), 'Mix · Linse'); }
     finally { MIX.busy = false; busy(false); }
   }
-  const an = mixAnchor(from);
-  if (!an) {
+  const base = from && presets[from] && presets[from].mix && presets[from].mix.f === 'plus' ? presets[from].mix.a : from;
+  if (!base || !presets[base]) {
     const why = 'Dieses Visual lässt sich nicht mischen';
     rea('Mix: ' + why + ' (' + (from || 'nichts geladen') + ')'); if (window.toast) toast(why, 2600);
     return false;
   }
   MIX.busy = true; busy(true);
   try {
-    const m = await mixExtendFind(an, 'Mix');
-    if (!m) { if (window.toast) toast('Kein passender Partner gefunden, nochmal versuchen', 2600); return false; }
+    const m = await plusFind(base, from, 'Mix · Formen');
+    if (!m) { if (window.toast) toast('Keine passenden Formen gefunden, nochmal versuchen', 2600); return false; }
     if (curName !== from) { rea('Mix: inzwischen lief ein anderes Visual, der Mix wird trotzdem gezeigt'); }
-    const ok = mixShow(m, MIXCFG.blend, 'm', 'Mix');
-    if (ok && window.toast) toast((m.keep === 'a' ? 'Bewegung bleibt, neuer Look: ' + mixShort(m.r.b) : 'Look bleibt, neue Bewegung: ' + mixShort(m.r.a)), 2600);
+    const ok = mixShow(m, MIXCFG.blend, 'm', 'Mix · Formen');
+    if (ok && window.toast) toast('Formen dazu von: ' + mixShort(m.r.b), 2600);
     return ok;
   }
   finally { MIX.busy = false; busy(false); }
@@ -350,12 +391,12 @@ function mixSave() {
   MIX.recipes = keep; store.set('mixe', keep);
 }
 { const saved = store.get('mixe', []); let ok = 0, lost = 0;
-  if (Array.isArray(saved)) for (const r of saved) {
-    if (!r || typeof r.n !== 'string' || !isMix(r.n)) continue;
+  if (Array.isArray(saved)) for (const pass of [0, 1]) for (const r of saved) {   // Build 129: erst Kreuzungen, dann „Formen dazu“ (kann auf einer Kreuzung aufbauen)
+    if (!r || typeof r.n !== 'string' || !isMix(r.n) || (r.f === 'plus') !== (pass === 1)) continue;
     const p = mixBuild(r); if (p) { presets[r.n] = p; ok++; } else { lost++; favs.delete(r.n); }
   }
   MIX.recipes = Array.isArray(saved) ? saved.filter(r => r && presets[r.n]) : [];
   if (ok || lost) rea('Mixe mit Stern: ' + ok + ' gebaut' + (lost ? ', ' + lost + ' ohne Eltern (entfernt)' : '')); }
 $('fav').addEventListener('click', () => { if (isMix(curName) || MIX.recipes.some(r => !favs.has(r.n))) mixSave(); });   // läuft nach dem Stern-Knopf (js/05): Stern gesetzt = Rezept speichern, weg = löschen
 { const b = $('mixBtn'); if (b) { b.hidden = false; b.addEventListener('click', () => { mixNow(); }); } }
-window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.mixAnchor = mixAnchor; window.lensBuild = lensBuild; window.lensFind = lensFind; window.LENS = LENS; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;
+window.__MIX = MIX; window.mixNow = mixNow; window.mixBuild = mixBuild; window.plusBuild = plusBuild; window.mixMove = mixMove; window.lensBuild = lensBuild; window.lensFind = lensFind; window.LENS = LENS; window.mixPrepare = mixPrepare; window.mixJudge = mixJudge;

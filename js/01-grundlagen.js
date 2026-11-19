@@ -108,7 +108,7 @@ function snapshot() {
 }
 const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
 const BUILD_NO = 129;
-const BUILD = 'Build ' + BUILD_NO + ' · Mix bei eigenen Visuals: neue Variante mit zufälliger Linse (Kaleidoskop, Spiegel, Kacheln, Fischauge, Wirbel, Pixel, Drehung)';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
+const BUILD = 'Build ' + BUILD_NO + ' · Mix-Knopf bringt Formen dazu, das Visual bleibt ganz; tote Mixe fallen durch (Lebendigkeit); eigene Visuals: neue Variante mit Linse';   // Nummer kommt aus BUILD_NO, nur der Text wird von Hand gepflegt
 trg('Seite geladen · ' + BUILD);
 rea('Start · ' + (standalone ? 'Home-Bildschirm-App' : 'Safari-Tab') + ' · ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x · iOS-Audio-Modus-API ' + (navigator.audioSession ? 'vorhanden' : 'fehlt'));
 erg(navigator.userAgent);

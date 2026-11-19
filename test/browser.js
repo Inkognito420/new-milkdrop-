@@ -774,15 +774,38 @@ const SZ = {
     await page.waitForTimeout(1500);
     const r = await page.evaluate(async () => {
       const out = { knopf: !$('mixBtn').hidden, mixe: [] };
-      // Build 128: der Knopf erweitert das laufende Visual; eigene Visuals lassen sich nicht mischen (eigene Prüfung im Szenario dock), darum ein Milkdrop-Preset als Start
+      // Build 129: der Knopf bringt Formen dazu, das laufende Visual bleibt ganz; eigene Visuals bekommen Variante + Linse (eigene Prüfung unten), darum ein Milkdrop-Preset als Start
       const g0 = guard; guard = false;   // Leistungs-Wächter aus: in der Sandbox ist alles „zu langsam“, er wechselte sonst mitten im Test das Visual (Lauf 18.11., Lichtwand statt Start-Preset)
-      if (EIGEN.has(curName) || !mixAnchor(curName)) loadByName(mixParents().pool.find(n => presets[n].comp) || mixParents().pool[0], 0);
+      if (isOwn(curName) || isMix(curName)) loadByName(mixParents().pool.find(n => presets[n].comp) || mixParents().pool[0], 0);
+      const on = x => !!(x && x.baseVals && x.baseVals.enabled), cnt = p => [].concat(p.shapes || [], p.waves || []).filter(on).length;
       for (let i = 0; i < 3; i++) {
-        const t0 = performance.now(), an = mixAnchor(curName); const ok = await mixNow(); const mx = presets[curName] && presets[curName].mix;
-        // Build 128: das laufende Visual bleibt Anker (normales Preset: als Bewegung oder Look; Mix: die Hälfte mit den Formen in ihrer Rolle)
-        const anker = !!(an && mx && (an.role ? mx[an.role] === an.n : (mx.a === an.n || mx.b === an.n)));
-        out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0), anker, war: an && an.n }); }
+        const t0 = performance.now(), p0 = presets[curName], base = p0.mix && p0.mix.f === 'plus' ? p0.mix.a : curName, B = presets[base];
+        const ok = await mixNow(), p = presets[curName], mx = p && p.mix;
+        // das Visual bleibt ganz: gleiche Bewegung, Formeln, Warp, Comp und Grundwerte; seine Formen bleiben, neue kommen dazu
+        const ganz = !!(mx && mx.f === 'plus' && mx.a === base && p.warp === B.warp && p.comp === B.comp && p.frame_eqs_str === B.frame_eqs_str && p.pixel_eqs_str === B.pixel_eqs_str &&
+          JSON.stringify(p.baseVals) === JSON.stringify(B.baseVals) && (B.shapes || []).every((x, k) => !on(x) || p.shapes[k] === x || JSON.stringify(p.shapes[k]) === JSON.stringify(x)) && cnt(p) === cnt(B) + mx.formen && mx.formen >= 1);
+        out.mixe.push({ ok, n: curName, ms: Math.round(performance.now() - t0), ganz, basis: base, formen: mx && mx.formen }); }
       guard = g0;
+      // Formen dazu, ausgedacht: A hat eine Form, B zwei freie und eine mit q-Wert → A behält seine, bekommt die zwei freien; volle Plätze → kein Mix
+      const sh = (q, e) => ({ baseVals: { enabled: e ? 1 : 0, sides: 4 }, init_eqs_str: '', frame_eqs_str: q ? 'a.x=a.q3;' : 'a.x=0.5;' });
+      presets['T·P1'] = { baseVals: { zoom: 1.05 }, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: 'w', comp: 'c', shapes: [sh(0, 1), sh(0, 0), sh(0, 0), sh(0, 0)], waves: [sh(0, 0), sh(0, 0), sh(0, 0), sh(0, 0)] };
+      presets['T·P2'] = { baseVals: {}, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: '', shapes: [sh(0, 1), sh(1, 1), sh(0, 1), sh(0, 0)], waves: [sh(0, 0), sh(0, 0), sh(0, 0), sh(0, 0)] };
+      presets['T·P3'] = Object.assign({}, presets['T·P1'], { shapes: [sh(0, 1), sh(0, 1), sh(0, 1), sh(0, 1)], waves: [sh(0, 1), sh(0, 1), sh(0, 1), sh(0, 1)] });
+      { const m = plusBuild({ a: 'T·P1', b: 'T·P2', f: 'plus' });
+        out.plus = { gebaut: !!m, eigeneBleibt: m && m.shapes[0] === undefined ? false : !!(m && JSON.stringify(m.shapes[0]) === JSON.stringify(presets['T·P1'].shapes[0])), formen: m && m.mix.formen,
+          ohneQ: m && m.shapes.filter(x => x.baseVals.enabled).every(x => !/q\d/.test(x.frame_eqs_str)), look: m && m.warp === 'w' && m.comp === 'c' && m.baseVals.zoom === 1.05,
+          voll: plusBuild({ a: 'T·P3', b: 'T·P2', f: 'plus' }) === null, name: mixName({ a: 'T·P1', b: 'T·P2', f: 'plus' }) }; }
+      delete presets['T·P1']; delete presets['T·P2']; delete presets['T·P3'];
+      // Lebendigkeit (Punkt 2): ein Mix, der sich viel weniger bewegt als seine Eltern, fällt durch („tot“); mixCheck und mixMove hier nachgestellt
+      { const mc = window.mixCheck, mm = window.mixMove, w0 = (__MIX.st.why.tot || 0);
+        window.mixMove = async () => 20; window.mixCheck = async () => ({ ok: true, why: '', luma: 80, kontrast: 40, farbe: 60, move: 6 });
+        const a = 'T·L1', b = 'T·L2', mk = c => ({ baseVals: {}, init_eqs_str: '', frame_eqs_str: '', pixel_eqs_str: '', warp: '', comp: c, shapes: [], waves: [] });
+        presets[a] = mk(''); presets[b] = mk(' shader_body { ret = vec3(0.5); }'); __MIX.bad.delete(a + '|' + b);
+        const tot = await mixTry({ a, b, f: 'a' }, 'Test'); __MIX.bad.delete(a + '|' + b);
+        window.mixCheck = async () => ({ ok: true, why: '', luma: 80, kontrast: 40, farbe: 60, move: 14 });
+        const lebt = await mixTry({ a, b, f: 'a' }, 'Test'); __MIX.bad.delete(a + '|' + b);
+        window.mixCheck = mc; window.mixMove = mm; delete presets[a]; delete presets[b];
+        out.live = { totVerworfen: tot === null && (__MIX.st.why.tot || 0) === w0 + 1, lebtDurch: !!lebt, log: LOG.some(l => /verworfen \(tot, .* statt Ø 20 bei den Eltern/.test(l.x)) }; }
       // q-Werte: B's Comp braucht q2 → B's Formeln laufen mit, q2 wird gesichert und zurückgeschrieben; liest A's Warp q2 → passt nicht
       presets['T·A'] = { baseVals: { zoom: 1.1 }, init_eqs_str: '', frame_eqs_str: 'a.q2=5;a.zoom=1.2;', pixel_eqs_str: '', warp: '', comp: '', shapes: [], waves: [] };
       presets['T·B'] = { baseVals: { gammaadj: 1.7, zoom: 0.9 }, init_eqs_str: 'a.k=1;', frame_eqs_str: 'a.q2=a.k*3;', pixel_eqs_str: '', warp: '', comp: ' shader_body { ret = vec3(q2); }', shapes: [], waves: [] };
@@ -797,8 +820,10 @@ const SZ = {
       return out; });
     console.log('       (Info) Mix: ' + JSON.stringify(r.mixe) + ' · ' + JSON.stringify(r.st));
     const good = r.mixe.filter(x => x.ok && /^Mix · /.test(x.n));
-    check('Mix: Knopf sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A × B“ (geprüft: nicht schwarz, nicht weiß, bewegt sich)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
-    check('Mix erweitert (Build 128): jeder gezeigte Mix behält das vorher laufende Visual (bzw. bei einem Mix die Hälfte mit den Formen in ihrer Rolle)', good.length >= 2 && good.every(x => x.anker), JSON.stringify(r.mixe));
+    check('Mix-Knopf: sichtbar, mindestens 2 von 3 Knopfdrücken zeigen ein neues Bild „Mix · A + B“ (geprüft gegen das Visual ohne Formen)', r.knopf && good.length >= 2, JSON.stringify(r.mixe) + ' ' + r.log.join(' | '));
+    check('Mix-Knopf = Formen dazu (Build 129, Emmo): das Visual bleibt ganz (Bewegung, Formeln, Warp, Comp, Grundwerte, seine Formen), dazu mindestens eine Form des Partners; nochmal drücken baut wieder auf dem Visual auf', good.length >= 2 && good.every(x => x.ganz), JSON.stringify(r.mixe));
+    check('Formen dazu, ausgedacht: eigene Form bleibt, zwei freie Formen des Partners kommen dazu, die mit q-Wert nicht; Look und Bewegung unverändert; volle Plätze = kein Mix; Name „Mix · A + B“', r.plus.gebaut && r.plus.eigeneBleibt && r.plus.formen === 2 && r.plus.ohneQ && r.plus.look && r.plus.voll && / \+ /.test(r.plus.name), JSON.stringify(r.plus));
+    check('Lebendigkeit (Build 129, Emmo): ein Mix mit Bewegung 6 bei Eltern-Durchschnitt 20 fällt als „tot“ durch (Protokoll nennt beide Werte), mit Bewegung 14 kommt er durch', r.live.totVerworfen && r.live.lebtDurch && r.live.log, JSON.stringify(r.live));
     check('Mix-Prüfung (Build 120) mit Werten aus Emmos Bildbögen: blasse (hell, wenig Kontrast) , graue (kein Kontrast, keine Farbe) und flache Farbflächen (Build 121) fallen durch, kräftige, kontrastreiche und dunkle farbige bleiben', r.urteil.join() === 'blass,blass,weiß,weiß,grau,grau,gut,gut,gut,gut,flach,flach', JSON.stringify(r.urteil));
     check('Mix: Bewegung von A (Zoom 1,1, Formel 1,2), Look von B (Gamma 1,7), B\'s Comp bekommt B\'s q2 (3) zurück; liest A\'s Warp dasselbe q, wird das Paar nicht gebaut', r.q.gebaut && r.q.zoomA === 1.1 && r.q.gammaB === 1.7 && r.q.q2 === 3 && r.q.zoomFormel === 1.2 && r.q.konflikt, JSON.stringify(r.q));
     const am = await page.evaluate(async () => {  // Auto-Mix: ein Mix wird im Hintergrund vorbereitet; automatische Wechsel nehmen ihn (Anteil 100 %), Wischen nicht, Anteil 0 nie
@@ -816,7 +841,7 @@ const SZ = {
     const ln = await page.evaluate(async () => {   // Build 129: Mix auf einem eigenen Visual = neue Variante mit Linse; Stern = Rezept (nmd:linsen)
       const N = 'Eigen · Peak · Klangkörper'; auto = false; loadByName(N, 0); const ok = await mixNow(), p = presets[curName];
       const out = { ok, n: curName, basis: p && p.lens && p.lens.base, linse: p && p.lens && p.lens.lens, toast: $('toastTxt').textContent };
-      if (p && p.lens) { if (!favs.has(curName)) $('fav').click(); out.comp = p.comp; out.saved = store.get('linsen', []).map(x => x.n); out.anker = mixAnchor(curName); out.eigenHot = !!document.querySelector('#ownList') && (ownBuild(), !!document.querySelector('#ownList button.hot[data-n="' + N + '"]')); }
+      if (p && p.lens) { if (!favs.has(curName)) $('fav').click(); out.comp = p.comp; out.saved = store.get('linsen', []).map(x => x.n); out.anker = p.mix ? 'gekreuzt' : null; out.eigenHot = !!document.querySelector('#ownList') && (ownBuild(), !!document.querySelector('#ownList button.hot[data-n="' + N + '"]')); }
       return out; });
     const star = await page.evaluate(n => { if (!/^Mix · /.test(curName) && /^Mix · /.test(n || '')) loadByName(n, 0); if (!/^Mix · /.test(curName)) return null; if (!favs.has(curName)) $('fav').click(); return { n: curName, saved: store.get('mixe', []).map(x => x.n) }; }, am.abschnitt);
     await page.reload(); await page.waitForFunction(() => window.__AM_STEP === 16, null, { timeout: 30000 });
