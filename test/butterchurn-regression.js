@@ -98,10 +98,20 @@ async function slot(solo) {
   soloWant++; while (active > 0) await pause(100); active++;
   return () => { active--; soloWant--; release(); };
 }
-async function runOne(browser, lib, name, extra) {
+// Build 129: jeder Arbeiter hat einen eigenen Browser (eigener Grafik-Prozess). Läuft ein Preset in die Zeitgrenze, wird SEIN Browser neu gestartet:
+// sonst rechnet der Grafik-Prozess am hängenden Preset weiter, auch nachdem die Seite zu ist, und bremst alles danach
+// (GitHub-Lauf 44472466669: nach dem Hänger brauchten die letzten 17 Presets noch 23 Minuten, Job 37 von 40 Minuten).
+const launch = () => pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
+  args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--mute-audio'] });
+async function freshBrowser(W) {
+  const old = W.b; W.b = null;
+  if (old) await Promise.race([old.close().catch(() => {}), pause(15000)]);
+  W.b = await launch();
+}
+async function runOne(W, lib, name, extra) {
   for (let tryNo = 1; tryNo <= 2; tryNo++) {
     const free = await slot(tryNo === 2);
-    const ctx = await browser.newContext(), t = Date.now(); let timer = 0;
+    const ctx = await W.b.newContext(), t = Date.now(); let timer = 0;
     try {
       const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(e.message));
       const go = (async () => {
@@ -115,7 +125,8 @@ async function runOne(browser, lib, name, extra) {
       return r;
     } catch (e) {
       if (!/Zeitgrenze|Timeout/.test(e.message)) throw e;
-      console.log('    (Info) ' + lib + ' „' + name + '“: ' + e.message.split('\n')[0] + ' nach ' + Math.round((Date.now() - t) / 1000) + ' s' + (tryNo === 1 ? ', zweiter Versuch allein' : ', hängt auch allein'));
+      console.log('    (Info) ' + lib + ' „' + name + '“: ' + e.message.split('\n')[0] + ' nach ' + Math.round((Date.now() - t) / 1000) + ' s' + (tryNo === 1 ? ', zweiter Versuch allein (Browser neu)' : ', hängt auch allein'));
+      await freshBrowser(W);                                         // hängende Rechnung im Grafik-Prozess beenden
     } finally { clearTimeout(timer); await Promise.race([ctx.close().catch(() => {}), pause(15000)]); free(); }
   }
   return { h: ['hängt', 'hängt'], hang: true, err: 'hängt', warp: 'hängt', comp: 'hängt' };
@@ -168,8 +179,7 @@ async function probe(browser) {
 (async () => {
   const max = +process.argv[2] || Infinity;
   await new Promise(r => server.listen(PORT, '127.0.0.1', r));
-  const browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined,
-    args: [...(process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : []), '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--mute-audio'] });
+  const browser = await launch();
   const t0 = Date.now();
 
   console.log('\nWerte kommen an (Prüf-Preset, Kopie)');
@@ -186,28 +196,30 @@ async function probe(browser) {
   const pg = await browser.newPage(); await pg.goto(`http://127.0.0.1:${PORT}/__harness.html?lib=orig`);
   const names = (await pg.evaluate(() => window.__names)).filter(n => !process.env.ONLY || process.env.ONLY.split('|').includes(n)).slice(0, max); await pg.close();
   // Vorprüfung: das Original ist mit dem festen Zufall reproduzierbar (sonst sagt der Vergleich nichts)
-  const rep = []; for (const n of names.slice(0, 3)) { const a = await runOne(browser, 'orig', n), b = await runOne(browser, 'orig', n); rep.push(a.h.join() === b.h.join()); }
+  const W0 = { b: browser }, rep = []; for (const n of names.slice(0, 3)) { const a = await runOne(W0, 'orig', n), b = await runOne(W0, 'orig', n); rep.push(a.h.join() === b.h.join()); }
   check('Vorprüfung: Original zweimal gezeichnet = bit-gleich (fester Zufall wirkt), 3 von 3', rep.every(Boolean), JSON.stringify(rep));
   const JOBS = +process.env.JOBS || 4, diff = [], wackel = [], wackelKopie = [], origHang = [], shaderNew = [], errsNew = [], seen = new Set(); let same = 0, idx = 0, done = 0;
+  const workers = [];
   const worker = async () => {
+    const W = { b: await launch() }; workers.push(W);
     while (idx < names.length) {
       const n = names[idx++];
-      const a = await runOne(browser, 'orig', n);
+      const a = await runOne(W, 'orig', n);
       if (a.hang) { origHang.push(n); if (++done % 25 === 0) console.log('    … ' + done + ' / ' + names.length + ' (' + Math.round((Date.now() - t0) / 1000) + ' s)'); continue; }   // Original schafft es nicht: nichts zu vergleichen, Kopie spart sich die Zeit
-      const b = await runOne(browser, 'copy', n, EXTRA);
+      const b = await runOne(W, 'copy', n, EXTRA);
       seen.add(a.h[1]);
       if (b.hang) diff.push({ n, orig: a.h, kopie: b.h, kopie2: b.h, eo: a.err, ek: 'hängt' });   // Build 129: hängt nur die Kopie, ist das ein Fehler
       else if (a.h.join() === b.h.join() && (a.err || '') === (b.err || '')) same++;
       else {
         // Abweichung: zeichnet das ORIGINAL dieses Preset überhaupt jedes Mal gleich? Wenn nicht (gesehen bei „Magellan's Nebula“: Original jedes Mal anders,
         // Kopie immer gleich), lässt sich nichts vergleichen. Dann zählt es als „Original wackelt“, nicht als Fehler der Kopie.
-        const a2 = await runOne(browser, 'orig', n);
+        const a2 = await runOne(W, 'orig', n);
         if (a2.h.join() !== a.h.join()) wackel.push({ n, orig: [a.h, a2.h], kopie: b.h });
         else {
           // Build 126: auch die KOPIE ein zweites Mal zeichnen. Auf GitHub (Lauf 44086906685, gleicher Stand, der vorher zweimal grün war) zeichnete die Kopie
           // „fiShbRaiN - breakfast cruiser“ einmal anders, das Original zweimal gleich; in der Sandbox ist es jedes Mal gleich. Eine echte Abweichung der Kopie
           // zeigt sich bei jedem Zeichnen; trifft die Kopie beim zweiten Mal das Original, hat nur die Grafik einmal anders gerechnet.
-          const b2 = await runOne(browser, 'copy', n, EXTRA);
+          const b2 = await runOne(W, 'copy', n, EXTRA);
           if (b2.h.join() === a.h.join() && (b2.err || '') === (a.err || '')) wackelKopie.push({ n, orig: a.h, kopie: [b.h, b2.h] });
           else diff.push({ n, orig: a.h, kopie: b.h, kopie2: b2.h, eo: a.err, ek: b.err });
         }
@@ -218,6 +230,7 @@ async function probe(browser) {
     }
   };
   await Promise.all(Array.from({ length: JOBS }, worker));
+  for (const W of workers) if (W.b) await Promise.race([W.b.close().catch(() => {}), pause(15000)]);
   if (slowRuns.length) console.log('       (Info) Langsame Läufe (über 20 s): ' + slowRuns.join(' · '));
   if (origHang.length) console.log('       (Info) Hängt schon im ORIGINAL, auch allein (über ' + RUN_MS / 1000 + ' s), darum nicht vergleichbar: ' + origHang.join(' · '));
   if (wackelKopie.length) console.log('       (Info) Kopie einmal anders gezeichnet, beim zweiten Mal gleich wie das Original: ' + wackelKopie.map(w => w.n + ' (Original ' + w.orig.join('/') + ', Kopie ' + w.kopie.map(h => h.join('/')).join(' bzw. ') + ')').join(' · '));
@@ -227,7 +240,7 @@ async function probe(browser) {
   check('Shader: kein Warp- oder Comp-Shader schlägt mit der neuen Kopfzeile fehl, der im Original klappt', shaderNew.length === 0, JSON.stringify(shaderNew.slice(0, 5)));
   check('Keine neuen Seitenfehler mit der Kopie', errsNew.length === 0, JSON.stringify(errsNew.slice(0, 5)));
 
-  await browser.close(); server.close();
+  await Promise.race([(W0.b || browser).close().catch(() => {}), pause(15000)]); server.close();
   const bad = results.filter(x => !x.ok);
   console.log('\n' + (results.length - bad.length) + ' von ' + results.length + ' Prüfungen bestanden (' + Math.round((Date.now() - t0) / 1000) + ' s).');
   process.exit(bad.length ? 1 : 0);
